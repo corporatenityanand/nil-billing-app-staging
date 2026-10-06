@@ -165,6 +165,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="overview" class="on">Overview</button>
     <button data-tab="client">By client</button>
     <button data-tab="bills">All bills</button>
+    <button data-tab="receipts">Receipts</button>
     <button data-tab="add">Add proformas &amp; receipts</button>
     <button data-tab="forecast">Collections forecast</button>
     <button data-tab="flags">Flags</button>
@@ -210,6 +211,22 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     </div>
     <div class="sub" id="fSummary" style="margin:-2px 0 8px"></div>
     <div class="card"><div class="tblwrap" id="billsTbl"></div></div>
+  </section>
+
+  <section id="tab-receipts" class="hide">
+    <div class="toolbar">
+      <select id="rClient"></select>
+      <label class="sub">From <input type="date" id="rFrom"></label>
+      <label class="sub">To <input type="date" id="rTo"></label>
+      <select id="rSrc"><option value="">Ledger + logged here</option><option value="ledger">Billing ledger only</option><option value="tool">Logged here only</option></select>
+      <input type="text" id="rSearch" placeholder="Search bill no / client">
+      <button id="btnRcAdd">+ Log receipt</button>
+      <button id="btnRcReset" class="small">Reset filters</button>
+      <button id="btnCsvRc">Export CSV</button>
+    </div>
+    <div class="grid kpis" id="rKpis" style="margin-bottom:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
+    <div class="card"><div class="tblwrap" id="rcAllTbl"></div>
+      <div class="sub" style="margin-top:6px">Ledger receipts are read from the receipt dates in each bill's ledger note. Undated ones (the ledger gave no date) are listed last and left out when a date range is set.</div></div>
   </section>
 
   <section id="tab-add" class="hide">
@@ -825,6 +842,65 @@ function clientNames() {
   const s = {}; BILLS.forEach(b => s[b.client] = 1); vr().forEach(r => { if (r.client) s[r.client] = 1; });
   return Object.keys(s);
 }
+/* ---------- receipts: billing-ledger receipts (from each bill's note) + receipts logged in this tool ---------- */
+const RC_RE = /(\d{1,2})\.(\d{1,2})\.(\d{2,4})?\s*\u20B9\s?([\d,]+(?:\.\d+)?)|\u20B9\s?([\d,]+(?:\.\d+)?)/g;
+function ledgerReceipts(b) {
+  if (!(b.pay > 0)) return [];
+  const one = (date, amt, note) => ({ id: "", src: "ledger", client: b.client, bill: b, date: date, amt: amt, mode: "", note: note || "" });
+  if (b.payEdited) return [one("", b.pay, "ledger figure edited in this tool")];
+  const r = b.remark || "", i = r.indexOf("Receipts:");
+  const out = [];
+  if (i >= 0) {
+    const txt = r.slice(i + 9); let m; RC_RE.lastIndex = 0;
+    while ((m = RC_RE.exec(txt))) {
+      if (m[4]) { let y = m[3] ? +m[3] : 0; if (y && y < 100) y += 2000; out.push(one(y ? y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : "", parseAmt(m[4]), /^\s*\(part\)/.test(txt.slice(RC_RE.lastIndex)) ? "part payment" : "")); }
+      else out.push(one("", parseAmt(m[5])));
+    }
+  }
+  const got = out.reduce((a, x) => a + x.amt, 0);
+  if (Math.abs(got - b.pay) >= 1) {   // note does not add up to the ledger total: show the ledger total as one undated line
+    return [one("", b.pay, "ledger total; the note's receipt list does not add up to it")];
+  }
+  return out;
+}
+function allReceipts() {
+  const list = [];
+  BILLS.forEach(b => { if (!b.direct) ledgerReceipts(b).forEach(x => list.push(x)); });
+  vr().forEach(r => list.push({ id: r.id, src: "tool", client: r.client, bill: BILLS.filter(b => b.id === r.billId)[0] || null, date: r.date || "", amt: +r.amt || 0, mode: r.mode, note: "" }));
+  return list;
+}
+let RC_ROWS = [];
+function renderReceipts() {
+  const fc = $("#rClient"), cur = fc.value || "all";
+  fc.innerHTML = '<option value="all">All clients</option>' + clientNames().map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("");
+  fc.value = cur; if (fc.value !== cur) fc.value = "all";
+  const c = fc.value, from = $("#rFrom").value, to = $("#rTo").value, src = $("#rSrc").value, q = $("#rSearch").value.trim().toLowerCase();
+  const billName = b => !b ? "on account" : b.status === "Adv" ? "advance / not tied to a bill" : (b.billno || "-") + (b.seq ? " " + b.seq : "");
+  let rows = allReceipts().filter(x => (c === "all" || x.client === c) && (!src || x.src === src) &&
+    (!from || (x.date && x.date >= from)) && (!to || (x.date && x.date <= to)) &&
+    (!q || (x.client + " " + billName(x.bill)).toLowerCase().indexOf(q) >= 0));
+  rows.sort((a, b) => (b.date ? 1 : 0) - (a.date ? 1 : 0) || b.date.localeCompare(a.date) || a.client.localeCompare(b.client));
+  RC_ROWS = rows;
+  const tot = rows.reduce((a, x) => a + x.amt, 0), dated = rows.filter(x => x.date);
+  const by = {}; rows.forEach(x => { by[x.client] = (by[x.client] || 0) + x.amt; });
+  const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
+  const month = (S.settings.asOn || "").slice(0, 7), mtot = rows.filter(x => x.date.slice(0, 7) === month).reduce((a, x) => a + x.amt, 0);
+  const kp = (l, v, col, note) => '<div class="card kpi"><div class="lbl" style="color:' + col + '">' + l + '</div><div class="val" style="font-size:22px">' + v + '</div><div class="note">' + note + "</div></div>";
+  $("#rKpis").innerHTML = kp("Received", cmp(tot), "var(--cred)", rows.length + " receipt" + (rows.length === 1 ? "" : "s")) +
+    kp("In " + (month ? new Date(month + "-01T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" }) : "this month"), cmp(mtot), "var(--text)", "month of the as-on date") +
+    kp("Latest receipt", dated.length ? dmy(dated[0].date) : "\u2013", "var(--text)", dated.length ? esc(dated[0].client.split(" ").slice(0, 3).join(" ")) + " \u00B7 " + cmp(dated[0].amt) : "") +
+    (top && c === "all" ? kp("Largest payer", cmp(by[top]), "var(--text)", esc(top)) : "");
+  $("#rcAllTbl").innerHTML = rows.length ? '<table><thead><tr><th>Date</th><th class="l">Client</th><th class="l">Against bill</th><th>Amount</th><th class="l">Source</th><th></th></tr></thead><tbody>' + rows.map(x =>
+    '<tr><td class="hm">' + (x.date ? dmy(x.date) : '<span class="sub">no date</span>') + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(x.client) + '">' + esc(x.client) + '</a></td><td class="l">' + esc(billName(x.bill)) + (x.bill && x.bill.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (x.note ? '<div class="sub">' + esc(x.note) + "</div>" : "") +
+    '</td><td class="hm">' + fmt(x.amt) + '</td><td class="l">' + (x.src === "ledger" ? '<span class="sub">billing ledger</span>' : "logged here") + (x.mode === "D" ? ' <span class="tag">direct</span>' : "") + "</td><td>" + (x.src === "tool" ? '<button class="small danger" data-act="delrc" data-id="' + esc(x.id) + '">\u2715</button>' : "") + "</td></tr>").join("") +
+    '<tr class="tot"><td class="l">Total</td><td></td><td></td><td class="hm">' + fmt(tot) + "</td><td></td><td></td></tr></tbody></table>" : '<div class="sub">No receipts match these filters.</div>';
+}
+function exportReceipts() {
+  try {
+    const head = ["Date", "Client", "Against bill", "Amount", "Source", "Mode", "Note"];
+    downloadCsv("receipts.csv", [head].concat(RC_ROWS.map(x => [x.date, x.client, x.bill ? (x.bill.billno || "") + (x.bill.seq ? " " + x.bill.seq : "") : "on account", x.amt, x.src === "ledger" ? "billing ledger" : "logged here", x.mode === "D" ? "Direct" : "", x.note])));
+  } catch (e) { toast("Export failed: " + (e && e.message ? e.message : e)); }
+}
 function renderBills() {
   const fc = $("#fClient"), cur = fc.value || "all";
   fc.innerHTML = '<option value="all">All clients</option>' + clientNames().map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("");
@@ -1027,7 +1103,7 @@ function renderAll() {
   buildRates(); computeBills();
   const A = aggregate();
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
-  renderBills(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
+  renderBills(); renderReceipts(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
   refreshClientSelect(); updatePreview();
 }
 
@@ -1270,7 +1346,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "client", "bills", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "client", "bills", "receipts", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function wire() {
@@ -1328,6 +1404,11 @@ function wire() {
   });
   $("#aDate").value = S.settings.asOn;
   $("#btnCsvBills").onclick = exportBills;
+  ["rClient", "rFrom", "rTo", "rSrc"].forEach(id => { $("#" + id).onchange = renderReceipts; });
+  $("#rSearch").oninput = renderReceipts;
+  $("#btnRcAdd").onclick = () => openReceipt(null, $("#rClient").value !== "all" ? $("#rClient").value : null);
+  $("#btnRcReset").onclick = () => { $("#rClient").value = "all"; $("#rFrom").value = ""; $("#rTo").value = ""; $("#rSrc").value = ""; $("#rSearch").value = ""; renderReceipts(); };
+  $("#btnCsvRc").onclick = exportReceipts;
 }
 
 function init() {
