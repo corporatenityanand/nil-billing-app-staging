@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Receivables Control Room</title>
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#ffffff; --surface2:#f0eee8; --text:#1d1d1b; --muted:#6b6a64; --line:#dedbd2;
+  --inv:#1f5fbf; --pi:#d98a00; --cred:#1e8a5a; --ret:#7a4fb8; --bad:#c23b2e; --accent:#1d1d1b;
+  --b0:#8fb6ea; --b1:#5f94dc; --b2:#3a73c9; --b3:#2a55a0; --b4:#1b3a73;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161614; --surface:#1f1f1c; --surface2:#2a2a26; --text:#ecebe5; --muted:#a09f96; --line:#3a3a35;
+    --inv:#6aa3ff; --pi:#f0b429; --cred:#4cc38a; --ret:#b38cf0; --bad:#ff7a6b; --accent:#ecebe5;
+    --b0:#3c5f94; --b1:#4a78bd; --b2:#5b8fd9; --b3:#7aa7ec; --b4:#a3c4f5;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161614; --surface:#1f1f1c; --surface2:#2a2a26; --text:#ecebe5; --muted:#a09f96; --line:#3a3a35;
+  --inv:#6aa3ff; --pi:#f0b429; --cred:#4cc38a; --ret:#b38cf0; --bad:#ff7a6b; --accent:#ecebe5;
+  --b0:#3c5f94; --b1:#4a78bd; --b2:#5b8fd9; --b3:#7aa7ec; --b4:#a3c4f5;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1280px;width:100%;margin:0 auto;padding:16px 16px 60px}
+body{overflow-x:hidden}
+h1{font-size:20px;margin:0}
+h2{font-size:15px;margin:0 0 10px}
+.sub{color:var(--muted);font-size:12.5px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
+.settings{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.settings label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+input,select,textarea,button{font:inherit;color:var(--text)}
+input[type=text],input[type=number],input[type=date],select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 8px;max-width:100%}
+input[type=number]{width:90px}
+textarea{width:100%;min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+button{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer}
+button:hover{background:var(--surface2)}
+button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+button.small{padding:2px 8px;font-size:12px}
+button.danger{color:var(--bad)}
+nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;padding-top:4px}
+nav button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;padding:9px 12px;color:var(--muted)}
+nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:16px}
+.card{min-width:0;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .val{font-size:26px;font-weight:650;margin:2px 0}
+.kpi .note{font-size:12px;color:var(--muted)}
+.kpi.big{border-width:2px;border-color:var(--accent)}
+.stackbar{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--surface2)}
+.stackbar div{height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12.5px}
+.legend span i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.hatch{background-image:repeating-linear-gradient(45deg,transparent 0 5px,rgba(255,255,255,.55) 5px 8px)}
+.twocol{grid-template-columns:minmax(0,1fr);}
+@media(min-width:980px){.twocol{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.tblwrap{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--surface)}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+td.wrapc{white-space:normal;min-width:240px;max-width:420px;text-align:left;font-size:12.5px;color:var(--muted)}
+tr.tot td{font-weight:650;border-top:2px solid var(--line)}
+.neg{color:var(--cred)}
+.pos-bad{color:var(--bad)}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.tag.pi{color:var(--pi);border-color:var(--pi)}
+.tag.est{color:var(--muted);border-style:dashed}
+.tag.new{color:var(--inv);border-color:var(--inv)}
+.crow{display:grid;grid-template-columns:minmax(100px,230px) minmax(0,1fr) 110px;gap:10px;align-items:center;padding:4px 0}
+.crow .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbar{display:flex;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.cbar div{height:100%}
+.crow .amt{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.form input,.form select{width:100%}
+.preview{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:9px;font-size:13px}
+.preview b{display:block;font-size:16px}
+.flag{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.flag:last-child{border-bottom:none}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}
+.dot.high{background:var(--bad)}.dot.med{background:var(--pi)}.dot.low{background:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.toast.show{opacity:1}
+#modalbg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
+#modalbg.show{display:flex}
+#modal{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);max-height:90vh;overflow:auto}
+#modal .form{grid-template-columns:1fr 1fr}
+.hide{display:none!important}
+.dr{cursor:pointer}
+.card.dr:hover{border-color:var(--accent)}
+td.dr:hover{outline:1px solid var(--accent);outline-offset:-1px}
+.stackbar>div.dr:hover{filter:brightness(1.18)}
+.legend span.dr:hover{text-decoration:underline}
+.crow.dr:hover{background:var(--surface2);border-radius:6px}
+.bad{border-color:var(--bad)!important;outline:2px solid var(--bad)}
+.cv{display:grid;grid-template-columns:290px minmax(0,1fr);gap:12px;align-items:start}
+.cv>*,.grid>*,.twocol>*{min-width:0}
+@media(max-width:900px){.cv{grid-template-columns:minmax(0,1fr)}}
+.citem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;width:100%;text-align:left;border:1px solid transparent;border-radius:9px;padding:8px 9px;margin-bottom:3px;background:none}
+.citem:hover{background:var(--surface2)}
+.citem.on{background:var(--surface2);border-color:var(--accent)}
+.citem .cn{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.citem .cvv{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.citem .cbar{grid-column:1/-1;height:6px}
+.wf{display:grid;grid-template-columns:minmax(110px,150px) minmax(0,1fr) 120px;gap:8px;align-items:center;padding:3px 0;font-size:13px}
+.wf .bar{height:14px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.wf .bar div{height:100%}
+.wf .a{text-align:right;font-variant-numeric:tabular-nums}
+tr.settled td{opacity:.5}
+td.notecell{white-space:normal;text-align:left;font-size:12.5px;color:var(--muted);background:var(--surface2);padding:6px 12px;border-bottom:1px solid var(--line)}
+a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
+.hm{font-variant-numeric:tabular-nums}
+.status{font-size:12px;color:var(--muted)}
+.help{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+.gatecard{max-width:440px;margin:12vh auto 0;padding:24px}
+.gatemsg{margin-top:12px;font-size:13px;font-weight:600;min-height:1.4em;overflow-wrap:anywhere}
+.banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--bad) 12%,var(--surface));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+#savestatus{overflow-wrap:anywhere}
+.envbar{position:sticky;top:0;z-index:50;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.04em;color:#1d1d1b;background:repeating-linear-gradient(135deg,#f5b400 0 14px,#ffd45c 14px 28px);border-bottom:2px solid #1d1d1b;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<div class="envbar hide" id="envbar" role="note"></div>
+<div class="wrap gate" id="gate">
+  <div class="card gatecard">
+    <h1>Receivables Control Room</h1>
+    <div class="sub" style="margin:4px 0 16px">Nityanand Infrastructure + NMFPPL</div>
+    <p class="help">Sign in with the Google account that has access to the receivables sheet. Data loads from Google Sheets after you sign in.</p>
+    <button class="primary" id="btnSignIn">Sign in with Google</button>
+    <div id="gateMsg" class="gatemsg" role="status"></div>
+  </div>
+</div>
+<div class="wrap hide" id="app">
+<div class="banner hide" id="banner" role="alert"><span id="bannerMsg"></span><button class="small primary" id="bannerBtn"></button></div>
+  <div class="top">
+    <div>
+      <h1>Receivables Control Room</h1>
+      <div class="sub">Nityanand Infrastructure + NMFPPL &middot; built from the reconciled RA register (<span id="nbills"></span> bills) &middot; <span id="savestatus">loading…</span></div>
+    </div>
+    <div class="settings">
+      <label>As on <input type="date" id="asOn"></label>
+      <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
+      <label title="Proformas carry no recorded deductions yet. When on, expected TDS, retention and advance recovery are estimated from each client's history, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
+      <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Direct</label>
+      <button id="btnToday" class="small">Today</button>
+      <button id="btnUndo" class="small" disabled title="Undo the last change (kept until you refresh the page)">Undo</button>
+      <button id="btnRefresh" class="small" title="Load the latest data from the Google Sheet">Refresh</button>
+      <button id="btnSignOut" class="small">Sign out</button>
+    </div>
+  </div>
+
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="client">By client</button>
+    <button data-tab="bills">All bills</button>
+    <button data-tab="add">Add proformas &amp; receipts</button>
+    <button data-tab="forecast">Collections forecast</button>
+    <button data-tab="flags">Flags</button>
+  </nav>
+
+  <section id="tab-overview">
+    <div class="grid kpis" id="kpis"></div>
+    <div class="card" style="margin-bottom:12px">
+      <h2>How old is the money? <span class="sub">(positive balances only, by days since bill date)</span></h2>
+      <div class="stackbar" id="ageBar"></div>
+      <div class="legend" id="ageLegend"></div>
+    </div>
+    <div class="grid twocol" style="margin-bottom:12px">
+      <div class="card"><h2>Who owes what</h2><div id="clientBars"></div>
+        <div class="legend"><span><i style="background:var(--inv)"></i>Invoiced</span><span><i class="hatch" style="background-color:var(--pi)"></i>Proforma</span></div></div>
+      <div class="card"><h2>Reading the numbers</h2>
+        <div class="help" style="margin:0">
+          <p><b>Invoiced due</b> = tax invoices raised, less TDS, retention, advance recovery and other debits, less amounts received.</p>
+          <p><b>Proforma</b> = proformas not yet converted to tax invoices. They are not yet legally due, but they are work billed.</p>
+          <p><b>Credits</b> = advances or receipts above what the bill nets to. They reduce what you can chase.</p>
+          <p><b>Retention held</b> is locked with clients until release, so it is not in the receivable figures.</p>
+        </div></div>
+    </div>
+    <div class="card"><h2>Client &times; age</h2><div class="tblwrap" id="matrix"></div></div>
+  </section>
+
+  <section id="tab-client" class="hide"><div id="cvWrap"></div></section>
+
+  <section id="tab-bills" class="hide">
+    <div class="toolbar">
+      <select id="fClient"></select>
+      <select id="fStatus"><option value="all">All statuses</option><option value="TI">Tax invoices</option><option value="PI">Proformas</option><option value="D">Direct</option></select>
+      <select id="fBucket"><option value="">Any age</option><option value="b0">0–30 d</option><option value="b1">31–60 d</option><option value="b2">61–90 d</option><option value="b3">91–180 d</option><option value="b4">180+ d</option></select>
+      <select id="fSpecial"><option value="">All bills</option><option value="inv">Invoiced due</option><option value="credit">Credits</option><option value="held">GST held</option><option value="ret">With retention</option></select>
+      <label class="sub"><input type="checkbox" id="fOpen" checked> open balances only</label>
+      <label class="sub"><input type="checkbox" id="fNotes"> show all notes</label>
+      <input type="text" id="fSearch" placeholder="Search bill no / remark">
+      <select id="fSort"><option value="bal">Largest balance</option><option value="old">Oldest first</option><option value="client">Client</option></select>
+      <button id="btnReceipt">+ Log receipt</button>
+      <button id="btnDBill">+ Direct bill</button>
+      <button id="btnResetF" class="small">Reset filters</button>
+      <button id="btnCsvBills">Export CSV</button>
+    </div>
+    <div class="sub" id="fSummary" style="margin:-2px 0 8px"></div>
+    <div class="card"><div class="tblwrap" id="billsTbl"></div></div>
+  </section>
+
+  <section id="tab-add" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <h2>Add one proforma</h2>
+      <div class="form" id="addForm">
+        <label>Client<select id="aClient"></select></label>
+        <label id="aNewWrap">Or type a new client<input type="text" id="aNew" placeholder="new client name"></label>
+        <label>Billed from<select id="aSrc"><option>NIL</option><option>NMFPPL</option></select></label>
+        <label>Proforma no.<input type="text" id="aNo"></label>
+        <label>Bill type<input type="text" id="aType" placeholder="Piling, HSD, Excavation…"></label>
+        <label>Seq<input type="text" id="aSeq" placeholder="RA6"></label>
+        <label>Date<input type="date" id="aDate"></label>
+        <label>Base amount (&#8377;)<input type="text" inputmode="decimal" id="aBase" placeholder="e.g. 12,50,000"></label>
+        <label>GST<select id="aGst"><option value="18">18%</option><option value="0">None (HSD)</option></select></label>
+        <label>TDS %<input type="number" id="aTds" step="0.1" value="2"></label>
+        <label>Retention %<input type="number" id="aRet" step="0.1" value="0"></label>
+        <label>Adv recovery %<input type="number" id="aAdv" step="0.1" value="0"></label>
+        <label>Other debits (&#8377;)<input type="text" inputmode="decimal" id="aOth" value="0"></label>
+      </div>
+      <div class="preview" id="aPrev"></div>
+      <div style="margin-top:10px"><button class="primary" id="btnAdd">Add proforma</button> <span class="sub">Retention and advance % are pre-filled from the client's past bills. Change them if this contract differs.</span></div>
+      <div id="aMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <h2>Paste many proformas at once</h2>
+      <div class="help">One per line, separated by tabs (paste straight from Excel) or <b>|</b>:<br><code>Client | Proforma no | dd/mm/yyyy | Base amount | Type (optional)</code><br>Defaults used: billed from NIL, GST 18%, TDS 2%, retention and advance % from that client's history. Client names are matched loosely (e.g. "Arihant" finds Arihant Construction Company).</div>
+      <textarea id="pasteBox" placeholder="Arihant	128	04/10/2026	2450000	Piling&#10;Renaissance	129	05/10/2026	1800000	Excavation"></textarea>
+      <div class="toolbar" style="margin-top:8px"><button id="btnParse">Preview</button><button id="btnImport" class="primary hide">Import</button></div>
+      <div id="pastePrev" class="tblwrap"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px"><h2>Deleted invoices <span class="sub" id="delCount"></span></h2><div class="tblwrap" id="delTbl"></div></div>
+
+    <div class="grid twocol">
+      <div class="card"><h2>Proformas added here <span class="sub" id="addedCount"></span></h2><div class="tblwrap" id="addedTbl"></div></div>
+      <div class="card"><h2>Receipts logged here</h2><div class="tblwrap" id="rcTbl"></div></div>
+    </div>
+  </section>
+
+  <section id="tab-forecast" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <h2>When will the money come in?</h2>
+      <div class="help">Expected date = bill date + credit days (set at the top). Anything already past that date is shown as overdue. Proformas use their net-of-deductions figure when that option is on. Credits are not netted off here.</div>
+      <div id="fcBars"></div>
+      <div class="legend"><span><i style="background:var(--inv)"></i>Tax invoices</span><span><i class="hatch" style="background-color:var(--pi)"></i>Proformas</span></div>
+    </div>
+    <div class="card"><h2>By client</h2><div class="tblwrap" id="fcTbl"></div></div>
+  </section>
+
+  <section id="tab-flags" class="hide">
+    <div class="card" style="margin-bottom:12px"><h2>Needs attention (live)</h2><div id="flagsAuto"></div></div>
+    <div class="card"><h2>Open points from the ledger reconciliation</h2><div class="help">These came out of checking the billing person's ledgers against the Summary sheet. They stay here until you clear them with him.</div><div id="flagsStatic"></div></div>
+  </section>
+</div>
+
+<div id="modalbg"><div id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+(function(){
+"use strict";
+let DATA = { asOn: "", bills: [], memo: {} };   // filled from the Google Sheet after sign-in; no bill data ships in this page
+
+/* ---------- helpers ---------- */
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.prototype.slice.call((el || document).querySelectorAll(s));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => { n = Math.round(n || 0); return (n < 0 ? "-" : "") + "\u20B9" + Math.abs(n).toLocaleString("en-IN"); };
+const cmp = n => { const a = Math.abs(n), s = n < 0 ? "-" : "";
+  if (a >= 1e7) return s + "\u20B9" + (a / 1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return s + "\u20B9" + (a / 1e5).toFixed(2) + " L";
+  return fmt(n); };
+const toD = iso => new Date(iso + "T00:00:00");
+const isoOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const dmy = iso => { const p = iso.split("-"); return p[2] + "/" + p[1] + "/" + p[0].slice(2); };
+const round2 = n => Math.round(n * 100) / 100;
+const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- state ---------- */
+let S = { pis: [], dbills: [], receipts: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+const showD = () => S.settings.showD !== false;
+const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
+let saveTimer = null;
+
+function normalize(o) {
+  if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
+  const n = { pis: [], dbills: [], receipts: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  if (!o) return n;
+  n.pis = Array.isArray(o.pis) ? o.pis : [];
+  n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
+  n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
+  n.overrides = o.overrides && typeof o.overrides === "object" ? o.overrides : {};
+  n.deleted = o.deleted && typeof o.deleted === "object" ? o.deleted : {};
+  n.payAdj = o.payAdj && typeof o.payAdj === "object" ? o.payAdj : {};
+  n.settings = Object.assign(n.settings, o.settings || {});
+  return n;
+}
+let HIST = [], LAST = null;
+function snap() { return JSON.stringify(S); }
+function updateUndo() { const b = $("#btnUndo"); if (!b) return; b.disabled = !HIST.length; b.textContent = "Undo" + (HIST.length ? " (" + HIST.length + ")" : ""); }
+function persist() {
+  const cur = snap();
+  if (LAST !== null && LAST !== cur) { HIST.push(LAST); if (HIST.length > 30) HIST.shift(); }
+  LAST = cur; updateUndo(); save();
+}
+function undo() {
+  if (!HIST.length) { toast("Nothing to undo"); return; }
+  const prev = HIST.pop(); S = normalize(JSON.parse(prev)); LAST = prev;
+  syncSettings(); updateUndo(); save(); renderAll(); toast("Last change undone");
+}
+
+/* ---------- Google sign-in + Sheets storage (schema: docs/DATA_MODEL.md) ---------- */
+const CFG = Object.assign({ clientId: "", sheetId: "", allowedEmails: [], env: "" }, window.RCR_CONFIG || {});
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets/";
+const BILL_COLS = ["id", "client", "src", "status", "billno", "type", "seq", "site", "date", "base", "total", "ret", "adv", "oth", "tds", "pay", "held", "stage", "dateEst", "remark"];
+const TABS = {
+  bills: BILL_COLS.concat(["deleted", "payAdj"]),
+  proformas: BILL_COLS,
+  direct_bills: ["id", "client", "date", "amt", "note"],
+  receipts: ["id", "client", "billId", "amt", "date", "mode"],
+  overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth"],
+  settings: ["key", "value"],
+  meta: ["key", "value"],
+  flags: ["id", "level", "title", "detail"],
+  audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
+};
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", overrides: "billId", settings: "key" };
+const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, payAdj: 1 };
+const BOOLC = { dateEst: 1, deleted: 1 };
+
+let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
+// Until this browser has once received the Sheets permission, always show Google's permission screen:
+// with prompt "" Google silently reuses an earlier grant that lacked Sheets and never shows the checkbox.
+const GRANT_KEY = "rcr_sheets_granted";
+const grantedBefore = () => { try { return localStorage.getItem(GRANT_KEY) === "1"; } catch (e) { return false; } };
+const setGranted = v => { try { if (v) localStorage.setItem(GRANT_KEY, "1"); else localStorage.removeItem(GRANT_KEY); } catch (e) {} };
+let HDR = {}, SHEET_IDS = {}, BASE = null, LOADED_AT = 0;
+let DIRTY = false, SAVING = false, EDITS = 0, SAVE_ERR = "";
+
+const isoFromSerial = v => new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5).toISOString().slice(0, 10);
+function toIso(v) {
+  if (typeof v === "number") return isoFromSerial(v);
+  const s = String(v == null ? "" : v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; return y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); }
+  return s;
+}
+const toBool = v => v === true || /^(true|yes|y|1)$/i.test(String(v == null ? "" : v).trim());
+function toNum(v, blank) {
+  if (v === "" || v == null) return blank;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[₹,\s]/g, ""));
+  return isNaN(n) ? blank : n;
+}
+function cellIn(col, v) {
+  if (col === "payAdj") return toNum(v, null);
+  if (NUMC[col]) return toNum(v, 0);
+  if (BOOLC[col]) return toBool(v);
+  if (col === "date") return toIso(v);
+  return v == null ? "" : String(v);
+}
+const cellOut = v => (v == null ? "" : (typeof v === "number" || typeof v === "boolean") ? v : String(v));
+const same = (a, b) => String(cellOut(a)) === String(cellOut(b));
+const colL = i => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const qt = t => "'" + t.replace(/'/g, "''") + "'";
+
+function authErr() { const e = new Error("Your Google sign-in has expired."); e.auth = true; return e; }
+async function api(method, path, body) {
+  if (!TOKEN || Date.now() > TOKEN_EXP) { TOKEN = null; throw authErr(); }
+  const r = await fetch(SHEETS_API + encodeURIComponent(CFG.sheetId) + path, {
+    method: method, headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined
+  });
+  if (r.status === 401) { TOKEN = null; throw authErr(); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = (j.error && j.error.message) || ("HTTP " + r.status);
+    const e = new Error(r.status === 403 || r.status === 404 ? "This Google account cannot open the receivables sheet. Ask the sheet owner to share it with you. (" + m + ")" : "Google Sheets error: " + m);
+    e.status = r.status; throw e;
+  }
+  return j;
+}
+
+/* read every tab into DATA and S; rows are matched by header name, so column order in the sheet does not matter */
+async function loadAll() {
+  const meta = await api("GET", "?fields=sheets.properties(sheetId,title)");
+  SHEET_IDS = {}; (meta.sheets || []).forEach(s => { SHEET_IDS[s.properties.title] = s.properties.sheetId; });
+  const missingTabs = Object.keys(TABS).filter(t => !(t in SHEET_IDS));
+  if (missingTabs.length) throw new Error("The sheet is missing these tabs: " + missingTabs.join(", ") + ". See docs/DATA_MODEL.md.");
+  const tabs = Object.keys(TABS);
+  const r = await api("GET", "/values:batchGet?" + tabs.map(t => "ranges=" + encodeURIComponent(qt(t) + "!1:1")).join("&") + "&" +
+    tabs.filter(t => t !== "audit").map(t => "ranges=" + encodeURIComponent(qt(t))).join("&") + "&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER");
+  const vrs = r.valueRanges || [];
+  const raw = {};
+  tabs.forEach((t, i) => {
+    HDR[t] = ((vrs[i] && vrs[i].values && vrs[i].values[0]) || []).map(h => String(h).trim());
+    const miss = TABS[t].filter(c => HDR[t].indexOf(c) < 0);
+    if (miss.length) throw new Error("Tab '" + t + "' is missing columns: " + miss.join(", ") + ".");
+  });
+  tabs.filter(t => t !== "audit").forEach((t, i) => {
+    const rows = ((vrs[tabs.length + i] && vrs[tabs.length + i].values) || []).slice(1);
+    const kcol = HDR[t].indexOf(KEY[t] || TABS[t][0]);
+    raw[t] = rows.filter(row => row[kcol] !== undefined && String(row[kcol]).trim() !== "").map(row => {
+      const o = {}; TABS[t].forEach(c => { o[c] = cellIn(c, row[HDR[t].indexOf(c)]); }); return o;
+    });
+  });
+  const kv = rows => { const o = {}; rows.forEach(x => { o[String(x.key).trim()] = x.value; }); return o; };
+  const st = kv(raw.settings), mm = kv(raw.meta);
+  const n = { pis: [], dbills: [], receipts: [], overrides: {}, deleted: {}, payAdj: {}, settings: {} };
+  const bills = raw.bills.map(b => {
+    if (b.deleted) n.deleted[b.id] = true;
+    if (b.payAdj != null) n.payAdj[b.id] = b.payAdj;
+    const o = {}; BILL_COLS.forEach(c => { o[c] = b[c]; }); return o;
+  });
+  n.pis = raw.proformas.map(p => Object.assign(p, { status: p.status || "PI" }));
+  n.dbills = raw.direct_bills;
+  n.receipts = raw.receipts.map(x => Object.assign(x, { mode: x.mode === "D" ? "D" : "" }));
+  raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0) }; });
+  const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
+  DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
+  n.settings = { asOn: DATA.asOn, credit: toNum(st.credit, 30), est: st.est === undefined || st.est === "" ? true : toBool(st.est), showD: st.showD === undefined || st.showD === "" ? true : toBool(st.showD) };
+  STATIC_FLAGS = raw.flags.map(f => [f.level || "low", f.title, f.detail]);
+  S = normalize(n);
+  BASE = rowsView();
+  LOADED_AT = Date.now();
+}
+
+/* the editable tabs as {tab: {key: row}}, built from DATA + S; diffing two of these gives row/cell-level writes */
+function rowsView() {
+  const v = {}; EDITABLE.forEach(t => { v[t] = {}; });
+  const pick = (o, cols) => { const r = {}; cols.forEach(c => { r[c] = o[c] == null ? "" : o[c]; }); return r; };
+  DATA.bills.forEach(b => { const r = pick(b, BILL_COLS); r.deleted = !!S.deleted[b.id]; r.payAdj = S.payAdj[b.id] == null ? "" : S.payAdj[b.id]; v.bills[b.id] = r; });
+  S.pis.forEach(p => { v.proformas[p.id] = pick(p, BILL_COLS); });
+  S.dbills.forEach(p => { v.direct_bills[p.id] = pick(p, TABS.direct_bills); });
+  S.receipts.forEach(p => { v.receipts[p.id] = pick(p, TABS.receipts); });
+  Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
+  ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
+  return JSON.parse(JSON.stringify(v));
+}
+function diffViews(a, b) {
+  const ops = [];
+  EDITABLE.forEach(t => {
+    const A = a[t] || {}, B = b[t] || {};
+    Object.keys(B).forEach(k => {
+      if (!(k in A)) ops.push({ tab: t, kind: "add", key: k, before: null, after: B[k] });
+      else { const cols = TABS[t].filter(c => !same(A[k][c], B[k][c])); if (cols.length) ops.push({ tab: t, kind: "update", key: k, cols: cols, before: A[k], after: B[k] }); }
+    });
+    Object.keys(A).forEach(k => { if (!(k in B)) ops.push({ tab: t, kind: "delete", key: k, before: A[k], after: null }); });
+  });
+  return ops;
+}
+/* row numbers are read fresh before every write, so rows other people added or removed in the meantime are respected */
+async function writeOps(ops) {
+  const tabs = ops.map(o => o.tab).filter((t, i, a) => a.indexOf(t) === i);
+  const r = await api("GET", "/values:batchGet?" + tabs.map(t => "ranges=" + encodeURIComponent(qt(t) + "!" + colL(HDR[t].indexOf(KEY[t])) + ":" + colL(HDR[t].indexOf(KEY[t])))).join("&") + "&valueRenderOption=UNFORMATTED_VALUE");
+  const pos = {};
+  tabs.forEach((t, i) => {
+    const m = {}; ((r.valueRanges[i] && r.valueRanges[i].values) || []).forEach((row, j) => { const k = row[0] == null ? "" : String(row[0]).trim(); if (j > 0 && k !== "" && !(k in m)) m[k] = j + 1; });
+    pos[t] = m;
+  });
+  const data = [], dels = [], adds = {};
+  ops.forEach(o => {
+    const row = pos[o.tab][o.key];
+    if (o.kind === "delete") { if (row) dels.push({ tab: o.tab, row: row }); return; }
+    if (o.kind === "update" && row) { o.cols.forEach(c => data.push({ range: qt(o.tab) + "!" + colL(HDR[o.tab].indexOf(c)) + row, values: [[cellOut(o.after[c])]] })); return; }
+    if (o.kind === "add" && row) { TABS[o.tab].forEach(c => data.push({ range: qt(o.tab) + "!" + colL(HDR[o.tab].indexOf(c)) + row, values: [[cellOut(o.after[c])]] })); return; }
+    const line = HDR[o.tab].map(h => (TABS[o.tab].indexOf(h) >= 0 ? cellOut(o.after[h]) : ""));
+    (adds[o.tab] || (adds[o.tab] = [])).push(line);
+  });
+  if (data.length) await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: data });
+  if (dels.length) {
+    dels.sort((x, y) => y.row - x.row);
+    await api("POST", ":batchUpdate", { requests: dels.map(d => ({ deleteDimension: { range: { sheetId: SHEET_IDS[d.tab], dimension: "ROWS", startIndex: d.row - 1, endIndex: d.row } } })) });
+  }
+  for (const t of Object.keys(adds)) await api("POST", "/values/" + encodeURIComponent(qt(t) + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: adds[t] });
+}
+async function writeAudit(ops) {
+  const ts = new Date().toISOString(), A = TABS.audit;
+  const lines = ops.map(o => {
+    const rec = { timestamp: ts, user_email: USER.email, action: o.kind, entity: o.tab, entity_id: o.key, before_json: o.before ? JSON.stringify(o.before) : "", after_json: o.after ? JSON.stringify(o.after) : "" };
+    return HDR.audit.map(h => (A.indexOf(h) >= 0 ? rec[h] : ""));
+  });
+  await api("POST", "/values/" + encodeURIComponent(qt("audit") + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: lines });
+}
+function save() {
+  if (!USER) return;
+  DIRTY = true; EDITS++; setStatus();
+  clearTimeout(saveTimer); saveTimer = setTimeout(flush, 400);
+}
+async function flush() {
+  if (SAVING) { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); return; }
+  if (!DIRTY || !USER) return;
+  SAVING = true; SAVE_ERR = ""; setStatus();
+  const n = EDITS, target = rowsView();
+  try {
+    const ops = diffViews(BASE, target);
+    if (ops.length) {
+      await writeOps(ops);
+      BASE = target;
+      try { await writeAudit(ops); } catch (e) { if (e.auth) throw e; toast("Saved, but the audit log could not be written"); }
+    }
+    BASE = target;
+    if (EDITS === n) DIRTY = false;
+    hideBanner();
+  } catch (e) {
+    SAVE_ERR = e.auth ? "sign in again to save" : (e.message || String(e));
+    if (e.auth) showBanner("Your Google sign-in has expired. Your last changes are not saved yet.", "Sign in again", reauth);
+    else showBanner("Could not save to Google Sheets: " + SAVE_ERR, "Retry", () => { hideBanner(); flush(); });
+  } finally {
+    SAVING = false; setStatus();
+    if (DIRTY && !SAVE_ERR) { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
+  }
+}
+function setStatus() {
+  const el = $("#savestatus"); if (!el) return;
+  const t = SAVING ? "saving…" : SAVE_ERR ? "NOT SAVED (" + SAVE_ERR + ")" : DIRTY ? "unsaved changes…" : "saved to Google Sheets";
+  el.textContent = (USER ? USER.email + " · " : "") + t;
+  el.style.color = SAVE_ERR ? "var(--bad)" : "";
+}
+function showBanner(msg, btn, fn) { $("#bannerMsg").textContent = msg; const b = $("#bannerBtn"); b.textContent = btn; b.onclick = fn; $("#banner").classList.remove("hide"); }
+function hideBanner() { $("#banner").classList.add("hide"); }
+
+function waitGis() {
+  return new Promise((res, rej) => {
+    let n = 0;
+    (function tick() {
+      if (window.google && google.accounts && google.accounts.oauth2) return res();
+      if (++n > 150) return rej(new Error("Google sign-in did not load. Check your internet connection and reload the page."));
+      setTimeout(tick, 100);
+    })();
+  });
+}
+function requestToken(prompt) {
+  return new Promise((res, rej) => {
+    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CFG.clientId, scope: "openid email " + SHEETS_SCOPE, callback: () => {}, error_callback: e => { if (onTokenError) onTokenError(e); }
+    });
+    onTokenError = e => rej(new Error(e && e.type === "popup_closed" ? "The Google sign-in window was closed." : e && e.type === "popup_failed_to_open" ? "The browser blocked the Google sign-in window. Allow pop-ups for this site and try again." : "Google sign-in failed."));
+    tokenClient.callback = r => {
+      if (!r || r.error) { rej(new Error("Google sign-in failed: " + ((r && (r.error_description || r.error)) || "unknown error"))); return; }
+      if (!google.accounts.oauth2.hasGrantedAllScopes(r, SHEETS_SCOPE)) {
+        setGranted(false);   // next attempt shows Google's permission screen again instead of reusing the partial grant
+        rej(new Error("Google did not give access to the sheet: the box \u201CSee, edit, create and delete all your Google Sheets spreadsheets\u201D was not ticked. Click Sign in with Google again and tick that box on Google's permission screen, then Continue."));
+        return;
+      }
+      setGranted(true);
+      TOKEN = r.access_token; TOKEN_EXP = Date.now() + (Math.max(120, +r.expires_in || 3600) - 60) * 1000; res();
+    };
+    if (!grantedBefore()) prompt = "consent";
+    tokenClient.requestAccessToken(USER ? { prompt: prompt, login_hint: USER.email } : { prompt: prompt });
+  });
+}
+const allowed = email => (CFG.allowedEmails || []).map(x => String(x).trim().toLowerCase()).indexOf(email) >= 0;
+function gateMsg(t, bad) { const el = $("#gateMsg"); el.textContent = t || ""; el.style.color = bad ? "var(--bad)" : ""; }
+async function signIn() {
+  const btn = $("#btnSignIn"); btn.disabled = true;
+  try {
+    gateMsg("Waiting for Google sign-in…");
+    await waitGis();
+    await requestToken("");
+    const u = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + TOKEN } }).then(r => r.json());
+    const email = String(u.email || "").toLowerCase();
+    if (!email || !allowed(email)) {
+      try { google.accounts.oauth2.revoke(TOKEN, () => {}); } catch (e) {}
+      TOKEN = null; tokenClient = null;
+      gateMsg((email || "This account") + " is not on the list of people allowed to use this tool. Ask the owner to add you.", true); return;
+    }
+    USER = { email: email };
+    gateMsg("Loading receivables from Google Sheets…");
+    await loadAll();
+    enterApp();
+  } catch (e) {
+    USER = null; gateMsg(e.message || String(e), true);
+  } finally { btn.disabled = false; }
+}
+async function reauth() {
+  try { await requestToken(""); hideBanner(); SAVE_ERR = ""; if (DIRTY) flush(); else setStatus(); }
+  catch (e) { showBanner(e.message || String(e), "Sign in again", reauth); }
+}
+function signOut() {
+  if (DIRTY && !confirm("Some changes are not saved yet. Sign out anyway?")) return;
+  try { if (TOKEN) google.accounts.oauth2.revoke(TOKEN, () => {}); } catch (e) {}
+  DIRTY = false; USER = null; TOKEN = null; location.reload();
+}
+async function refresh(quiet) {
+  if (!USER || DIRTY || SAVING) { if (!quiet) toast("Saving your changes first; try again in a moment"); return; }
+  try {
+    await loadAll();
+    HIST = []; LAST = snap(); updateUndo(); syncSettings(); renderAll();
+    if (!quiet) toast("Up to date with the sheet");
+  } catch (e) {
+    if (e.auth) showBanner("Your Google sign-in has expired.", "Sign in again", reauth);
+    else if (!quiet) toast(e.message || String(e));
+  }
+}
+function enterApp() {
+  $("#nbills").textContent = DATA.bills.length;
+  HIST = []; LAST = snap(); updateUndo();
+  syncSettings(); $("#aDate").value = S.settings.asOn;
+  $("#gate").classList.add("hide"); $("#app").classList.remove("hide");
+  renderAll(); onClientChange(); setStatus();
+}
+
+/* ---------- derived data ---------- */
+let RATES = {};
+function buildRates() {
+  const m = {};
+  DATA.bills.forEach(b => {
+    if (b.status === "PI" || b.status === "Adv") return;
+    const c = m[b.client] || (m[b.client] = { rb: 0, rr: 0, ab: 0, ar: 0 });
+    if (b.ret > 0) { c.rb += b.base; c.rr += b.ret; }
+    if (b.adv > 0) { c.ab += b.base; c.ar += b.adv; }
+  });
+  RATES = {};
+  Object.keys(m).forEach(k => {
+    const c = m[k];
+    RATES[k] = { ret: c.rb ? Math.round(c.rr / c.rb * 200) / 200 : 0, adv: c.ab ? Math.round(c.ar / c.ab * 200) / 200 : 0 };
+  });
+}
+function rateOf(client) { return RATES[client] || { ret: 0, adv: 0 }; }
+
+let BILLS = [];
+let EXP = {}, ALLNOTES = false;
+const noteBtn = b => b.remark ? '<button class="small" data-act="note" data-id="' + esc(b.id) + '">' + ((ALLNOTES || EXP[b.id]) ? "Hide note" : "Note") + "</button> " : "";
+const noteRow = (b, span) => (b.remark && (ALLNOTES || EXP[b.id])) ? '<tr class="noterow"><td class="notecell" colspan="' + span + '">' + esc(b.remark) + "</td></tr>" : "";
+function computeBills() {
+  const asOn = toD(S.settings.asOn);
+  const list = [];
+  DATA.bills.forEach(b => { if (!S.deleted[b.id]) list.push(Object.assign({ added: false }, b)); });
+  S.pis.forEach(p => list.push(Object.assign({ pay: 0, remark: "", added: true, manual: true, status: "PI" }, p)));
+  if (showD()) S.dbills.forEach(p => list.push({ id: p.id, client: p.client, src: "NIL", status: "TI", billno: "", type: "Direct", seq: "", site: "", date: p.date, base: p.amt, total: p.amt, ret: 0, adv: 0, oth: 0, tds: 0, pay: 0, held: 0, stage: "", dateEst: false, remark: p.note || "", added: true, direct: true, manual: true }));
+  list.forEach(b => {
+    const o = S.overrides[b.id];
+    if (o) {
+      if (o.status) b.status = o.status;
+      if (o.billno) b.billno = o.billno;
+      if (o.manual) { b.tds = o.tds || 0; b.ret = o.ret || 0; b.adv = o.adv || 0; b.oth = o.oth || 0; b.manual = true; }
+      b.converted = true;
+    }
+    let ret = b.ret || 0, adv = b.adv || 0, oth = b.oth || 0, tds = b.tds || 0;
+    b.payOrig = b.pay || 0; b.payEdited = false;
+    if (S.payAdj[b.id] != null) { b.pay = S.payAdj[b.id]; b.payEdited = true; }
+    b.est = false;
+    if (b.status === "PI" && !b.manual && S.settings.est && (ret + adv + oth + tds) === 0) {
+      const r = rateOf(b.client);
+      tds = Math.round(b.base * (b.src === "NIL" ? 0.02 : 0));
+      ret = Math.round(b.base * r.ret); adv = Math.round(b.base * r.adv); b.est = true;
+    }
+    b.eRet = ret; b.eAdv = adv; b.eOth = oth; b.eTds = tds;
+    b.rc = vr().filter(r => r.billId === b.id).reduce((a, r) => a + (+r.amt || 0), 0);
+    b.paid = (b.pay || 0) + b.rc;
+    b.ded = ret + adv + oth + tds;
+    b.net = b.total - b.ded;
+    b.bal = round2(b.net - b.paid);
+    b.days = Math.round((asOn - toD(b.date)) / 864e5);
+  });
+  BILLS = list;
+}
+const BUCKETS = [["b0", "0\u201330 d", 0, 30], ["b1", "31\u201360 d", 31, 60], ["b2", "61\u201390 d", 61, 90], ["b3", "91\u2013180 d", 91, 180], ["b4", "180+ d", 181, 1e9]];
+function bucketOf(b) { for (const x of BUCKETS) if (b.days >= x[2] && b.days <= x[3]) return x[0]; return "b0"; }
+
+function aggregate() {
+  const T = { inv: 0, pi: 0, piGross: 0, cred: 0, ret: 0, retPi: 0, nInv: 0, nPi: 0, b0: 0, b1: 0, b2: 0, b3: 0, b4: 0, oldest: 0, held: 0 };
+  const C = {};
+  const get = n => C[n] || (C[n] = { name: n, inv: 0, pi: 0, cred: 0, ret: 0, net: 0, b0: 0, b1: 0, b2: 0, b3: 0, b4: 0, oldest: 0, n: 0 });
+  BILLS.forEach(b => {
+    const c = get(b.client);
+    if (b.status === "PI") { c.ret += 0; T.retPi += b.eRet; } else { c.ret += b.eRet; T.ret += b.eRet; }
+    if (b.bal >= 1) {
+      c.n++;
+      if (b.status === "PI") { c.pi += b.bal; T.pi += b.bal; T.piGross += b.total - b.paid; T.nPi++; }
+      else { c.inv += b.bal; T.inv += b.bal; T.nInv++; T.held += Math.min(b.held || 0, b.bal); const k = bucketOf(b); c[k] += b.bal; T[k] += b.bal; if (b.days > c.oldest) c.oldest = b.days; if (b.days > T.oldest) T.oldest = b.days; }
+    } else if (b.bal <= -1) { c.cred += -b.bal; T.cred += -b.bal; }
+  });
+  vr().forEach(r => { if (!r.billId) { get(r.client).cred += +r.amt || 0; T.cred += +r.amt || 0; } });
+  Object.keys(C).forEach(k => { C[k].net = C[k].inv + C[k].pi - C[k].cred; });
+  T.net = T.inv + T.pi - T.cred;
+  return { T, C, list: Object.keys(C).map(k => C[k]) };
+}
+
+/* ---------- rendering ---------- */
+const drAttr = (o, noTitle) => ' data-dr="1"' + (o.client ? ' data-dc="' + esc(o.client) + '"' : "") + (o.status ? ' data-ds="' + o.status + '"' : "") + (o.bucket ? ' data-db="' + o.bucket + '"' : "") +
+  (o.special ? ' data-dx="' + o.special + '"' : "") + (o.open === false ? ' data-do="0"' : "") + (o.sort ? ' data-dsort="' + o.sort + '"' : "") + (noTitle ? "" : ' title="Click to see these bills"');
+function drill(o) {
+  const fc = $("#fClient"); fc.value = o.client || "all"; if (fc.value !== (o.client || "all")) fc.value = "all";
+  $("#fStatus").value = o.status || "all"; $("#fBucket").value = o.bucket || ""; $("#fSpecial").value = o.special || "";
+  $("#fOpen").checked = o.open !== false; $("#fSearch").value = ""; $("#fSort").value = o.sort || "bal";
+  showTab("bills"); renderBills();
+}
+function renderKPIs(A) {
+  const T = A.T, extra = (DATA.memo && DATA.memo.gstHeldExtra) || 0;
+  const k = (cls, o, col, lbl, val, note) => '<div class="card kpi dr ' + cls + '"' + drAttr(o) + '><div class="lbl"' + (col ? ' style="color:' + col + '"' : "") + ">" + lbl + '</div><div class="val">' + val + '</div><div class="note">' + note + "</div></div>";
+  $("#kpis").innerHTML =
+    k("big", {}, "", "Net receivable", cmp(T.net), "invoiced + proforma \u2212 credits") +
+    k("", { special: "inv" }, "var(--inv)", "Invoiced due", cmp(T.inv), T.nInv + " bills &middot; oldest " + T.oldest + " days") +
+    k("", { status: "PI" }, "var(--pi)", "Proforma pipeline", cmp(T.pi), T.nPi + " proformas &middot; " + cmp(T.piGross) + " gross of deductions") +
+    k("", { special: "credit" }, "var(--cred)", "Credits held", cmp(T.cred), "advances and unmatched receipts") +
+    k("", { special: "held" }, "var(--bad)", "GST held by clients", cmp(T.held + extra), "part of invoiced due &middot; released on B2B GST details") +
+    k("", { special: "ret", open: false }, "var(--ret)", "Retention held", cmp(T.ret), "+ " + cmp(T.retPi) + " expected on proformas");
+}
+function meilHtml() {
+  const m = BILLS.filter(b => b.client.indexOf("MEIL") >= 0);
+  if (!m.length) return "";
+  const g = {}; let credit = 0, gst = 0;
+  m.forEach(b => {
+    if (b.bal <= -1) { credit += -b.bal; return; }
+    if (b.bal < 1) return;
+    const k = b.stage || (b.status === "PI" ? "Proforma" : "Booked by MEIL");
+    const x = g[k] || (g[k] = { n: 0, amt: 0 }); x.n++; x.amt += b.bal; gst += Math.min(b.held || 0, b.bal);
+  });
+  const hints = { "Booked by MEIL": "RA 1\u20133 and JCB bills on MEIL's books", "Not booked by MEIL": "invoice raised, MEIL yet to book it", "Approval pending": "idle charges awaiting MEIL approval", "Awaiting MEIL invoice details": "proforma; MEIL must send details for the tax invoice", "Proforma": "proforma, not yet invoiced" };
+  const keys = Object.keys(hints).filter(k => g[k]).concat(Object.keys(g).filter(k => !hints[k]));
+  let tot = -credit;
+  let h = '<h2>MEIL at a glance <span class="sub">(net of TDS, retention, advance recovery and store debits)</span></h2><div class="tblwrap"><table><tbody>';
+  keys.forEach(k => { tot += g[k].amt; h += '<tr><td class="l">' + esc(k) + ' <span class="sub">' + (hints[k] ? "\u00B7 " + esc(hints[k]) : "") + '</span></td><td class="hm">' + g[k].n + ' bill' + (g[k].n === 1 ? "" : "s") + '</td><td class="hm">' + fmt(g[k].amt) + '</td></tr>'; });
+  if (credit >= 1) h += '<tr><td class="l">Receipts not matched to a bill <span class="sub">\u00B7 ask MEIL for remittance advice</span></td><td></td><td class="hm neg">' + fmt(-credit) + '</td></tr>';
+  h += '<tr class="tot"><td class="l">Net receivable from MEIL</td><td></td><td class="hm">' + fmt(tot) + '</td></tr></tbody></table></div>';
+  const extra = (DATA.memo && DATA.memo.gstHeldExtra) || 0, mm = DATA.memo;
+  h += '<div class="help" style="margin-top:10px"><b>GST withheld by MEIL: ' + fmt(gst + extra) + '</b> (' + fmt(gst) + ' on RA bills + ' + fmt(extra) + ' on JCB invoices). It sits inside the figures above and is released once B2B GST details are submitted.';
+  if (mm && mm.advReceived) h += '<br><b>Mobilisation advance:</b> ' + fmt(mm.advReceived) + ' received, ' + fmt(mm.advRecovered) + ' recovered through RA 1\u20133, <b>' + fmt(mm.advReceived - mm.advRecovered) + ' still to recover</b> (RA-4 takes ' + fmt(mm.advPending) + '). This is not a receivable; it is why every RA bill carries a 10% deduction.';
+  h += '</div>';
+  return h;
+}
+function renderAge(A) {
+  const T = A.T;
+  const segs = [["pi", "Proforma", T.pi, "var(--pi)", true]].concat(BUCKETS.map(x => [x[0], x[1], T[x[0]], "var(--" + x[0] + ")", false]));
+  const tot = segs.reduce((a, s) => a + s[2], 0) || 1;
+  const tgt = s => s[0] === "pi" ? { status: "PI" } : { bucket: s[0] };
+  $("#ageBar").innerHTML = segs.map(s => '<div class="dr ' + (s[4] ? "hatch" : "") + '"' + drAttr(tgt(s), true) + ' style="width:' + (s[2] / tot * 100) + '%;background-color:' + s[3] + '" title="' + esc(s[1]) + " " + fmt(s[2]) + ' \u2013 click to see the bills"></div>').join("");
+  $("#ageLegend").innerHTML = segs.map(s => '<span class="dr"' + drAttr(tgt(s)) + '><i class="' + (s[4] ? "hatch" : "") + '" style="background-color:' + s[3] + '"></i>' + esc(s[1]) + ' <b class="hm">' + cmp(s[2]) + '</b> <span class="sub">' + Math.round(s[2] / tot * 100) + "%</span></span>").join("");
+}
+function renderClientBars(A) {
+  const list = A.list.filter(c => c.inv + c.pi > 0).sort((a, b) => (b.inv + b.pi) - (a.inv + a.pi));
+  const max = list.length ? (list[0].inv + list[0].pi) : 1;
+  $("#clientBars").innerHTML = list.map(c => '<div class="crow dr" data-act="openclient" data-name="' + esc(c.name) + '" title="Open this client"><div class="nm">' + esc(c.name) + '</div><div class="cbar">' +
+    '<div style="width:' + (c.inv / max * 100) + '%;background:var(--inv)"></div><div class="hatch" style="width:' + (c.pi / max * 100) + '%;background-color:var(--pi)"></div></div>' +
+    '<div class="amt">' + cmp(c.inv + c.pi) + "</div></div>").join("") || '<div class="sub">Nothing outstanding.</div>';
+}
+function shade(v, max, col) { if (v < 1) return ""; const a = Math.max(8, Math.round(v / (max || 1) * 55)); return "background:color-mix(in srgb," + col + " " + a + "%,transparent)"; }
+function renderMatrix(A) {
+  const mx = Math.max.apply(null, A.list.map(c => Math.max(c.b0, c.b1, c.b2, c.b3, c.b4, c.pi)).concat([1]));
+  const rows = A.list.filter(c => c.inv + c.pi + c.cred + c.ret > 0).sort((a, b) => b.net - a.net);
+  const td = (txt, o, style, cls) => '<td class="hm' + (cls ? " " + cls : "") + (o ? " dr" : "") + '"' + (o ? drAttr(o) : "") + (style ? ' style="' + style + '"' : "") + ">" + txt + "</td>";
+  let h = '<table><thead><tr><th>Client</th><th>Proforma</th>' + BUCKETS.map(x => "<th>" + x[1] + "</th>").join("") + '<th>Invoiced due</th><th>Credits</th><th>Net receivable</th><th>Retention held</th><th>Oldest</th></tr></thead><tbody>';
+  rows.forEach(c => {
+    const n = c.name, Z = "\u2013";
+    h += '<tr><td><a class="lnk" data-act="openclient" data-name="' + esc(n) + '">' + esc(n) + "</a></td>" + td(c.pi >= 1 ? fmt(c.pi) : Z, c.pi >= 1 ? { client: n, status: "PI" } : null, shade(c.pi, mx, "var(--pi)"));
+    BUCKETS.forEach(x => { const v = c[x[0]]; h += td(v >= 1 ? fmt(v) : Z, v >= 1 ? { client: n, bucket: x[0] } : null, shade(v, mx, "var(--inv)")); });
+    h += td("<b>" + fmt(c.inv) + "</b>", c.inv >= 1 ? { client: n, special: "inv" } : null) + td(c.cred >= 1 ? fmt(-c.cred) : Z, c.cred >= 1 ? { client: n, special: "credit" } : null, "", "neg") +
+      '<td class="hm dr" data-act="openclient" data-name="' + esc(n) + '" title="Open this client"><b>' + fmt(c.net) + "</b></td>" + td(c.ret >= 1 ? fmt(c.ret) : Z, c.ret >= 1 ? { client: n, special: "ret", open: false } : null) +
+      td(c.oldest ? c.oldest + " d" : Z, c.oldest ? { client: n, special: "inv", sort: "old" } : null) + "</tr>";
+  });
+  const T = A.T;
+  h += '<tr class="tot"><td>Total</td>' + td(fmt(T.pi), { status: "PI" }) + BUCKETS.map(x => td(fmt(T[x[0]]), { bucket: x[0] })).join("") + td(fmt(T.inv), { special: "inv" }) +
+    td(fmt(-T.cred), { special: "credit" }, "", "neg") + td(fmt(T.net), {}) + td(fmt(T.ret), { special: "ret", open: false }) + "<td></td></tr></tbody></table>";
+  $("#matrix").innerHTML = h;
+}
+function clientNames() {
+  const s = {}; BILLS.forEach(b => s[b.client] = 1); vr().forEach(r => { if (r.client) s[r.client] = 1; });
+  return Object.keys(s);
+}
+function renderBills() {
+  const fc = $("#fClient"), cur = fc.value || "all";
+  fc.innerHTML = '<option value="all">All clients</option>' + clientNames().map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("");
+  fc.value = cur;
+  if (fc.value !== cur) fc.value = "all";
+  $("#fNotes").checked = ALLNOTES;
+  const bk = $("#fBucket").value, sp = $("#fSpecial").value;
+  const st = $("#fStatus").value, open = $("#fOpen").checked, q = $("#fSearch").value.trim().toLowerCase(), so = $("#fSort").value;
+  let rows = BILLS.filter(b =>
+    (fc.value === "all" || b.client === fc.value) &&
+    (st === "all" || (st === "PI" ? b.status === "PI" : st === "D" ? !!b.direct : (b.status !== "PI" && !b.direct))) &&
+    (!open || Math.abs(b.bal) >= 1) &&
+    (!bk || (b.status !== "PI" && b.status !== "Adv" && b.bal >= 1 && bucketOf(b) === bk)) &&
+    (!sp || (sp === "inv" ? (b.status !== "PI" && b.status !== "Adv" && b.bal >= 1) : sp === "credit" ? b.bal <= -1 : sp === "held" ? (b.held > 0 && b.bal >= 1) : sp === "ret" ? (b.status !== "PI" && b.eRet > 0) : true)) &&
+    (!q || (b.billno + " " + b.remark + " " + b.type + " " + b.seq).toLowerCase().indexOf(q) >= 0));
+  const lab = []; if (fc.value !== "all") lab.push(fc.value); if (st !== "all") lab.push({ TI: "tax invoices", PI: "proformas", D: "direct" }[st]);
+  if (bk) lab.push(BUCKETS.filter(x => x[0] === bk)[0][1] + " old"); if (sp) lab.push({ inv: "invoiced due", credit: "credits", held: "GST held", ret: "with retention" }[sp]);
+  $("#fSummary").textContent = lab.length ? "Filtered: " + lab.join(" \u00B7 ") : "";
+  rows.sort((a, b) => so === "bal" ? b.bal - a.bal : so === "old" ? b.days - a.days : (a.client + a.date).localeCompare(b.client + b.date));
+  let h = '<table><thead><tr><th>Client</th><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>Deductions</th><th>Received</th><th>Balance</th><th></th></tr></thead><tbody>';
+  let sum = 0;
+  rows.forEach(b => {
+    sum += b.bal;
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (b.est ? ' <span class="tag est" title="Deductions estimated">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "") + (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "");
+    h += "<tr><td>" + esc(b.client) + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") + '</td><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.ded) + '</td><td class="hm">' + fmt(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td>' + noteBtn(b) +
+      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' +
+      (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Invoiced</button>' : "") +
+      ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 10);
+  });
+  h += '<tr class="tot"><td>' + rows.length + ' bills</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hm">' + fmt(sum) + "</td><td></td></tr></tbody></table>";
+  $("#billsTbl").innerHTML = h;
+}
+function renderAdded() {
+  const mine = BILLS.filter(b => b.added);
+  $("#addedCount").textContent = mine.length ? "(" + mine.length + ")" : "";
+  $("#addedTbl").innerHTML = mine.length ? '<table><thead><tr><th>Client</th><th class="l">No</th><th>Date</th><th>Total</th><th>Expected net</th><th></th></tr></thead><tbody>' +
+    mine.map(b => "<tr><td>" + esc(b.client) + '</td><td class="l">' + esc(b.billno) + " " + esc(b.seq) + (b.status !== "PI" ? ' <span class="tag">invoiced</span>' : "") + '</td><td class="hm">' + dmy(b.date) + '</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.net) + '</td><td><button class="small danger" data-act="delpi" data-id="' + esc(b.id) + '">\u2715</button></td></tr>').join("") + "</tbody></table>"
+    : '<div class="sub">None yet. Add one above or paste a batch.</div>';
+  $("#rcTbl").innerHTML = vr().length ? '<table><thead><tr><th>Client</th><th class="l">Against</th><th>Date</th><th>Amount</th><th></th></tr></thead><tbody>' +
+    vr().map(r => { const b = BILLS.filter(x => x.id === r.billId)[0]; return "<tr><td>" + esc(r.client) + '</td><td class="l">' + (b ? esc((b.billno || "-") + " " + b.seq) : "on account") + '</td><td class="hm">' + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="delrc" data-id="' + esc(r.id) + '">\u2715</button></td></tr>'; }).join("") + "</tbody></table>"
+    : '<div class="sub">No receipts logged in this tool. Use &ldquo;Log receipt&rdquo; on the All bills tab.</div>';
+}
+function renderDeleted() {
+  const gone = DATA.bills.filter(b => S.deleted[b.id]);
+  $("#delCount").textContent = gone.length ? "(" + gone.length + ")" : "";
+  $("#delTbl").innerHTML = gone.length ? '<table><thead><tr><th>Client</th><th class="l">Bill</th><th>Date</th><th>Total</th><th></th></tr></thead><tbody>' +
+    gone.map(b => "<tr><td>" + esc(b.client) + '</td><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + '</td><td class="hm">' + dmy(b.date) + '</td><td class="hm">' + fmt(b.total) + '</td><td><button class="small" data-act="restore" data-id="' + esc(b.id) + '">Restore</button></td></tr>').join("") + "</tbody></table>"
+    : '<div class="sub">Nothing deleted. Deleted invoices are listed here so you can bring them back.</div>';
+}
+function expBucket(b) {
+  const asOn = toD(S.settings.asOn), exp = new Date(toD(b.date).getTime() + (S.settings.credit || 0) * 864e5);
+  if (exp < asOn) return -1;
+  const m = (exp.getFullYear() - asOn.getFullYear()) * 12 + exp.getMonth() - asOn.getMonth();
+  return m > 5 ? 6 : m;
+}
+function renderForecast() {
+  const asOn = toD(S.settings.asOn);
+  const labels = ["Overdue"]; const mn = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  for (let i = 0; i < 6; i++) { const d = new Date(asOn.getFullYear(), asOn.getMonth() + i, 1); labels.push(mn[d.getMonth()] + " " + String(d.getFullYear()).slice(2)); }
+  labels.push("Later");
+  const inv = labels.map(() => 0), pi = labels.map(() => 0), per = {};
+  BILLS.forEach(b => {
+    if (b.bal < 1) return;
+    const k = expBucket(b) + 1;
+    (b.status === "PI" ? pi : inv)[k] += b.bal;
+    const c = per[b.client] || (per[b.client] = labels.map(() => 0)); c[k] += b.bal;
+  });
+  const mx = Math.max.apply(null, labels.map((_, i) => inv[i] + pi[i]).concat([1]));
+  $("#fcBars").innerHTML = labels.map((l, i) => '<div class="crow"><div class="nm">' + esc(l) + '</div><div class="cbar" style="height:22px"><div style="width:' + (inv[i] / mx * 100) + '%;background:' + (i === 0 ? "var(--bad)" : "var(--inv)") + '"></div><div class="hatch" style="width:' + (pi[i] / mx * 100) + '%;background-color:var(--pi)"></div></div><div class="amt">' + cmp(inv[i] + pi[i]) + "</div></div>").join("");
+  const names = Object.keys(per).sort((a, b) => per[b].reduce((x, y) => x + y, 0) - per[a].reduce((x, y) => x + y, 0));
+  let h = '<table><thead><tr><th>Client</th>' + labels.map(l => "<th>" + esc(l) + "</th>").join("") + "<th>Total</th></tr></thead><tbody>";
+  const colT = labels.map(() => 0);
+  names.forEach(n => { h += "<tr><td>" + esc(n) + "</td>" + per[n].map((v, i) => { colT[i] += v; return '<td class="hm"' + (i === 0 && v >= 1 ? ' style="color:var(--bad)"' : "") + ">" + (v >= 1 ? fmt(v) : "\u2013") + "</td>"; }).join("") + '<td class="hm"><b>' + fmt(per[n].reduce((x, y) => x + y, 0)) + "</b></td></tr>"; });
+  h += '<tr class="tot"><td>Total</td>' + colT.map(v => '<td class="hm">' + fmt(v) + "</td>").join("") + '<td class="hm">' + fmt(colT.reduce((x, y) => x + y, 0)) + "</td></tr></tbody></table>";
+  $("#fcTbl").innerHTML = h;
+}
+let STATIC_FLAGS = [];   // loaded from the sheet (tab: flags)
+function renderFlags(A) {
+  const f = [];
+  const credits = BILLS.filter(b => b.bal <= -1000);
+  credits.forEach(b => f.push(["med", "Credit: " + b.client + " " + (b.billno || b.type), "Receipt or advance exceeds the bill by " + fmt(-b.bal) + ". Apply it to another bill or hold as advance."]));
+  const tiers = {};
+  BILLS.filter(b => b.status !== "PI" && b.bal >= 1000 && b.days > 90).forEach(b => {
+    const t = b.days > 180 ? "180" : "90", k = t + "|" + b.client, x = tiers[k] || (tiers[k] = { t: t, c: b.client, n: 0, a: 0, mx: 0 });
+    x.n++; x.a += b.bal; if (b.days > x.mx) x.mx = b.days;
+  });
+  Object.keys(tiers).map(k => tiers[k]).sort((a, b) => b.a - a.a).forEach(x => f.push([x.t === "180" ? "high" : "med", x.c + ": " + x.n + " bill" + (x.n === 1 ? "" : "s") + " over " + x.t + " days", fmt(x.a) + " outstanding, oldest " + x.mx + " days since bill date."]));
+  const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
+  if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
+  const small = BILLS.filter(b => b.status !== "PI" && b.status !== "Adv" && Math.abs(b.bal) >= 1 && Math.abs(b.bal) < 1000);
+  if (small.length) f.push(["low", small.length + " tiny residuals", "Net " + fmt(small.reduce((a, b) => a + b.bal, 0)) + " across bills under \u20B91,000 each. Rounding or small short-payments; consider writing off."]);
+  $("#flagsAuto").innerHTML = f.length ? f.map(x => '<div class="flag"><span class="dot ' + x[0] + '"></span><div><b>' + esc(x[1]) + '</b><div class="sub">' + esc(x[2]) + "</div></div></div>").join("") : '<div class="sub">Nothing flagged.</div>';
+  $("#flagsStatic").innerHTML = STATIC_FLAGS.map(x => '<div class="flag"><span class="dot ' + x[0] + '"></span><div><b>' + esc(x[1]) + '</b><div class="sub">' + esc(x[2]) + "</div></div></div>").join("");
+}
+let SEL = null, CV_HIDE = false, DL_OK = true;
+function renderClientView(A) {
+  const el = $("#cvWrap");
+  const list = A.list.slice().sort((a, b) => (b.net - a.net) || a.name.localeCompare(b.name));
+  if (!SEL || !list.some(c => c.name === SEL)) SEL = list.length ? list[0].name : null;
+  const mx = Math.max.apply(null, list.map(c => c.inv + c.pi).concat([1]));
+  const left = '<div class="card"><h2>Clients <span class="sub">(' + list.length + ')</span></h2>' + list.map(c =>
+    '<button class="citem' + (c.name === SEL ? " on" : "") + '" data-act="pick" data-name="' + esc(c.name) + '"><span class="cn" title="' + esc(c.name) + '">' + esc(c.name) + '</span><span class="cvv ' + (c.net < -1 ? "neg" : "") + '">' + (Math.abs(c.net) >= 1 ? cmp(c.net) : "settled") + '</span>' +
+    '<span class="cbar"><div style="width:' + (c.inv / mx * 100) + '%;background:var(--inv)"></div><div class="hatch" style="width:' + (c.pi / mx * 100) + '%;background-color:var(--pi)"></div></span></button>').join("") + "</div>";
+  const c = list.filter(x => x.name === SEL)[0];
+  if (!c) { el.innerHTML = '<div class="card sub">No clients yet.</div>'; return; }
+  const bills = BILLS.filter(b => b.client === SEL).sort((a, b) => a.date.localeCompare(b.date) || (a.billno || "").localeCompare(b.billno || ""));
+  const sum = k => bills.reduce((a, b) => a + (b[k] || 0), 0);
+  const T = { total: sum("total"), tds: sum("eTds"), ret: sum("eRet"), adv: sum("eAdv"), oth: sum("eOth"), paid: sum("paid"), bal: sum("bal") };
+  const extraHeld = (SEL.indexOf("MEIL") >= 0 && DATA.memo) ? DATA.memo.gstHeldExtra : 0;
+  const held = bills.reduce((a, b) => a + (b.bal >= 1 ? Math.min(b.held || 0, b.bal) : 0), 0) + extraHeld;
+  const anyEst = bills.some(b => b.est);
+  const kp = (l, v, col, note) => '<div class="card kpi"><div class="lbl" style="color:' + col + '">' + l + '</div><div class="val" style="font-size:22px">' + v + '</div>' + (note ? '<div class="note">' + note + "</div>" : "") + "</div>";
+  let h = '<div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0;font-size:17px">' + esc(c.name) + '</h2><div class="sub">' + bills.length + " bills &middot; " + (bills.some(b => b.src === "NMFPPL") ? "billed by NIL and NMFPPL" : "billed by NIL") + '</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button data-act="cvrcpt">+ Log receipt</button><button data-act="cvdbill">+ Direct bill</button><button data-act="cvadd">+ Add proforma</button>' + (DL_OK ? '<button data-act="cvcsv">Export CSV</button>' : "") + "</div></div>";
+  h += '<div class="grid kpis" style="margin-bottom:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
+    kp("Net receivable", cmp(c.net), "var(--text)", "invoiced + proforma \u2212 credits") +
+    kp("Invoiced due", cmp(c.inv), "var(--inv)", c.oldest ? "oldest " + c.oldest + " days" : "") +
+    kp("Proforma", cmp(c.pi), "var(--pi)", anyEst ? "net of estimated deductions" : "") +
+    kp("Credits", cmp(c.cred), "var(--cred)", "advances / unmatched") +
+    kp("Retention held", cmp(c.ret), "var(--ret)", "") +
+    (held >= 1 ? kp("GST held", cmp(held), "var(--bad)", "released on B2B GST details") : "") + "</div>";
+  if (SEL.indexOf("MEIL") >= 0) { const mh = meilHtml(); if (mh) h += '<div class="card" style="margin-bottom:12px">' + mh + "</div>"; }
+  // waterfall
+  const wfRows = [["Total billed (incl. GST)", T.total, "var(--inv)", ""], ["TDS", -T.tds, "var(--muted)", ""], ["Retention", -T.ret, "var(--ret)", ""], ["Advance recovery", -T.adv, "var(--muted)", ""], ["Other debits", -T.oth, "var(--muted)", ""], ["Received", -T.paid, "var(--cred)", ""]];
+  const base = Math.max(T.total, 1);
+  const segs = [["pi", "Proforma", c.pi, "var(--pi)", true]].concat(BUCKETS.map(x => [x[0], x[1], c[x[0]], "var(--" + x[0] + ")", false]));
+  const agetot = segs.reduce((a, x) => a + x[2], 0) || 1;
+  h += '<div class="grid twocol" style="margin-bottom:12px"><div class="card"><h2>From bills to balance</h2>' +
+    wfRows.map(r => '<div class="wf"><div>' + r[0] + '</div><div class="bar"><div style="width:' + Math.min(100, Math.abs(r[1]) / base * 100) + "%;background:" + r[2] + '"></div></div><div class="a">' + fmt(r[1]) + "</div></div>").join("") +
+    '<div class="wf" style="border-top:2px solid var(--line);margin-top:4px;padding-top:6px"><div><b>Balance</b></div><div></div><div class="a"><b>' + fmt(T.bal) + "</b></div></div>" +
+    (anyEst ? '<div class="sub" style="margin-top:6px">Includes estimated deductions on proformas (see the switch at the top).</div>' : "") + "</div>" +
+    '<div class="card"><h2>How old is it?</h2><div class="stackbar">' + segs.map(x => '<div class="' + (x[4] ? "hatch" : "") + '" style="width:' + (x[2] / agetot * 100) + "%;background-color:" + x[3] + '" title="' + esc(x[1]) + " " + fmt(x[2]) + '"></div>').join("") + '</div><div class="legend">' +
+    segs.filter(x => x[2] >= 1).map(x => '<span><i class="' + (x[4] ? "hatch" : "") + '" style="background-color:' + x[3] + '"></i>' + esc(x[1]) + ' <b class="hm">' + cmp(x[2]) + "</b></span>").join("") + (agetot <= 1 ? '<span class="sub">Nothing outstanding.</span>' : "") + "</div></div></div>";
+  // bills table
+  let run = 0, open = 0;
+  const rowsH = bills.map(b => {
+    run += b.bal; const settled = Math.abs(b.bal) < 1; if (!settled) open++;
+    if (CV_HIDE && settled) return "";
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (b.est ? ' <span class="tag est">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") +
+      (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "");
+    const z = v => v >= 1 ? fmt(v) : "\u2013";
+    return '<tr class="' + (settled ? "settled" : "") + '"><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + z(b.total) + '</td><td class="hm">' + z(b.eTds) + '</td><td class="hm">' + z(b.eRet) + '</td><td class="hm">' + z(b.eAdv) + '</td><td class="hm">' + z(b.eOth) + '</td><td class="hm">' + z(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td class="hm">' + fmt(run) + '</td><td>' + noteBtn(b) +
+      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Invoiced</button>' : "") + ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 13);
+  }).join("");
+  h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills, oldest first</h2><label class="sub"><input type="checkbox" data-act="cvhide"' + (CV_HIDE ? " checked" : "") + '> hide settled</label><label class="sub"><input type="checkbox" data-act="cvnotes"' + (ALLNOTES ? " checked" : "") + '> show all notes</label><span class="sub">' + open + " of " + bills.length + ' open</span></div><div class="tblwrap"><table><thead><tr><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>TDS</th><th>Retention</th><th>Adv rec.</th><th>Other</th><th>Received</th><th>Balance</th><th>Running</th><th></th></tr></thead><tbody>' + rowsH +
+    '<tr class="tot"><td class="l">Total</td><td></td><td></td><td></td><td class="hm">' + fmt(T.total) + '</td><td class="hm">' + fmt(T.tds) + '</td><td class="hm">' + fmt(T.ret) + '</td><td class="hm">' + fmt(T.adv) + '</td><td class="hm">' + fmt(T.oth) + '</td><td class="hm">' + fmt(T.paid) + '</td><td class="hm">' + fmt(T.bal) + "</td><td></td><td></td></tr></tbody></table></div></div>";
+  const rc = vr().filter(r => r.client === SEL);
+  if (rc.length) h += '<div class="card" style="margin-top:12px"><h2>Receipts logged in this tool</h2><div class="tblwrap"><table><thead><tr><th class="l">Against</th><th>Date</th><th>Amount</th><th></th></tr></thead><tbody>' + rc.map(r => { const b = BILLS.filter(x => x.id === r.billId)[0]; return '<tr><td class="l">' + (b ? esc((b.billno || "-") + " " + b.seq) : "on account") + '</td><td class="hm">' + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="delrc" data-id="' + esc(r.id) + '">\u2715</button></td></tr>'; }).join("") + "</tbody></table></div></div>";
+  el.innerHTML = '<div class="cv">' + left + "<div>" + h + "</div></div>";
+}
+function exportClient() {
+  try {
+    const head = ["Bill no", "Seq", "Type", "Billed from", "Status", "Bill date", "Age (days)", "Total", "TDS", "Retention", "Adv recovery", "Other debits", "Received", "Balance", "Remarks"];
+    const rows = BILLS.filter(b => b.client === SEL).sort((a, b) => a.date.localeCompare(b.date)).map(b => [b.billno, b.seq, b.type, b.src, b.status, b.date, b.days, b.total, b.eTds, b.eRet, b.eAdv, b.eOth, b.paid, b.bal, b.remark]);
+    downloadCsv(SEL.replace(/[^A-Za-z0-9]+/g, "_") + "_receivables.csv", [head].concat(rows));
+  } catch (e) { toast("Export failed: " + (e && e.message ? e.message : e)); }
+}
+function renderAll() {
+  buildRates(); computeBills();
+  const A = aggregate();
+  renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
+  renderBills(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
+  refreshClientSelect(); updatePreview();
+}
+
+/* ---------- add form ---------- */
+function refreshClientSelect() {
+  const sel = $("#aClient"), cur = sel.value;
+  sel.innerHTML = clientNames().map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("");
+  if (cur && Array.prototype.some.call(sel.options, o => o.value === cur)) sel.value = cur;
+}
+function onClientChange() {
+  const v = $("#aClient").value;
+  $("#aNew").value = "";
+  const r = rateOf(v);
+  $("#aRet").value = r.ret ? +(r.ret * 100).toFixed(1) : 0;
+  $("#aAdv").value = r.adv ? +(r.adv * 100).toFixed(1) : 0;
+  const last = BILLS.filter(b => b.client === v).slice(-1)[0];
+  if (last) { $("#aSrc").value = last.src; $("#aGst").value = last.src === "NMFPPL" ? "0" : "18"; $("#aTds").value = last.src === "NMFPPL" ? 0 : 2; if (!$("#aType").value) $("#aType").value = last.type; }
+  updatePreview();
+}
+function formVals() {
+  const base = parseAmt($("#aBase").value), gst = +$("#aGst").value;
+  const total = base * (1 + gst / 100);
+  const tds = base * (+$("#aTds").value || 0) / 100, ret = base * (+$("#aRet").value || 0) / 100, adv = base * (+$("#aAdv").value || 0) / 100, oth = parseAmt($("#aOth").value);
+  return { base, total, tds, ret, adv, oth, net: total - tds - ret - adv - oth };
+}
+function updatePreview() {
+  const v = formVals();
+  $("#aPrev").innerHTML = [["Invoice total", v.total], ["TDS", v.tds], ["Retention", v.ret], ["Adv recovery", v.adv], ["Other", v.oth], ["Expected net", v.net]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join("");
+}
+function addPi(p) { S.pis.push(p); }
+function parseAmt(t) { const n = parseFloat(String(t == null ? "" : t).replace(/[\u20B9,\s]/g, "")); return isNaN(n) ? 0 : n; }
+function setMsg(t, ok) { const el = $("#aMsg"); el.textContent = t; el.style.color = ok ? "var(--cred)" : "var(--bad)"; }
+function onAdd() {
+  try {
+    $$("#addForm .bad").forEach(x => x.classList.remove("bad"));
+    let client = $("#aClient").value;
+    const typed = $("#aNew").value.trim();
+    if (typed) client = matchClient(typed) || typed;
+    const v = formVals();
+    const missing = [];
+    if (!client) missing.push(["aNew", "client"]);
+    if (!(v.base > 0)) missing.push(["aBase", "base amount"]);
+    if (missing.length) {
+      missing.forEach(m => $("#" + m[0]).classList.add("bad"));
+      setMsg("Not added. Please fill in: " + missing.map(m => m[1]).join(" and ") + ".", false);
+      toast("Not added: " + missing.map(m => m[1]).join(", ") + " missing");
+      $("#" + missing[0][0]).focus(); return;
+    }
+    const date = $("#aDate").value || S.settings.asOn;
+    addPi({ id: uid(), client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: "", date: date,
+      base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds) });
+    $("#aNo").value = ""; $("#aSeq").value = ""; $("#aBase").value = ""; $("#aNew").value = "";
+    persist(); renderAll(); toast("Proforma added");
+    setMsg("Added " + fmt(v.total) + " proforma for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + ". See it under By client or All bills.", true);
+  } catch (e) {
+    setMsg("Something went wrong: " + (e && e.message ? e.message : e), false);
+  }
+}
+
+/* ---------- paste import ---------- */
+let PARSED = [];
+function norm(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ""); }
+function matchClient(name) {
+  const n = norm(name); if (!n) return null;
+  const names = clientNames();
+  let hit = names.filter(x => norm(x) === n)[0];
+  if (!hit && n.length >= 4) hit = names.filter(x => norm(x).indexOf(n) >= 0 || n.indexOf(norm(x)) >= 0)[0];
+  return hit || null;
+}
+function parseDate(s) {
+  const m = String(s).trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+  if (!m) return null;
+  let y = +m[3]; if (y < 100) y += 2000;
+  const d = new Date(y, +m[2] - 1, +m[1]);
+  if (d.getMonth() !== +m[2] - 1) return null;
+  return isoOf(d);
+}
+function parsePaste() {
+  const lines = $("#pasteBox").value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  PARSED = lines.map((l, i) => {
+    const parts = l.split(/\t|\|/).map(x => x.trim());
+    const out = { line: i + 1, raw: l };
+    if (parts.length < 4) { out.err = "needs at least 4 columns"; return out; }
+    const amt = parseFloat(parts[3].replace(/[\u20B9,\s]/g, ""));
+    const dt = parseDate(parts[2]);
+    if (isNaN(amt) && i === 0) { out.err = "header row skipped"; out.skip = true; return out; }
+    if (isNaN(amt) || amt <= 0) { out.err = "amount not a number"; return out; }
+    if (!dt) { out.err = "date should be dd/mm/yyyy"; return out; }
+    const existing = matchClient(parts[0]);
+    out.client = existing || parts[0]; out.isNew = !existing; out.billno = parts[1]; out.date = dt; out.base = amt; out.type = parts[4] || "";
+    return out;
+  });
+  const ok = PARSED.filter(p => !p.err);
+  $("#pastePrev").innerHTML = PARSED.length ? '<table><thead><tr><th>#</th><th class="l">Client</th><th class="l">No</th><th>Date</th><th>Base</th><th class="l">Result</th></tr></thead><tbody>' +
+    PARSED.map(p => "<tr><td>" + p.line + "</td><td class=\"l\">" + esc(p.client || "") + (p.isNew ? ' <span class="tag new">new client</span>' : "") + '</td><td class="l">' + esc(p.billno || "") + '</td><td class="hm">' + (p.date ? dmy(p.date) : "") + '</td><td class="hm">' + (p.base ? fmt(p.base) : "") + '</td><td class="l ' + (p.err && !p.skip ? "pos-bad" : "") + '">' + (p.err ? esc(p.err) : "ready") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Nothing to preview.</div>';
+  $("#btnImport").classList.toggle("hide", !ok.length);
+  $("#btnImport").textContent = "Import " + ok.length + " proforma" + (ok.length === 1 ? "" : "s");
+}
+function onImport() {
+  const ok = PARSED.filter(p => !p.err);
+  ok.forEach(p => {
+    const r = rateOf(p.client), nil = true;
+    const total = p.base * 1.18;
+    addPi({ id: uid(), client: p.client, src: "NIL", status: "PI", billno: p.billno, type: p.type, seq: "", site: "", date: p.date, base: round2(p.base), total: round2(total),
+      tds: round2(p.base * 0.02), ret: round2(p.base * r.ret), adv: round2(p.base * r.adv), oth: 0 });
+  });
+  $("#pasteBox").value = ""; PARSED = []; $("#pastePrev").innerHTML = ""; $("#btnImport").classList.add("hide");
+  persist(); renderAll(); toast(ok.length + " proformas added");
+}
+
+/* ---------- modals ---------- */
+function openModal(html) { $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
+function closeModal() { $("#modalbg").classList.remove("show"); }
+function openReceipt(billId, clientArg) {
+  const b = BILLS.filter(x => x.id === billId)[0];
+  const client = b ? b.client : (clientArg || clientNames()[0]);
+  openModal('<h2>Log a receipt</h2><div class="form"><label style="grid-column:1/-1">Client<select id="mClient">' + clientNames().map(n => '<option value="' + esc(n) + '"' + (n === client ? " selected" : "") + ">" + esc(n) + "</option>").join("") + '</select></label>' +
+    '<label style="grid-column:1/-1">Against bill<select id="mBill"></select></label><label>Amount (\u20B9)<input type="number" id="mAmt" step="any"></label><label>Date<input type="date" id="mDate" value="' + esc(S.settings.asOn) + '"></label><label style="grid-column:1/-1">Mode<select id="mMode"><option value="">Standard</option><option value="D">Direct</option></select></label></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save receipt</button></div>');
+  const fill = () => {
+    const c = $("#mClient").value;
+    const opts = BILLS.filter(x => x.client === c && x.bal >= 1);
+    $("#mBill").innerHTML = '<option value="">On account (no bill)</option>' + opts.map(x => '<option value="' + esc(x.id) + '">' + esc((x.billno || "-") + " " + x.seq + " \u00B7 " + dmy(x.date) + " \u00B7 due " + fmt(x.bal)) + (x.status === "PI" ? " (proforma)" : "") + "</option>").join("");
+    if (b && b.client === c) $("#mBill").value = b.id;
+    const sel = BILLS.filter(x => x.id === $("#mBill").value)[0];
+    $("#mAmt").value = sel ? Math.round(sel.bal) : "";
+  };
+  $("#mClient").onchange = fill; $("#mBill").onchange = () => { const sel = BILLS.filter(x => x.id === $("#mBill").value)[0]; $("#mAmt").value = sel ? Math.round(sel.bal) : ""; };
+  fill();
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const amt = +$("#mAmt").value; if (!(amt > 0) || !$("#mDate").value) { toast("Need amount and date"); return; }
+    const md = $("#mMode").value; if (md === "D" && !showD()) { S.settings.showD = true; syncSettings(); }
+    S.receipts.push({ id: uid(), client: $("#mClient").value, billId: $("#mBill").value, amt: round2(amt), date: $("#mDate").value, mode: md });
+    persist(); closeModal(); renderAll(); toast("Receipt logged");
+  };
+}
+function openDirectBill(clientArg) {
+  openModal('<h2>Log a direct bill</h2><div class="form"><label style="grid-column:1/-1">Client<select id="dClient">' + clientNames().map(n => '<option value="' + esc(n) + '"' + (n === clientArg ? " selected" : "") + ">" + esc(n) + "</option>").join("") + '</select></label>' +
+    '<label style="grid-column:1/-1">Or type a new client<input type="text" id="dNew"></label><label>Date<input type="date" id="dDate" value="' + esc(S.settings.asOn) + '"></label><label>Amount (\u20B9)<input type="text" inputmode="decimal" id="dAmt" placeholder="e.g. 1,50,000"></label>' +
+    '<label style="grid-column:1/-1">Note (optional)<input type="text" id="dNote"></label></div><div id="dMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const typed = $("#dNew").value.trim(), client = typed ? (matchClient(typed) || typed) : $("#dClient").value, amt = parseAmt($("#dAmt").value), date = $("#dDate").value || S.settings.asOn;
+    if (!client) { $("#dMsg").textContent = "Pick a client or type a new one."; return; }
+    if (!(amt > 0)) { $("#dMsg").textContent = "Enter an amount."; return; }
+    if (!showD()) { S.settings.showD = true; syncSettings(); }
+    S.dbills.push({ id: uid(), client: client, date: date, amt: round2(amt), note: $("#dNote").value.trim() });
+    persist(); closeModal(); renderAll(); toast("Direct bill logged");
+  };
+}
+function confirmModal(title, msgHtml, yesLabel, onYes) {
+  openModal("<h2>" + esc(title) + '</h2><div class="help">' + msgHtml + '</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="cNo">Cancel</button><button class="primary" id="cYes">' + esc(yesLabel) + "</button></div>");
+  $("#cNo").onclick = closeModal; $("#cYes").onclick = () => { closeModal(); onYes(); };
+}
+function deleteBill(id) {
+  const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
+  const n = S.receipts.filter(r => r.billId === id).length;
+  confirmModal("Delete this invoice?", "<b>" + esc(b.client) + "</b> &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + fmt(b.total) + ".<br>It will disappear from every total." +
+    (n ? "<br>The " + n + " receipt" + (n === 1 ? "" : "s") + " you logged against it will stay as on-account receipts." : "") +
+    (b.added ? "<br>This entry was added in the tool, so it cannot be restored." : "<br>You can restore it from the Add tab."), "Delete invoice", () => {
+    if (b.direct) S.dbills = S.dbills.filter(p => p.id !== id); else if (b.added) S.pis = S.pis.filter(p => p.id !== id); else S.deleted[id] = true;
+    S.receipts.forEach(r => { if (r.billId === id) r.billId = ""; });
+    delete S.overrides[id]; persist(); renderAll(); toast("Invoice deleted");
+  });
+}
+function deleteReceipt(rid, reopen) {
+  const r = S.receipts.filter(x => x.id === rid)[0]; if (!r) return;
+  confirmModal("Delete this receipt?", esc(r.client) + " &middot; " + fmt(r.amt) + " on " + dmy(r.date) + ".", "Delete receipt", () => {
+    S.receipts = S.receipts.filter(x => x.id !== rid); persist(); renderAll(); toast("Receipt deleted"); if (reopen) openEdit(reopen);
+  });
+}
+function openEdit(id) {
+  const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
+  const rcs = vr().filter(r => r.billId === id);
+  let h = "<h2>Edit bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + dmy(b.date) + " &middot; total " + fmt(b.total) + " &middot; balance <b>" + fmt(b.bal) + "</b></div>";
+  if (!b.added) h += '<div class="form"><label style="grid-column:1/-1">Received per billing ledger (\u20B9)<input type="number" id="eLedger" step="any" value="' + (Math.round(b.pay * 100) / 100) + '"></label></div>' +
+    '<div class="help">Set to 0 to remove the ledger receipts from this bill.' + (b.payEdited ? " Originally " + fmt(b.payOrig) + "." : "") + " The note on the bill still lists the original receipts.</div>";
+  h += '<h2 style="font-size:13px;margin-top:10px">Receipts logged in this tool</h2>' + (rcs.length ? '<table><tbody>' + rcs.map(r => "<tr><td>" + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="medelrc" data-id="' + esc(r.id) + '">Delete</button></td></tr>').join("") + "</tbody></table>" : '<div class="sub">None.</div>');
+  h += '<div style="margin-top:14px;display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap"><button class="danger" id="eDel">Delete invoice</button><span style="display:flex;gap:8px"><button id="eClose">Close</button>' + (b.added ? "" : '<button class="primary" id="eSave">Save</button>') + "</span></div>";
+  openModal(h);
+  $("#eClose").onclick = closeModal;
+  $("#eDel").onclick = () => { closeModal(); deleteBill(id); };
+  if (!b.added) $("#eSave").onclick = () => {
+    const v = parseFloat($("#eLedger").value); if (isNaN(v) || v < 0) { toast("Enter a valid amount"); return; }
+    if (Math.abs(v - b.payOrig) < 0.005) delete S.payAdj[id]; else S.payAdj[id] = Math.round(v * 100) / 100;
+    persist(); closeModal(); renderAll(); toast("Saved");
+  };
+  $("#modal").dataset.bill = id;
+}
+function openInvoiced(billId) {
+  const b = BILLS.filter(x => x.id === billId)[0]; if (!b) return;
+  openModal('<h2>Mark as tax invoice</h2><div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + fmt(b.total) + '</div><div class="form"><label style="grid-column:1/-1">Tax invoice no.<input type="text" id="iNo" value="' + esc(b.billno) + '"></label>' +
+    '<label>TDS (\u20B9)<input type="number" id="iTds" step="any" value="' + Math.round(b.eTds) + '"></label><label>Retention (\u20B9)<input type="number" id="iRet" step="any" value="' + Math.round(b.eRet) + '"></label>' +
+    '<label>Adv recovery (\u20B9)<input type="number" id="iAdv" step="any" value="' + Math.round(b.eAdv) + '"></label><label>Other debits (\u20B9)<input type="number" id="iOth" step="any" value="' + Math.round(b.eOth) + '"></label></div>' +
+    '<div class="help">Deductions are prefilled from the estimate. Use the amounts on the actual invoice.</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Mark invoiced</button></div>');
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    S.overrides[b.id] = { status: "TI", billno: $("#iNo").value.trim(), manual: true, tds: +$("#iTds").value || 0, ret: +$("#iRet").value || 0, adv: +$("#iAdv").value || 0, oth: +$("#iOth").value || 0 };
+    persist(); closeModal(); renderAll(); toast("Marked as tax invoice");
+  };
+}
+
+/* ---------- export ---------- */
+function downloadCsv(name, rows) {
+  const blob = new Blob(["\uFEFF" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function csvCell(v) { v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function exportBills() {
+  try {
+    const head = ["Client", "Billed from", "Status", "Bill no", "Seq", "Type", "Bill date", "Age (days)", "Total", "Retention", "Adv recovery", "Other debits", "TDS", "Received", "Balance", "Remarks"];
+    const rows = BILLS.map(b => [b.client, b.src, b.status, b.billno, b.seq, b.type, b.date, b.days, b.total, b.eRet, b.eAdv, b.eOth, b.eTds, b.paid, b.bal, b.remark]);
+    downloadCsv("receivables_by_bill.csv", [head].concat(rows));
+  } catch (e) { toast("Export failed: " + (e && e.message ? e.message : e)); }
+}
+
+/* ---------- ui wiring ---------- */
+let toastT = null;
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2200); }
+function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
+function showTab(name) {
+  $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
+  ["overview", "client", "bills", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  window.scrollTo(0, 0);
+}
+function wire() {
+  $$("#tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $("#asOn").onchange = e => { if (e.target.value) { S.settings.asOn = e.target.value; persist(); renderAll(); } };
+  $("#credit").onchange = e => { S.settings.credit = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
+  $("#est").onchange = e => { S.settings.est = e.target.checked; persist(); renderAll(); };
+  $("#btnUndo").onclick = undo;
+  $("#btnResetF").onclick = () => drill({});
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-dr]"); if (!t) return;
+    const a = e.target.closest("[data-act]"); if (a && a !== t) return;
+    drill({ client: t.dataset.dc, status: t.dataset.ds, bucket: t.dataset.db, special: t.dataset.dx, open: t.dataset.do !== "0", sort: t.dataset.dsort });
+  });
+  $("#showD").onchange = e => { S.settings.showD = e.target.checked; persist(); renderAll(); };
+  $("#btnDBill").onclick = () => openDirectBill(null);
+  $("#btnToday").onclick = () => { S.settings.asOn = isoOf(new Date()); syncSettings(); persist(); renderAll(); };
+  ["fClient", "fStatus", "fBucket", "fSpecial", "fOpen", "fSort"].forEach(id => { $("#" + id).oninput = renderBills; $("#" + id).onchange = renderBills; });
+  $("#fSearch").oninput = renderBills;   // no onchange: it fires on blur and re-drew the table under the click, swallowing the first click on a row button
+  $("#fNotes").onchange = e => { ALLNOTES = e.target.checked; renderAll(); };
+  $("#btnReceipt").onclick = () => openReceipt(null);
+  $("#aClient").onchange = onClientChange;
+  ["aBase", "aGst", "aTds", "aRet", "aAdv", "aOth"].forEach(id => { $("#" + id).oninput = () => { $("#" + id).classList.remove("bad"); updatePreview(); }; $("#" + id).onchange = updatePreview; });
+  $("#aNew").oninput = () => $("#aNew").classList.remove("bad");
+  $("#btnAdd").onclick = onAdd;
+  $("#btnParse").onclick = parsePaste; $("#btnImport").onclick = onImport;
+  $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-act]"); if (!t) return;
+    const id = t.dataset.id, act = t.dataset.act;
+    if (act === "cvdbill") openDirectBill(SEL);
+    else if (act === "note") { EXP[id] = !EXP[id]; renderAll(); }
+    else if (act === "cvnotes") { ALLNOTES = t.checked; renderAll(); }
+    else if (act === "pick") { SEL = t.dataset.name; renderAll(); }
+    else if (act === "openclient") { SEL = t.dataset.name; renderAll(); showTab("client"); }
+    else if (act === "cvhide") { CV_HIDE = t.checked; renderAll(); }
+    else if (act === "cvrcpt") openReceipt(null, SEL);
+    else if (act === "cvadd") { showTab("add"); $("#aClient").value = SEL; onClientChange(); }
+    else if (act === "cvcsv") exportClient();
+    else if (act === "rcpt") openReceipt(id);
+    else if (act === "inv") openInvoiced(id);
+    else if (act === "delpi") deleteBill(id);
+    else if (act === "delrc") deleteReceipt(id);
+    else if (act === "edit") openEdit(id);
+    else if (act === "medelrc") deleteReceipt(id, $("#modal").dataset.bill);
+    else if (act === "restore") { delete S.deleted[id]; persist(); renderAll(); toast("Invoice restored"); }
+  });
+  $("#aDate").value = S.settings.asOn;
+  $("#btnCsvBills").onclick = exportBills;
+}
+
+function init() {
+  if (CFG.env && CFG.env !== "production") {
+    const name = String(CFG.env).toUpperCase();
+    $("#envbar").textContent = name + " \u00b7 test copy, not the live receivables. Changes here never reach production.";
+    $("#envbar").classList.remove("hide");
+    document.title = "[" + name + "] " + document.title;
+  }
+  buildRates();
+  wire();
+  $("#btnSignIn").onclick = signIn;
+  $("#btnSignOut").onclick = signOut;
+  $("#btnRefresh").onclick = () => refresh(false);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && USER && Date.now() - LOADED_AT > 60e3) refresh(true); });
+  window.addEventListener("beforeunload", e => { if (DIRTY || SAVING) { e.preventDefault(); e.returnValue = ""; } });
+  if (!CFG.clientId || !CFG.sheetId) { $("#btnSignIn").disabled = true; gateMsg("Setup needed: fill in clientId and sheetId in config.js (see docs/DEPLOY.md).", true); }
+}
+init();
+})();
+</script>
+</body>
+</html>
