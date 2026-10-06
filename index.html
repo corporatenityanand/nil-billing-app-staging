@@ -869,17 +869,25 @@ function allReceipts() {
   vr().forEach(r => list.push({ id: r.id, src: "tool", client: r.client, bill: BILLS.filter(b => b.id === r.billId)[0] || null, date: r.date || "", amt: +r.amt || 0, mode: r.mode, note: "" }));
   return list;
 }
+const rcBillName = b => !b ? "on account" : b.status === "Adv" ? "advance / not tied to a bill" : (b.billno || "-") + (b.seq ? " " + b.seq : "");
+const rcSort = rows => rows.sort((a, b) => (b.date ? 1 : 0) - (a.date ? 1 : 0) || b.date.localeCompare(a.date) || a.client.localeCompare(b.client));
+function receiptsTable(rows, withClient) {
+  const tot = rows.reduce((a, x) => a + x.amt, 0);
+  return '<table><thead><tr><th>Date</th>' + (withClient ? '<th class="l">Client</th>' : "") + '<th class="l">Against bill</th><th>Amount</th><th class="l">Source</th><th></th></tr></thead><tbody>' + rows.map(x =>
+    '<tr><td class="hm">' + (x.date ? dmy(x.date) : '<span class="sub">no date</span>') + "</td>" + (withClient ? '<td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(x.client) + '">' + esc(x.client) + "</a></td>" : "") + '<td class="l">' + esc(rcBillName(x.bill)) + (x.bill && x.bill.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (x.note ? '<div class="sub">' + esc(x.note) + "</div>" : "") +
+    '</td><td class="hm">' + fmt(x.amt) + '</td><td class="l">' + (x.src === "ledger" ? '<span class="sub">billing ledger</span>' : "logged here") + (x.mode === "D" ? ' <span class="tag">direct</span>' : "") + "</td><td>" + (x.src === "tool" ? '<button class="small danger" data-act="delrc" data-id="' + esc(x.id) + '">\u2715</button>' : "") + "</td></tr>").join("") +
+    '<tr class="tot"><td class="l">Total</td>' + (withClient ? "<td></td>" : "") + '<td></td><td class="hm">' + fmt(tot) + "</td><td></td><td></td></tr></tbody></table>";
+}
 let RC_ROWS = [];
 function renderReceipts() {
   const fc = $("#rClient"), cur = fc.value || "all";
   fc.innerHTML = '<option value="all">All clients</option>' + clientNames().map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("");
   fc.value = cur; if (fc.value !== cur) fc.value = "all";
   const c = fc.value, from = $("#rFrom").value, to = $("#rTo").value, src = $("#rSrc").value, q = $("#rSearch").value.trim().toLowerCase();
-  const billName = b => !b ? "on account" : b.status === "Adv" ? "advance / not tied to a bill" : (b.billno || "-") + (b.seq ? " " + b.seq : "");
   let rows = allReceipts().filter(x => (c === "all" || x.client === c) && (!src || x.src === src) &&
     (!from || (x.date && x.date >= from)) && (!to || (x.date && x.date <= to)) &&
-    (!q || (x.client + " " + billName(x.bill)).toLowerCase().indexOf(q) >= 0));
-  rows.sort((a, b) => (b.date ? 1 : 0) - (a.date ? 1 : 0) || b.date.localeCompare(a.date) || a.client.localeCompare(b.client));
+    (!q || (x.client + " " + rcBillName(x.bill)).toLowerCase().indexOf(q) >= 0));
+  rcSort(rows);
   RC_ROWS = rows;
   const tot = rows.reduce((a, x) => a + x.amt, 0), dated = rows.filter(x => x.date);
   const by = {}; rows.forEach(x => { by[x.client] = (by[x.client] || 0) + x.amt; });
@@ -890,10 +898,7 @@ function renderReceipts() {
     kp("In " + (month ? new Date(month + "-01T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" }) : "this month"), cmp(mtot), "var(--text)", "month of the as-on date") +
     kp("Latest receipt", dated.length ? dmy(dated[0].date) : "\u2013", "var(--text)", dated.length ? esc(dated[0].client.split(" ").slice(0, 3).join(" ")) + " \u00B7 " + cmp(dated[0].amt) : "") +
     (top && c === "all" ? kp("Largest payer", cmp(by[top]), "var(--text)", esc(top)) : "");
-  $("#rcAllTbl").innerHTML = rows.length ? '<table><thead><tr><th>Date</th><th class="l">Client</th><th class="l">Against bill</th><th>Amount</th><th class="l">Source</th><th></th></tr></thead><tbody>' + rows.map(x =>
-    '<tr><td class="hm">' + (x.date ? dmy(x.date) : '<span class="sub">no date</span>') + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(x.client) + '">' + esc(x.client) + '</a></td><td class="l">' + esc(billName(x.bill)) + (x.bill && x.bill.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (x.note ? '<div class="sub">' + esc(x.note) + "</div>" : "") +
-    '</td><td class="hm">' + fmt(x.amt) + '</td><td class="l">' + (x.src === "ledger" ? '<span class="sub">billing ledger</span>' : "logged here") + (x.mode === "D" ? ' <span class="tag">direct</span>' : "") + "</td><td>" + (x.src === "tool" ? '<button class="small danger" data-act="delrc" data-id="' + esc(x.id) + '">\u2715</button>' : "") + "</td></tr>").join("") +
-    '<tr class="tot"><td class="l">Total</td><td></td><td></td><td class="hm">' + fmt(tot) + "</td><td></td><td></td></tr></tbody></table>" : '<div class="sub">No receipts match these filters.</div>';
+  $("#rcAllTbl").innerHTML = rows.length ? receiptsTable(rows, true) : '<div class="sub">No receipts match these filters.</div>';
 }
 function exportReceipts() {
   try {
@@ -1049,8 +1054,9 @@ function renderClientView(A) {
   }).join("");
   h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills, oldest first</h2><label class="sub"><input type="checkbox" data-act="cvhide"' + (CV_HIDE ? " checked" : "") + '> hide settled</label><label class="sub"><input type="checkbox" data-act="cvnotes"' + (ALLNOTES ? " checked" : "") + '> show all notes</label><span class="sub">' + open + " of " + bills.length + ' open</span></div><div class="tblwrap"><table><thead><tr><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>TDS</th><th>Retention</th><th>Adv rec.</th><th>Other</th><th>Received</th><th>Balance</th><th>Running</th><th></th></tr></thead><tbody>' + rowsH +
     '<tr class="tot"><td class="l">Total</td><td></td><td></td><td></td><td class="hm">' + fmt(T.total) + '</td><td class="hm">' + fmt(T.tds) + '</td><td class="hm">' + fmt(T.ret) + '</td><td class="hm">' + fmt(T.adv) + '</td><td class="hm">' + fmt(T.oth) + '</td><td class="hm">' + fmt(T.paid) + '</td><td class="hm">' + fmt(T.bal) + "</td><td></td><td></td></tr></tbody></table></div></div>";
-  const rc = vr().filter(r => r.client === SEL);
-  if (rc.length) h += '<div class="card" style="margin-top:12px"><h2>Receipts logged in this tool</h2><div class="tblwrap"><table><thead><tr><th class="l">Against</th><th>Date</th><th>Amount</th><th></th></tr></thead><tbody>' + rc.map(r => { const b = BILLS.filter(x => x.id === r.billId)[0]; return '<tr><td class="l">' + (b ? esc((b.billno || "-") + " " + b.seq) : "on account") + '</td><td class="hm">' + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="delrc" data-id="' + esc(r.id) + '">\u2715</button></td></tr>'; }).join("") + "</tbody></table></div></div>";
+  const rc = rcSort(allReceipts().filter(x => x.client === SEL));
+  if (rc.length) { const last = rc.filter(x => x.date)[0];
+    h += '<div class="card" style="margin-top:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Receipts, newest first</h2><span class="sub">' + rc.length + " receipt" + (rc.length === 1 ? "" : "s") + " &middot; " + fmt(rc.reduce((a, x) => a + x.amt, 0)) + (last ? " &middot; last on " + dmy(last.date) : "") + '</span><button class="small" data-act="cvrcpt">+ Log receipt</button></div><div class="tblwrap">' + receiptsTable(rc, false) + "</div></div>"; }
   el.innerHTML = '<div class="cv">' + left + "<div>" + h + "</div></div>";
 }
 function advancesHtml(client) {

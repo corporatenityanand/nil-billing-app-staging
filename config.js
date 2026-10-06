@@ -1,4 +1,4 @@
-// Published by scripts/publish.py from nil-billing-erp 0ef9863 for staging. Edit app/config.js there, not here.
+// Published by scripts/publish.py from nil-billing-erp 7191dc7 for staging. Edit app/config.js there, not here.
 // Deployment settings for the Receivables Control Room. See docs/DEPLOY.md.
 // This file is public once hosted, so put no secrets here. The OAuth client ID is not a secret.
 window.RCR_CONFIG = {
