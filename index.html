@@ -128,6 +128,20 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .gatemsg{margin-top:12px;font-size:13px;font-weight:600;min-height:1.4em;overflow-wrap:anywhere}
 .banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--bad) 12%,var(--surface));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
 #savestatus{overflow-wrap:anywhere}
+.trend{position:relative}
+.trend svg{display:block;width:100%;height:auto;overflow:visible}
+.trend .tk{font-size:11px;fill:var(--muted)}
+.trend .el{font-size:12px;fill:var(--text);font-weight:600}
+.trend .grid{stroke:var(--line);stroke-width:1}
+.trend .hit{fill:transparent;cursor:default}
+.trend .hit.on{fill:color-mix(in srgb,var(--text) 6%,transparent)}
+.trend .ttl{font-size:12.5px;font-weight:600;margin:12px 0 2px}
+.ttip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);min-width:170px;z-index:5;display:none}
+.ttip .r{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.ttip .r span:first-child{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.ttip i{display:inline-block;width:12px;height:2px;border-radius:1px}
+.ttip b{font-variant-numeric:tabular-nums}
+.trendtbl{display:none;margin-top:8px}.trendtbl.show{display:block}
 .envbar{position:sticky;top:0;z-index:50;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.04em;color:#1d1d1b;background:repeating-linear-gradient(135deg,#f5b400 0 14px,#ffd45c 14px 28px);border-bottom:2px solid #1d1d1b;overflow-wrap:anywhere}
 </style>
 </head>
@@ -173,6 +187,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <section id="tab-overview">
     <div class="grid kpis" id="kpis"></div>
+    <div class="card" style="margin-bottom:12px" id="trendAll"></div>
     <div class="card" style="margin-bottom:12px">
       <h2>How old is the money? <span class="sub">(positive balances only, by days since bill date)</span></h2>
       <div class="stackbar" id="ageBar"></div>
@@ -842,6 +857,89 @@ function clientNames() {
   const s = {}; BILLS.forEach(b => s[b.client] = 1); vr().forEach(r => { if (r.client) s[r.client] = 1; });
   return Object.keys(s);
 }
+/* ---------- billed vs collected, by month ----------
+   Billed = what the bills net to after TDS, retention, advance recovery and other debits (tax invoices + proformas),
+   by bill month. Collected = every receipt by its date; a ledger receipt with no date sits in its bill's month.
+   Running totals start from the first bill, so the gap between the two lines is what is still owed. */
+let TREND_RANGE = "12";
+const mKey = d => (d || "").slice(0, 7);
+const mName = k => new Date(k + "-01T00:00:00").toLocaleString("en-IN", { month: "short" }) + " " + k.slice(2, 4);
+function trendData(client) {
+  const m = {}, get = k => m[k] || (m[k] = { k: k, ti: 0, pi: 0, rc: 0 });
+  BILLS.forEach(b => { if (client && b.client !== client) return; if (b.status === "Adv" || !b.date) return; const v = Math.max(0, b.net); if (b.status === "PI") get(mKey(b.date)).pi += v; else get(mKey(b.date)).ti += v; });
+  let undated = 0;
+  allReceipts().forEach(x => { if (client && x.client !== client) return; const d = x.date || (x.bill && x.bill.date); if (!d) { undated += x.amt; return; } get(mKey(d)).rc += x.amt; });
+  const keys = Object.keys(m).sort(); if (!keys.length) return null;
+  const last = [mKey(S.settings.asOn), keys[keys.length - 1]].sort()[1], out = [];
+  for (let d = new Date(keys[0] + "-01T00:00:00"); mKey(isoOf(d)) <= last; d.setMonth(d.getMonth() + 1)) out.push(get(mKey(isoOf(d))));
+  let cb = 0, cr = 0; out.forEach(x => { x.bill = x.ti + x.pi; cb += x.bill; cr += x.rc; x.cb = cb; x.cr = cr; });
+  return { months: out, undated: undated };
+}
+function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; return ([1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10].filter(x => x >= f - 1e-9)[0]) * p; }
+const axisAmt = v => v === 0 ? "0" : v >= 1e7 ? "\u20B9" + +(v / 1e7).toFixed(2) + " Cr" : v >= 1e5 ? "\u20B9" + +(v / 1e5).toFixed(1) + " L" : "\u20B9" + Math.round(v / 1e3) + "k";
+function trendCard(client) {
+  return '<div class="toolbar" style="margin-bottom:4px;justify-content:space-between"><h2 style="margin:0">Billed vs collected <span class="sub">by month, net of TDS, retention and advance recovery</span></h2>' +
+    '<span style="display:flex;gap:6px"><select data-act="trendrange"><option value="12"' + (TREND_RANGE === "12" ? " selected" : "") + '>Last 12 months</option><option value="all"' + (TREND_RANGE === "all" ? " selected" : "") + '>All months</option></select><button class="small" data-act="trendtbl">Table</button></span></div>' +
+    '<div class="legend" style="margin:4px 0 0"><span><i style="background:var(--inv)"></i>Tax invoices</span><span><i class="hatch" style="background-color:var(--pi)"></i>Proformas</span><span><i style="background:var(--cred)"></i>Collected</span><span><i style="background:color-mix(in srgb,var(--bad) 18%,transparent)"></i>Still owed (gap)</span></div>' +
+    '<div class="trend" data-client="' + esc(client || "") + '"></div>';
+}
+function drawTrends() { $$(".trend").forEach(drawTrend); }
+function drawTrend(el) {
+  const client = el.dataset.client || null, D = trendData(client);
+  if (!D) { el.innerHTML = '<div class="sub">No bills yet.</div>'; return; }
+  const all = D.months, ms = TREND_RANGE === "12" ? all.slice(-12) : all, n = ms.length;
+  const W = Math.max(300, el.clientWidth || 700), narrow = W < 560;
+  const L = narrow ? 46 : 58, R = narrow ? 8 : 112, T = 10, H1 = narrow ? 170 : 200, H2 = narrow ? 150 : 170, B = 24;
+  const pw = W - L - R, bw = pw / n, xC = i => L + bw * (i + .5);
+  const bar = Math.max(3, Math.min(18, bw * .32));
+  const ns = "http://www.w3.org/2000/svg";
+  const pill = (x, y0, y1, w, fill, round) => { const h = y0 - y1; if (h <= 0.5) return ""; const r = round ? Math.min(4, h, w / 2) : 0;
+    return '<path d="M' + x + "," + y0 + "V" + (y1 + r) + (r ? "Q" + x + "," + y1 + " " + (x + r) + "," + y1 + "H" + (x + w - r) + "Q" + (x + w) + "," + y1 + " " + (x + w) + "," + (y1 + r) : "H" + (x + w)) + "V" + y0 + 'Z" style="fill:' + fill + '"/>'; };
+  const grid = (top, h, max) => { let g = ""; for (let i = 0; i <= 4; i++) { const v = max * i / 4, y = top + h - h * i / 4; g += '<line class="grid" x1="' + L + '" x2="' + (L + pw) + '" y1="' + y + '" y2="' + y + '"/><text class="tk" x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + axisAmt(v) + "</text>"; } return g; };
+  const every = Math.ceil(n / Math.floor(pw / (narrow ? 44 : 56)));
+  const xlab = (top) => ms.map((x, i) => (i % every === (n - 1) % every) ? '<text class="tk" x="' + xC(i) + '" y="' + (top + 16) + '" text-anchor="middle">' + mName(x.k) + "</text>" : "").join("");
+  // panel 1: monthly
+  const max1 = niceMax(Math.max.apply(null, ms.map(x => Math.max(x.bill, x.rc)).concat([1]))), y1 = v => T + H1 - H1 * v / max1;
+  let p1 = '<svg xmlns="' + ns + '" viewBox="0 0 ' + W + " " + (T + H1 + B) + '" role="img" aria-label="Billed and collected by month"><defs><pattern id="hpi" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" style="fill:var(--pi)"/><rect width="3" height="8" style="fill:var(--surface);opacity:.45"/></pattern></defs>' + grid(T, H1, max1);
+  ms.forEach((x, i) => {
+    const bx = xC(i) - bar - 1, cx = xC(i) + 1, base = y1(0), yt = y1(x.ti), yp = y1(x.bill);
+    p1 += pill(bx, base, yt, bar, "var(--inv)", x.pi < 1) + (x.pi >= 1 ? pill(bx, yt - (x.ti >= 1 ? 2 : 0), yp - (x.ti >= 1 ? 2 : 0), bar, "url(#hpi)", true) : "") + pill(cx, base, y1(x.rc), bar, "var(--cred)", true);
+  });
+  p1 += '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + y1(0) + '" y2="' + y1(0) + '" style="stroke:var(--muted);stroke-width:1"/>' + xlab(T + H1);
+  p1 += ms.map((x, i) => '<rect class="hit" data-i="' + i + '" x="' + (L + bw * i) + '" y="' + T + '" width="' + bw + '" height="' + H1 + '"/>').join("") + "</svg>";
+  // panel 2: running totals
+  const max2 = niceMax(Math.max(ms[n - 1].cb, ms[n - 1].cr, 1)), y2 = v => T + H2 - H2 * v / max2;
+  const pts = k => ms.map((x, i) => xC(i) + "," + y2(x[k])).join(" ");
+  let p2 = '<svg xmlns="' + ns + '" viewBox="0 0 ' + W + " " + (T + H2 + B) + '" role="img" aria-label="Running totals of billed and collected">' + grid(T, H2, max2) +
+    '<polygon points="' + pts("cb") + " " + ms.map((x, i) => xC(i) + "," + y2(x.cr)).reverse().join(" ") + '" style="fill:var(--bad);opacity:.12"/>' +
+    '<polyline points="' + pts("cb") + '" style="fill:none;stroke:var(--inv);stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>' +
+    '<polyline points="' + pts("cr") + '" style="fill:none;stroke:var(--cred);stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>';
+  const e = ms[n - 1], ex = xC(n - 1);
+  p2 += '<circle cx="' + ex + '" cy="' + y2(e.cb) + '" r="4" style="fill:var(--inv);stroke:var(--surface);stroke-width:2"/><circle cx="' + ex + '" cy="' + y2(e.cr) + '" r="4" style="fill:var(--cred);stroke:var(--surface);stroke-width:2"/>';
+  if (!narrow) {
+    let ya = y2(e.cb) + 4, yb = y2(e.cr) + 4; if (yb - ya < 40) { const mid = (ya + yb) / 2; ya = mid - 20; yb = mid + 20; }
+    p2 += '<text class="el" x="' + (ex + 10) + '" y="' + ya + '">Billed ' + cmp(e.cb) + '</text><text class="el" x="' + (ex + 10) + '" y="' + yb + '">Collected ' + cmp(e.cr) + "</text>" +
+      '<text class="tk" x="' + (ex + 10) + '" y="' + ((ya + yb) / 2 + 4) + '">gap ' + cmp(e.cb - e.cr) + "</text>";
+  }
+  p2 += xlab(T + H2) + ms.map((x, i) => '<rect class="hit" data-i="' + i + '" x="' + (L + bw * i) + '" y="' + T + '" width="' + bw + '" height="' + H2 + '"/>').join("") + "</svg>";
+  const tbl = '<div class="tblwrap trendtbl' + (el.dataset.tbl === "1" ? " show" : "") + '"><table><thead><tr><th class="l">Month</th><th>Tax invoices</th><th>Proformas</th><th>Billed</th><th>Collected</th><th>Still owed (running)</th></tr></thead><tbody>' +
+    ms.slice().reverse().map(x => '<tr><td class="l">' + mName(x.k) + '</td><td class="hm">' + fmt(x.ti) + '</td><td class="hm">' + fmt(x.pi) + '</td><td class="hm">' + fmt(x.bill) + '</td><td class="hm">' + fmt(x.rc) + '</td><td class="hm">' + fmt(x.cb - x.cr) + "</td></tr>").join("") + "</tbody></table></div>";
+  el.innerHTML = '<div class="ttl">Each month <span class="sub">left bar billed, right bar collected</span></div>' + p1 + '<div class="ttl">Running total since ' + mName(all[0].k) + (narrow ? ' <span class="sub">billed ' + cmp(e.cb) + " &middot; collected " + cmp(e.cr) + " &middot; gap " + cmp(e.cb - e.cr) + "</span>" : "") + "</div>" + p2 +
+    (D.undated >= 1 ? '<div class="sub">' + fmt(D.undated) + " of receipts with no date and no bill are left out.</div>" : "") + tbl + '<div class="ttip"></div>';
+  const tip = $(".ttip", el);
+  const show = (i, ev) => {
+    const x = ms[i]; tip.textContent = "";
+    const add = (lab, v, col, strong) => { const r = document.createElement("div"); r.className = "r"; const a = document.createElement("span"); if (col) { const k = document.createElement("i"); k.style.background = col; a.appendChild(k); } a.appendChild(document.createTextNode(lab)); const b = document.createElement("b"); b.textContent = fmt(v); if (!strong) b.style.fontWeight = "500"; r.appendChild(a); r.appendChild(b); tip.appendChild(r); };
+    const h = document.createElement("div"); h.style.fontWeight = "600"; h.style.marginBottom = "4px"; h.textContent = mName(x.k); tip.appendChild(h);
+    add("Tax invoices", x.ti, "var(--inv)"); add("Proformas", x.pi, "var(--pi)"); add("Collected", x.rc, "var(--cred)", true); add("Still owed, running", x.cb - x.cr, "", true);
+    $$(".hit", el).forEach(r => r.classList.toggle("on", +r.dataset.i === i));
+    tip.style.display = "block";
+    const box = el.getBoundingClientRect(), px = ev.clientX - box.left, py = ev.clientY - box.top;
+    tip.style.left = Math.max(0, Math.min(px + 14, box.width - tip.offsetWidth)) + "px"; tip.style.top = Math.max(0, py - tip.offsetHeight - 10) + "px";
+  };
+  $$(".hit", el).forEach(r => { r.addEventListener("pointermove", ev => show(+r.dataset.i, ev)); r.addEventListener("pointerleave", () => { tip.style.display = "none"; r.classList.remove("on"); }); });
+}
+
 /* ---------- receipts: billing-ledger receipts (from each bill's note) + receipts logged in this tool ---------- */
 const RC_RE = /(\d{1,2})\.(\d{1,2})\.(\d{2,4})?\s*\u20B9\s?([\d,]+(?:\.\d+)?)|\u20B9\s?([\d,]+(?:\.\d+)?)/g;
 function ledgerReceipts(b) {
@@ -1041,6 +1139,7 @@ function renderClientView(A) {
     (anyEst ? '<div class="sub" style="margin-top:6px">Includes estimated deductions on proformas (see the switch at the top).</div>' : "") + "</div>" +
     '<div class="card"><h2>How old is it?</h2><div class="stackbar">' + segs.map(x => '<div class="' + (x[4] ? "hatch" : "") + '" style="width:' + (x[2] / agetot * 100) + "%;background-color:" + x[3] + '" title="' + esc(x[1]) + " " + fmt(x[2]) + '"></div>').join("") + '</div><div class="legend">' +
     segs.filter(x => x[2] >= 1).map(x => '<span><i class="' + (x[4] ? "hatch" : "") + '" style="background-color:' + x[3] + '"></i>' + esc(x[1]) + ' <b class="hm">' + cmp(x[2]) + "</b></span>").join("") + (agetot <= 1 ? '<span class="sub">Nothing outstanding.</span>' : "") + "</div></div></div>";
+  h += '<div class="card" style="margin-bottom:12px">' + trendCard(SEL) + "</div>";
   // bills table
   let run = 0, open = 0;
   const rowsH = bills.map(b => {
@@ -1109,8 +1208,10 @@ function renderAll() {
   buildRates(); computeBills();
   const A = aggregate();
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
+  $("#trendAll").innerHTML = trendCard(null);
   renderBills(); renderReceipts(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
   refreshClientSelect(); updatePreview();
+  drawTrends();
 }
 
 /* ---------- add form ---------- */
@@ -1354,6 +1455,7 @@ function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
   ["overview", "client", "bills", "receipts", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
+  if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
 function wire() {
   $$("#tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -1401,6 +1503,7 @@ function wire() {
     else if (act === "delrc") deleteReceipt(id);
     else if (act === "edit") openEdit(id);
     else if (act === "medelrc") deleteReceipt(id, $("#modal").dataset.bill);
+    else if (act === "trendtbl") { const c = t.closest(".card"); $$(".trendtbl", c).forEach(x => x.classList.toggle("show")); const tr = $(".trend", c); tr.dataset.tbl = tr.dataset.tbl === "1" ? "" : "1"; }
     else if (act === "pasteadv") PARSED[+t.dataset.i].adv = t.checked;
     else if (act === "advadd") openAdvance(null, SEL);
     else if (act === "advedit") openAdvance(id);
@@ -1430,6 +1533,8 @@ function init() {
   $("#btnSignOut").onclick = signOut;
   $("#btnRefresh").onclick = () => refresh(false);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && USER && Date.now() - LOADED_AT > 60e3) refresh(true); });
+  let rsz = null; window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { if (USER) drawTrends(); }, 150); });
+  document.addEventListener("change", e => { if (e.target.dataset && e.target.dataset.act === "trendrange") { TREND_RANGE = e.target.value; $$('[data-act="trendrange"]').forEach(x => { x.value = TREND_RANGE; }); drawTrends(); } });
   window.addEventListener("beforeunload", e => { if (DIRTY || SAVING) { e.preventDefault(); e.returnValue = ""; } });
   if (!CFG.clientId || !CFG.sheetId) { $("#btnSignIn").disabled = true; gateMsg("Setup needed: fill in clientId and sheetId in config.js (see docs/DEPLOY.md).", true); }
 }
