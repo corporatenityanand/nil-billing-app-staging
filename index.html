@@ -81,6 +81,8 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .crow .amt{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
 .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
 .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.form label .chk{display:flex;gap:6px;align-items:center;white-space:nowrap}
+.form label .chk input{width:auto;flex:none;margin:0}
 .form input,.form select{width:100%}
 .preview{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:9px;font-size:13px}
 .preview b{display:block;font-size:16px}
@@ -150,7 +152,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <div class="settings">
       <label>As on <input type="date" id="asOn"></label>
       <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
-      <label title="Proformas carry no recorded deductions yet. When on, expected TDS, retention and advance recovery are estimated from each client's history, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
+      <label title="Proformas carry no recorded deductions yet. When on, expected TDS and retention are estimated from each client's history, and advance recovery from its mobilisation advance, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
       <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Direct</label>
       <button id="btnToday" class="small">Today</button>
       <button id="btnUndo" class="small" disabled title="Undo the last change (kept until you refresh the page)">Undo</button>
@@ -220,22 +222,24 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
         <label>Proforma no.<input type="text" id="aNo"></label>
         <label>Bill type<input type="text" id="aType" placeholder="Piling, HSD, Excavation…"></label>
         <label>Seq<input type="text" id="aSeq" placeholder="RA6"></label>
+        <label>Site / project<input type="text" id="aSite" list="aSites" placeholder="optional"></label><datalist id="aSites"></datalist>
         <label>Date<input type="date" id="aDate"></label>
         <label>Base amount (&#8377;)<input type="text" inputmode="decimal" id="aBase" placeholder="e.g. 12,50,000"></label>
         <label>GST<select id="aGst"><option value="18">18%</option><option value="0">None (HSD)</option></select></label>
         <label>TDS %<input type="number" id="aTds" step="0.1" value="2"></label>
         <label>Retention %<input type="number" id="aRet" step="0.1" value="0"></label>
-        <label>Adv recovery %<input type="number" id="aAdv" step="0.1" value="0"></label>
+        <label title="Tick only for bills the client agreed will recover the mobilisation advance"><span class="chk"><input type="checkbox" id="aAdvOn"> Recover advance at %</span><input type="number" id="aAdv" step="0.1" value="0"></label>
         <label>Other debits (&#8377;)<input type="text" inputmode="decimal" id="aOth" value="0"></label>
       </div>
       <div class="preview" id="aPrev"></div>
-      <div style="margin-top:10px"><button class="primary" id="btnAdd">Add proforma</button> <span class="sub">Retention and advance % are pre-filled from the client's past bills. Change them if this contract differs.</span></div>
+      <div class="sub" id="aAdvNote" style="margin-top:6px"></div>
+      <div style="margin-top:10px"><button class="primary" id="btnAdd">Add proforma</button> <span class="sub">Retention is pre-filled from the client's past bills. Advance recovery comes from the client's mobilisation advance (By client tab) and stops once it is fully recovered.</span></div>
       <div id="aMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div>
     </div>
 
     <div class="card" style="margin-bottom:12px">
       <h2>Paste many proformas at once</h2>
-      <div class="help">One per line, separated by tabs (paste straight from Excel) or <b>|</b>:<br><code>Client | Proforma no | dd/mm/yyyy | Base amount | Type (optional)</code><br>Defaults used: billed from NIL, GST 18%, TDS 2%, retention and advance % from that client's history. Client names are matched loosely (e.g. "Arihant" finds Arihant Construction Company).</div>
+      <div class="help">One per line, separated by tabs (paste straight from Excel) or <b>|</b>:<br><code>Client | Proforma no | dd/mm/yyyy | Base amount | Type (optional) | Site (optional)</code><br>Defaults used: billed from NIL, GST 18%, TDS 2%, retention % from that client's history. Advance recovery is ticked in the preview where the client has an advance still to recover; untick bills that are not agreed. Client names are matched loosely (e.g. "Arihant" finds Arihant Construction Company).</div>
       <textarea id="pasteBox" placeholder="Arihant	128	04/10/2026	2450000	Piling&#10;Renaissance	129	05/10/2026	1800000	Excavation"></textarea>
       <div class="toolbar" style="margin-top:8px"><button id="btnParse">Preview</button><button id="btnImport" class="primary hide">Import</button></div>
       <div id="pastePrev" class="tblwrap"></div>
@@ -291,15 +295,16 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
+  n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -333,15 +338,17 @@ const TABS = {
   proformas: BILL_COLS,
   direct_bills: ["id", "client", "date", "amt", "note"],
   receipts: ["id", "client", "billId", "amt", "date", "mode"],
+  advances: ["id", "client", "site", "date", "amt", "pct", "note"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", overrides: "billId", settings: "key" };
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances"];   // added after the first Sheets were made: created on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, payAdj: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1 };
 const BOOLC = { dateEst: 1, deleted: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
@@ -401,6 +408,12 @@ async function api(method, path, body) {
 async function loadAll() {
   const meta = await api("GET", "?fields=sheets.properties(sheetId,title)");
   SHEET_IDS = {}; (meta.sheets || []).forEach(s => { SHEET_IDS[s.properties.title] = s.properties.sheetId; });
+  const toMake = AUTO_TABS.filter(t => !(t in SHEET_IDS));
+  if (toMake.length) {
+    const r0 = await api("POST", ":batchUpdate", { requests: toMake.map(t => ({ addSheet: { properties: { title: t } } })) });
+    (r0.replies || []).forEach((x, i) => { SHEET_IDS[toMake[i]] = x.addSheet.properties.sheetId; });
+    await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: toMake.map(t => ({ range: qt(t) + "!A1", values: [TABS[t]] })) });
+  }
   const missingTabs = Object.keys(TABS).filter(t => !(t in SHEET_IDS));
   if (missingTabs.length) throw new Error("The sheet is missing these tabs: " + missingTabs.join(", ") + ". See docs/DATA_MODEL.md.");
   const tabs = Object.keys(TABS);
@@ -431,6 +444,7 @@ async function loadAll() {
   n.pis = raw.proformas.map(p => Object.assign(p, { status: p.status || "PI" }));
   n.dbills = raw.direct_bills;
   n.receipts = raw.receipts.map(x => Object.assign(x, { mode: x.mode === "D" ? "D" : "" }));
+  n.advances = raw.advances;
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -449,6 +463,7 @@ function rowsView() {
   S.pis.forEach(p => { v.proformas[p.id] = pick(p, BILL_COLS); });
   S.dbills.forEach(p => { v.direct_bills[p.id] = pick(p, TABS.direct_bills); });
   S.receipts.forEach(p => { v.receipts[p.id] = pick(p, TABS.receipts); });
+  S.advances.forEach(p => { v.advances[p.id] = pick(p, TABS.advances); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -657,20 +672,55 @@ function computeBills() {
     b.payOrig = b.pay || 0; b.payEdited = false;
     if (S.payAdj[b.id] != null) { b.pay = S.payAdj[b.id]; b.payEdited = true; }
     b.est = false;
+    b.estAdv = false;
     if (b.status === "PI" && !b.manual && S.settings.est && (ret + adv + oth + tds) === 0) {
       const r = rateOf(b.client);
       tds = Math.round(b.base * (b.src === "NIL" ? 0.02 : 0));
-      ret = Math.round(b.base * r.ret); adv = Math.round(b.base * r.adv); b.est = true;
+      ret = Math.round(b.base * r.ret); b.est = true;
+      if (S.advances.some(a => a.client === b.client)) b.estAdv = true;   // filled from the advances register below
+      else adv = Math.round(b.base * r.adv);
     }
     b.eRet = ret; b.eAdv = adv; b.eOth = oth; b.eTds = tds;
     b.rc = vr().filter(r => r.billId === b.id).reduce((a, r) => a + (+r.amt || 0), 0);
     b.paid = (b.pay || 0) + b.rc;
-    b.ded = ret + adv + oth + tds;
-    b.net = b.total - b.ded;
-    b.bal = round2(b.net - b.paid);
     b.days = Math.round((asOn - toD(b.date)) / 864e5);
   });
   BILLS = list;
+  ADV = allocateAdvances(list);
+  list.forEach(b => { b.ded = b.eRet + b.eAdv + b.eOth + b.eTds; b.net = b.total - b.ded; b.bal = round2(b.net - b.paid); });
+}
+
+/* ---------- mobilisation advances ----------
+   An advance (client, optional site, date, amount, recovery % of base) is recovered from the RA bills the client
+   agreed to. A bill recovers it when it carries an advance deduction; bills without one are not touched.
+   Deductions are matched to advances oldest-first, so the register shows recovered and still-to-recover. */
+let ADV = [];
+const advMatches = (a, b) => a.client === b.client && (!a.site || norm(a.site) === norm(b.site || "")) && (!a.date || !b.date || b.date >= a.date);
+function allocateAdvances(list) {
+  const out = S.advances.slice().sort((x, y) => (x.date || "").localeCompare(y.date || "") || String(x.id).localeCompare(String(y.id)))
+    .map(a => ({ a: a, amt: +a.amt || 0, pct: +a.pct || 0, recInv: 0, recPi: 0, bills: [] }));
+  const left = x => x.amt - x.recInv - x.recPi;
+  list.slice().sort((x, y) => (x.date || "").localeCompare(y.date || "")).forEach(b => {
+    if (b.status === "Adv") return;
+    const cand = out.filter(x => advMatches(x.a, b));
+    if (!cand.length) return;
+    if (b.estAdv) { const x = cand.filter(c => left(c) >= 1)[0]; b.eAdv = x ? Math.round(Math.min(b.base * x.pct / 100, left(x))) : 0; }
+    let rest = b.eAdv;
+    for (let i = 0; i < cand.length && rest >= 0.5; i++) {
+      const x = cand[i], take = i === cand.length - 1 ? rest : Math.min(rest, Math.max(0, left(x)));
+      if (take <= 0) continue;
+      if (b.status === "PI") x.recPi += take; else x.recInv += take;
+      x.bills.push({ b: b, amt: take }); rest -= take;
+    }
+  });
+  out.forEach(x => { x.left = round2(left(x)); });
+  return out;
+}
+/* what the next bill of this client (+site) would recover: % of the first matching advance with money left, capped */
+function advOpen(client, site, date) {
+  const probe = { client: client, site: site || "", date: date || "" };
+  const xs = ADV.filter(x => advMatches(x.a, probe) && x.left >= 1);
+  return xs.length ? { pct: xs[0].pct, left: xs.reduce((s, x) => s + x.left, 0), x: xs[0] } : null;
 }
 const BUCKETS = [["b0", "0\u201330 d", 0, 30], ["b1", "31\u201360 d", 31, 60], ["b2", "61\u201390 d", 61, 90], ["b3", "91\u2013180 d", 91, 180], ["b4", "180+ d", 181, 1e9]];
 function bucketOf(b) { for (const x of BUCKETS) if (b.days >= x[2] && b.days <= x[3]) return x[0]; return "b0"; }
@@ -733,7 +783,7 @@ function meilHtml() {
   h += '<tr class="tot"><td class="l">Net receivable from MEIL</td><td></td><td class="hm">' + fmt(tot) + '</td></tr></tbody></table></div>';
   const extra = (DATA.memo && DATA.memo.gstHeldExtra) || 0, mm = DATA.memo;
   h += '<div class="help" style="margin-top:10px"><b>GST withheld by MEIL: ' + fmt(gst + extra) + '</b> (' + fmt(gst) + ' on RA bills + ' + fmt(extra) + ' on JCB invoices). It sits inside the figures above and is released once B2B GST details are submitted.';
-  if (mm && mm.advReceived) h += '<br><b>Mobilisation advance:</b> ' + fmt(mm.advReceived) + ' received, ' + fmt(mm.advRecovered) + ' recovered through RA 1\u20133, <b>' + fmt(mm.advReceived - mm.advRecovered) + ' still to recover</b> (RA-4 takes ' + fmt(mm.advPending) + '). This is not a receivable; it is why every RA bill carries a 10% deduction.';
+  if (mm && mm.advReceived && !S.advances.some(a => a.client.indexOf("MEIL") >= 0)) h += '<br><b>Mobilisation advance:</b> ' + fmt(mm.advReceived) + ' received, ' + fmt(mm.advRecovered) + ' recovered through RA 1\u20133, <b>' + fmt(mm.advReceived - mm.advRecovered) + ' still to recover</b> (RA-4 takes ' + fmt(mm.advPending) + '). This is not a receivable; it is why every RA bill carries a 10% deduction.';
   h += '</div>';
   return h;
 }
@@ -864,6 +914,7 @@ function renderFlags(A) {
   Object.keys(tiers).map(k => tiers[k]).sort((a, b) => b.a - a.a).forEach(x => f.push([x.t === "180" ? "high" : "med", x.c + ": " + x.n + " bill" + (x.n === 1 ? "" : "s") + " over " + x.t + " days", fmt(x.a) + " outstanding, oldest " + x.mx + " days since bill date."]));
   const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
   if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
+  ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
   const small = BILLS.filter(b => b.status !== "PI" && b.status !== "Adv" && Math.abs(b.bal) >= 1 && Math.abs(b.bal) < 1000);
   if (small.length) f.push(["low", small.length + " tiny residuals", "Net " + fmt(small.reduce((a, b) => a + b.bal, 0)) + " across bills under \u20B91,000 each. Rounding or small short-payments; consider writing off."]);
   $("#flagsAuto").innerHTML = f.length ? f.map(x => '<div class="flag"><span class="dot ' + x[0] + '"></span><div><b>' + esc(x[1]) + '</b><div class="sub">' + esc(x[2]) + "</div></div></div>").join("") : '<div class="sub">Nothing flagged.</div>';
@@ -888,7 +939,7 @@ function renderClientView(A) {
   const anyEst = bills.some(b => b.est);
   const kp = (l, v, col, note) => '<div class="card kpi"><div class="lbl" style="color:' + col + '">' + l + '</div><div class="val" style="font-size:22px">' + v + '</div>' + (note ? '<div class="note">' + note + "</div>" : "") + "</div>";
   let h = '<div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0;font-size:17px">' + esc(c.name) + '</h2><div class="sub">' + bills.length + " bills &middot; " + (bills.some(b => b.src === "NMFPPL") ? "billed by NIL and NMFPPL" : "billed by NIL") + '</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
-    '<button data-act="cvrcpt">+ Log receipt</button><button data-act="cvdbill">+ Direct bill</button><button data-act="cvadd">+ Add proforma</button>' + (DL_OK ? '<button data-act="cvcsv">Export CSV</button>' : "") + "</div></div>";
+    '<button data-act="cvrcpt">+ Log receipt</button><button data-act="cvdbill">+ Direct bill</button><button data-act="cvadd">+ Add proforma</button><button data-act="advadd">+ Mobilisation advance</button>' + (DL_OK ? '<button data-act="cvcsv">Export CSV</button>' : "") + "</div></div>";
   h += '<div class="grid kpis" style="margin-bottom:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">' +
     kp("Net receivable", cmp(c.net), "var(--text)", "invoiced + proforma \u2212 credits") +
     kp("Invoiced due", cmp(c.inv), "var(--inv)", c.oldest ? "oldest " + c.oldest + " days" : "") +
@@ -897,6 +948,7 @@ function renderClientView(A) {
     kp("Retention held", cmp(c.ret), "var(--ret)", "") +
     (held >= 1 ? kp("GST held", cmp(held), "var(--bad)", "released on B2B GST details") : "") + "</div>";
   if (SEL.indexOf("MEIL") >= 0) { const mh = meilHtml(); if (mh) h += '<div class="card" style="margin-bottom:12px">' + mh + "</div>"; }
+  h += advancesHtml(SEL);
   // waterfall
   const wfRows = [["Total billed (incl. GST)", T.total, "var(--inv)", ""], ["TDS", -T.tds, "var(--muted)", ""], ["Retention", -T.ret, "var(--ret)", ""], ["Advance recovery", -T.adv, "var(--muted)", ""], ["Other debits", -T.oth, "var(--muted)", ""], ["Received", -T.paid, "var(--cred)", ""]];
   const base = Math.max(T.total, 1);
@@ -925,6 +977,45 @@ function renderClientView(A) {
   if (rc.length) h += '<div class="card" style="margin-top:12px"><h2>Receipts logged in this tool</h2><div class="tblwrap"><table><thead><tr><th class="l">Against</th><th>Date</th><th>Amount</th><th></th></tr></thead><tbody>' + rc.map(r => { const b = BILLS.filter(x => x.id === r.billId)[0]; return '<tr><td class="l">' + (b ? esc((b.billno || "-") + " " + b.seq) : "on account") + '</td><td class="hm">' + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="delrc" data-id="' + esc(r.id) + '">\u2715</button></td></tr>'; }).join("") + "</tbody></table></div></div>";
   el.innerHTML = '<div class="cv">' + left + "<div>" + h + "</div></div>";
 }
+function advancesHtml(client) {
+  const xs = ADV.filter(x => x.a.client === client);
+  const memo = DATA.memo || {};
+  if (!xs.length) return client.indexOf("MEIL") >= 0 && memo.advReceived ? '<div class="card" style="margin-bottom:12px"><h2>Mobilisation advance</h2><div class="help" style="margin:0">The reconciliation notes record ' + fmt(memo.advReceived) + ' received from MEIL, recovered at 10% of each RA bill. <button class="small primary" data-act="advmemo">Add it to the register</button></div></div>' : "";
+  const z = v => Math.abs(v) >= 1 ? fmt(v) : "\u2013";
+  let h = '<div class="card" style="margin-bottom:12px"><h2>Mobilisation advances <span class="sub">recovered only from the bills that carry an advance deduction</span></h2><div class="tblwrap"><table><thead><tr><th class="l">Received</th><th class="l">Site</th><th>Advance</th><th>Recovery</th><th>Recovered (invoiced)</th><th>On proformas</th><th>Still to recover</th><th class="l">Bills</th><th></th></tr></thead><tbody>';
+  xs.forEach(x => {
+    const names = x.bills.map(y => esc((y.b.billno || "-") + (y.b.seq ? " " + y.b.seq : "")) + (y.b.status === "PI" ? "*" : "")).join(", ");
+    h += '<tr><td class="l">' + (x.a.date ? dmy(x.a.date) : "date not set") + (x.a.note ? '<div class="sub">' + esc(x.a.note) + "</div>" : "") + '</td><td class="l">' + esc(x.a.site || "all sites") + '</td><td class="hm">' + fmt(x.amt) + '</td><td class="hm">' + x.pct + '% of base</td><td class="hm">' + z(x.recInv) + '</td><td class="hm">' + z(x.recPi) + '</td><td class="hm ' + (x.left <= -1 ? "neg" : "") + '"><b>' + (x.left <= -1 ? "over by " + fmt(-x.left) : fmt(x.left)) + '</b></td><td class="l sub">' + (x.bills.length + " bill" + (x.bills.length === 1 ? "" : "s")) + (names ? '<div>' + names + "</div>" : "") + '</td><td><button class="small" data-act="advedit" data-id="' + esc(x.a.id) + '">Edit</button> <button class="small danger" data-act="advdel" data-id="' + esc(x.a.id) + '">\u2715</button></td></tr>';
+  });
+  return h + '</tbody></table></div><div class="sub" style="margin-top:6px">* proforma. A bill recovers the advance only if it has an advance deduction; untick recovery when adding a proforma that is not part of the agreement.</div></div>';
+}
+function openAdvance(id, client, fromMemo) {
+  const a = id ? S.advances.filter(x => x.id === id)[0] : null;
+  const memo = DATA.memo || {};
+  const v = a || (fromMemo ? { client: client, site: (BILLS.filter(b => b.client === client && b.site)[0] || {}).site || "", date: "", amt: memo.advReceived, pct: 10, note: "From the reconciliation notes; set the date received" } : { client: client, site: "", date: S.settings.asOn, amt: "", pct: 10, note: "" });
+  const sites = BILLS.filter(b => b.client === v.client && b.site).map(b => b.site).filter((x, i, l) => l.indexOf(x) === i);
+  openModal("<h2>" + (a ? "Edit" : "Record") + ' mobilisation advance</h2><div class="sub" style="margin-bottom:8px">' + esc(v.client) + '</div><div class="form">' +
+    '<label>Date received<input type="date" id="vDate" value="' + esc(v.date) + '"></label><label>Amount (\u20B9)<input type="text" inputmode="decimal" id="vAmt" value="' + esc(v.amt) + '"></label>' +
+    '<label>Recovery % of base<input type="number" id="vPct" step="0.1" value="' + esc(v.pct) + '"></label><label>Site / project<input type="text" id="vSite" list="vSites" value="' + esc(v.site) + '" placeholder="blank = all sites"><datalist id="vSites">' + sites.map(x => '<option value="' + esc(x) + '">').join("") + "</datalist></label>" +
+    '<label style="grid-column:1/-1">Note (optional)<input type="text" id="vNote" value="' + esc(v.note) + '"></label></div>' +
+    '<div class="help">Recovery is taken from each agreed RA bill at this % of the base amount (before GST) until the advance is used up. Bills before the date received do not count against it.</div><div id="vMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const amt = parseAmt($("#vAmt").value), pct = +$("#vPct").value;
+    if (!(amt > 0)) { $("#vMsg").textContent = "Enter the amount received."; return; }
+    if (!(pct > 0 && pct <= 100)) { $("#vMsg").textContent = "Recovery % should be between 0 and 100."; return; }
+    const rec = { id: a ? a.id : uid(), client: v.client, site: $("#vSite").value.trim(), date: $("#vDate").value, amt: round2(amt), pct: pct, note: $("#vNote").value.trim() };
+    if (a) Object.assign(a, rec); else S.advances.push(rec);
+    persist(); closeModal(); renderAll(); toast("Advance saved");
+  };
+}
+function deleteAdvance(id) {
+  const a = S.advances.filter(x => x.id === id)[0]; if (!a) return;
+  confirmModal("Delete this advance?", esc(a.client) + " &middot; " + fmt(a.amt) + (a.date ? " received " + dmy(a.date) : "") + ".<br>Deductions already on bills stay as they are.", "Delete advance", () => {
+    S.advances = S.advances.filter(x => x.id !== id); persist(); renderAll(); toast("Advance deleted");
+  });
+}
 function exportClient() {
   try {
     const head = ["Bill no", "Seq", "Type", "Billed from", "Status", "Bill date", "Age (days)", "Total", "TDS", "Retention", "Adv recovery", "Other debits", "Received", "Balance", "Remarks"];
@@ -951,19 +1042,32 @@ function onClientChange() {
   $("#aNew").value = "";
   const r = rateOf(v);
   $("#aRet").value = r.ret ? +(r.ret * 100).toFixed(1) : 0;
-  $("#aAdv").value = r.adv ? +(r.adv * 100).toFixed(1) : 0;
-  const last = BILLS.filter(b => b.client === v).slice(-1)[0];
+  const mine = BILLS.filter(b => b.client === v && b.status !== "Adv").sort((a, b) => a.date.localeCompare(b.date)), last = mine.slice(-1)[0];
+  $("#aSites").innerHTML = mine.map(b => b.site).filter((x, i, a) => x && a.indexOf(x) === i).map(x => '<option value="' + esc(x) + '">').join("");
+  const openAdv = ADV.filter(x => x.a.client === v && x.left >= 1)[0];   // a site with an advance to recover beats the last bill's site
+  $("#aSite").value = openAdv ? openAdv.a.site || "" : last ? last.site || "" : "";
   if (last) { $("#aSrc").value = last.src; $("#aGst").value = last.src === "NMFPPL" ? "0" : "18"; $("#aTds").value = last.src === "NMFPPL" ? 0 : 2; if (!$("#aType").value) $("#aType").value = last.type; }
+  advDefaults();
+}
+/* tick and % follow the client's advance; changing the site re-checks it */
+function advDefaults() {
+  const o = advOpen(formClient(), $("#aSite").value.trim(), $("#aDate").value);
+  $("#aAdvOn").checked = !!o; $("#aAdv").value = o ? o.pct : 0;
   updatePreview();
 }
+function formClient() { const t = $("#aNew").value.trim(); return t ? (matchClient(t) || t) : $("#aClient").value; }
 function formVals() {
   const base = parseAmt($("#aBase").value), gst = +$("#aGst").value;
   const total = base * (1 + gst / 100);
-  const tds = base * (+$("#aTds").value || 0) / 100, ret = base * (+$("#aRet").value || 0) / 100, adv = base * (+$("#aAdv").value || 0) / 100, oth = parseAmt($("#aOth").value);
-  return { base, total, tds, ret, adv, oth, net: total - tds - ret - adv - oth };
+  const tds = base * (+$("#aTds").value || 0) / 100, ret = base * (+$("#aRet").value || 0) / 100, oth = parseAmt($("#aOth").value);
+  const o = advOpen(formClient(), $("#aSite").value.trim(), $("#aDate").value);
+  let adv = $("#aAdvOn").checked ? base * (+$("#aAdv").value || 0) / 100 : 0;
+  if (o && adv > o.left) adv = o.left;
+  return { base, total, tds, ret, adv, oth, net: total - tds - ret - adv - oth, open: o };
 }
 function updatePreview() {
   const v = formVals();
+  $("#aAdvNote").innerHTML = v.open ? "Mobilisation advance: <b>" + fmt(v.open.left) + "</b> still to recover" + (v.open.x.a.site ? " on " + esc(v.open.x.a.site) : "") + ", agreed at " + v.open.pct + "% of base." + ($("#aAdvOn").checked ? (v.adv < v.base * (+$("#aAdv").value || 0) / 100 - 0.5 ? " This bill takes the last " + fmt(v.adv) + "." : "") : " Not recovered on this bill.") : ($("#aAdvOn").checked ? "No advance is recorded for this client and site; the % is applied as typed." : "");
   $("#aPrev").innerHTML = [["Invoice total", v.total], ["TDS", v.tds], ["Retention", v.ret], ["Adv recovery", v.adv], ["Other", v.oth], ["Expected net", v.net]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join("");
 }
 function addPi(p) { S.pis.push(p); }
@@ -986,10 +1090,10 @@ function onAdd() {
       $("#" + missing[0][0]).focus(); return;
     }
     const date = $("#aDate").value || S.settings.asOn;
-    addPi({ id: uid(), client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: "", date: date,
+    addPi({ id: uid(), client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
       base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds) });
     $("#aNo").value = ""; $("#aSeq").value = ""; $("#aBase").value = ""; $("#aNew").value = "";
-    persist(); renderAll(); toast("Proforma added");
+    persist(); renderAll(); advDefaults(); toast("Proforma added");
     setMsg("Added " + fmt(v.total) + " proforma for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + ". See it under By client or All bills.", true);
   } catch (e) {
     setMsg("Something went wrong: " + (e && e.message ? e.message : e), false);
@@ -1026,22 +1130,26 @@ function parsePaste() {
     if (isNaN(amt) || amt <= 0) { out.err = "amount not a number"; return out; }
     if (!dt) { out.err = "date should be dd/mm/yyyy"; return out; }
     const existing = matchClient(parts[0]);
-    out.client = existing || parts[0]; out.isNew = !existing; out.billno = parts[1]; out.date = dt; out.base = amt; out.type = parts[4] || "";
+    out.client = existing || parts[0]; out.isNew = !existing; out.billno = parts[1]; out.date = dt; out.base = amt; out.type = parts[4] || ""; out.site = parts[5] || "";
+    if (!out.site && existing) { const last = BILLS.filter(b => b.client === existing).sort((a, b) => a.date.localeCompare(b.date)).slice(-1)[0]; out.site = last ? last.site || "" : ""; }
+    out.adv = !!advOpen(out.client, out.site, out.date);
     return out;
   });
   const ok = PARSED.filter(p => !p.err);
-  $("#pastePrev").innerHTML = PARSED.length ? '<table><thead><tr><th>#</th><th class="l">Client</th><th class="l">No</th><th>Date</th><th>Base</th><th class="l">Result</th></tr></thead><tbody>' +
-    PARSED.map(p => "<tr><td>" + p.line + "</td><td class=\"l\">" + esc(p.client || "") + (p.isNew ? ' <span class="tag new">new client</span>' : "") + '</td><td class="l">' + esc(p.billno || "") + '</td><td class="hm">' + (p.date ? dmy(p.date) : "") + '</td><td class="hm">' + (p.base ? fmt(p.base) : "") + '</td><td class="l ' + (p.err && !p.skip ? "pos-bad" : "") + '">' + (p.err ? esc(p.err) : "ready") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Nothing to preview.</div>';
+  $("#pastePrev").innerHTML = PARSED.length ? '<table><thead><tr><th>#</th><th class="l">Client</th><th class="l">No</th><th>Date</th><th>Base</th><th title="Recover the mobilisation advance on this bill">Adv rec.</th><th class="l">Result</th></tr></thead><tbody>' +
+    PARSED.map((p, i) => "<tr><td>" + p.line + "</td><td class=\"l\">" + esc(p.client || "") + (p.isNew ? ' <span class="tag new">new client</span>' : "") + '</td><td class="l">' + esc(p.billno || "") + '</td><td class="hm">' + (p.date ? dmy(p.date) : "") + '</td><td class="hm">' + (p.base ? fmt(p.base) : "") + '</td><td>' + (p.err || !advOpen(p.client, p.site, p.date) ? "" : '<input type="checkbox" data-act="pasteadv" data-i="' + i + '"' + (p.adv ? " checked" : "") + ">") + '</td><td class="l ' + (p.err && !p.skip ? "pos-bad" : "") + '">' + (p.err ? esc(p.err) : "ready") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Nothing to preview.</div>';
   $("#btnImport").classList.toggle("hide", !ok.length);
   $("#btnImport").textContent = "Import " + ok.length + " proforma" + (ok.length === 1 ? "" : "s");
 }
 function onImport() {
   const ok = PARSED.filter(p => !p.err);
   ok.forEach(p => {
-    const r = rateOf(p.client), nil = true;
+    const r = rateOf(p.client);
     const total = p.base * 1.18;
-    addPi({ id: uid(), client: p.client, src: "NIL", status: "PI", billno: p.billno, type: p.type, seq: "", site: "", date: p.date, base: round2(p.base), total: round2(total),
-      tds: round2(p.base * 0.02), ret: round2(p.base * r.ret), adv: round2(p.base * r.adv), oth: 0 });
+    const o = p.adv ? advOpen(p.client, p.site, p.date) : null, adv = o ? Math.min(p.base * o.pct / 100, o.left) : 0;
+    addPi({ id: uid(), client: p.client, src: "NIL", status: "PI", billno: p.billno, type: p.type, seq: "", site: p.site, date: p.date, base: round2(p.base), total: round2(total),
+      tds: round2(p.base * 0.02), ret: round2(p.base * r.ret), adv: round2(adv), oth: 0 });
+    computeBills();   // the next line sees what this one recovered
   });
   $("#pasteBox").value = ""; PARSED = []; $("#pastePrev").innerHTML = ""; $("#btnImport").classList.add("hide");
   persist(); renderAll(); toast(ok.length + " proformas added");
@@ -1133,7 +1241,7 @@ function openInvoiced(billId) {
   openModal('<h2>Mark as tax invoice</h2><div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + fmt(b.total) + '</div><div class="form"><label style="grid-column:1/-1">Tax invoice no.<input type="text" id="iNo" value="' + esc(b.billno) + '"></label>' +
     '<label>TDS (\u20B9)<input type="number" id="iTds" step="any" value="' + Math.round(b.eTds) + '"></label><label>Retention (\u20B9)<input type="number" id="iRet" step="any" value="' + Math.round(b.eRet) + '"></label>' +
     '<label>Adv recovery (\u20B9)<input type="number" id="iAdv" step="any" value="' + Math.round(b.eAdv) + '"></label><label>Other debits (\u20B9)<input type="number" id="iOth" step="any" value="' + Math.round(b.eOth) + '"></label></div>' +
-    '<div class="help">Deductions are prefilled from the estimate. Use the amounts on the actual invoice.</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Mark invoiced</button></div>');
+    '<div class="help">Deductions are prefilled from the estimate. Use the amounts on the actual invoice.' + (function () { const o = advOpen(b.client, b.site, b.date); return o ? " Advance still to recover: " + fmt(o.left + (b.eAdv || 0)) + " at " + o.pct + "% of base. Set Adv recovery to 0 if this bill is not part of the agreement." : ""; })() + '</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Mark invoiced</button></div>');
   $("#mCancel").onclick = closeModal;
   $("#mSave").onclick = () => {
     S.overrides[b.id] = { status: "TI", billno: $("#iNo").value.trim(), manual: true, tds: +$("#iTds").value || 0, ret: +$("#iRet").value || 0, adv: +$("#iAdv").value || 0, oth: +$("#iOth").value || 0 };
@@ -1185,6 +1293,9 @@ function wire() {
   $("#fNotes").onchange = e => { ALLNOTES = e.target.checked; renderAll(); };
   $("#btnReceipt").onclick = () => openReceipt(null);
   $("#aClient").onchange = onClientChange;
+  $("#aAdvOn").onchange = updatePreview;
+  ["aSite", "aDate"].forEach(id => { $("#" + id).onchange = advDefaults; });
+  $("#aNew").onchange = advDefaults;
   ["aBase", "aGst", "aTds", "aRet", "aAdv", "aOth"].forEach(id => { $("#" + id).oninput = () => { $("#" + id).classList.remove("bad"); updatePreview(); }; $("#" + id).onchange = updatePreview; });
   $("#aNew").oninput = () => $("#aNew").classList.remove("bad");
   $("#btnAdd").onclick = onAdd;
@@ -1208,6 +1319,11 @@ function wire() {
     else if (act === "delrc") deleteReceipt(id);
     else if (act === "edit") openEdit(id);
     else if (act === "medelrc") deleteReceipt(id, $("#modal").dataset.bill);
+    else if (act === "pasteadv") PARSED[+t.dataset.i].adv = t.checked;
+    else if (act === "advadd") openAdvance(null, SEL);
+    else if (act === "advedit") openAdvance(id);
+    else if (act === "advdel") deleteAdvance(id);
+    else if (act === "advmemo") openAdvance(null, SEL, true);
     else if (act === "restore") { delete S.deleted[id]; persist(); renderAll(); toast("Invoice restored"); }
   });
   $("#aDate").value = S.settings.asOn;
