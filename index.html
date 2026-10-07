@@ -43,6 +43,11 @@ button:hover{background:var(--surface2)}
 button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 button.small{padding:2px 8px;font-size:12px}
 button.danger{color:var(--bad)}
+.cwrap{position:relative;display:inline-block}
+.cmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;width:250px;max-width:80vw}
+.cmenu button{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;color:var(--text)}
+.cmenu button:hover,.cmenu button:focus{background:var(--surface2)}
+.cmenu .sub{display:block;font-size:12px;font-weight:400}
 nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;padding-top:4px}
 nav button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;padding:9px 12px;color:var(--muted)}
 nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
@@ -174,6 +179,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
       <label title="Proformas carry no recorded deductions yet. When on, expected TDS and retention are estimated from each client's history, and advance recovery from its mobilisation advance, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
       <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Direct</label>
+      <span class="cwrap"><button class="primary small" data-act="cmenu" aria-haspopup="true">+ Create &#9662;</button><div class="cmenu hide" role="menu"><button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button><button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button></div></span>
       <button id="btnToday" class="small">Today</button>
       <button id="btnUndo" class="small" disabled title="Undo the last change (kept until you refresh the page)">Undo</button>
       <button id="btnRefresh" class="small" title="Load the latest data from the Google Sheet">Refresh</button>
@@ -305,9 +311,9 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <section id="tab-add" class="hide">
     <div class="card" style="margin-bottom:12px">
-      <h2>Add one bill</h2>
+      <div class="toolbar" style="margin-bottom:8px;justify-content:space-between"><h2 style="margin:0" id="aHead">New proforma</h2><span class="cwrap"><button class="primary" data-act="cmenu" aria-haspopup="true">+ Create &#9662;</button><div class="cmenu hide" role="menu"><button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button><button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button></div></span></div>
+      <select id="aKind" class="hide" aria-hidden="true"><option value="PI">Proforma</option><option value="TI">Tax invoice</option></select>
       <div class="form" id="addForm">
-        <label title="A proforma is not a GST document and is not yet due. A tax invoice takes the next number in its company's series and is due from its date.">Create<select id="aKind"><option value="PI">Proforma</option><option value="TI">Tax invoice</option></select></label>
         <label>Client<select id="aClient"></select></label>
         <label id="aNewWrap">Or type a new client<input type="text" id="aNew" placeholder="new client name"></label>
         <label>Billed from<select id="aSrc"><option>NIL</option><option>NMFPPL</option></select></label>
@@ -1424,6 +1430,7 @@ const formKind = () => ($("#aKind").value === "TI" ? "TI" : "PI");
 function suggestNo() {
   const ti = formKind() === "TI", el = $("#aNo");
   $("#aNoLbl").textContent = ti ? "Tax invoice no." : "Proforma no.";
+  $("#aHead").textContent = ti ? "New tax invoice" : "New proforma";
   $("#btnAdd").textContent = ti ? "Add tax invoice" : "Add proforma";
   const sug = ti ? nextTiNo($("#aSrc").value, $("#aDate").value) : nextPiNo(), cur = el.value.trim();
   if (!cur || cur === A_SUG) el.value = sug;
@@ -1434,6 +1441,12 @@ function updatePreview() {
   const v = formVals();
   $("#aAdvNote").innerHTML = v.open ? "Mobilisation advance: <b>" + fmt(v.open.left) + "</b> still to recover" + (v.open.x.a.site ? " on " + esc(v.open.x.a.site) : "") + ", agreed at " + v.open.pct + "% of base." + ($("#aAdvOn").checked ? (v.adv < v.base * (+$("#aAdv").value || 0) / 100 - 0.5 ? " This bill takes the last " + fmt(v.adv) + "." : "") : " Not recovered on this bill.") : ($("#aAdvOn").checked ? "No advance is recorded for this client and site; the % is applied as typed." : "");
   $("#aPrev").innerHTML = [["Invoice total", v.total], ["TDS", v.tds], ["Retention", v.ret], ["Adv recovery", v.adv], ["Other", v.oth], ["Expected net", v.net]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join("");
+}
+/* + Create menu (top bar and Add tab): opens the bill form as a proforma or a tax invoice */
+function createBill(kind) {
+  $("#aKind").value = kind === "TI" ? "TI" : "PI";
+  showTab("add"); updatePreview();
+  $("#aClient").focus();
 }
 function addPi(p) { S.pis.push(p); }
 function parseAmt(t) { const n = parseFloat(String(t == null ? "" : t).replace(/[\u20B9,\s]/g, "")); return isNaN(n) ? 0 : n; }
@@ -1949,7 +1962,8 @@ function wire() {
   $("#btnReceipt").onclick = () => openReceipt(null);
   $("#aClient").onchange = onClientChange;
   $("#aAdvOn").onchange = updatePreview;
-  ["aKind", "aSrc"].forEach(id => { $("#" + id).onchange = updatePreview; });
+  $("#aSrc").onchange = updatePreview;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") $$(".cmenu").forEach(m => m.classList.add("hide")); });
   ["aSite", "aDate"].forEach(id => { $("#" + id).onchange = advDefaults; });
   $("#aNew").onchange = advDefaults;
   ["aBase", "aGst", "aTds", "aRet", "aAdv", "aOth"].forEach(id => { $("#" + id).oninput = () => { $("#" + id).classList.remove("bad"); updatePreview(); }; $("#" + id).onchange = updatePreview; });
@@ -1959,8 +1973,12 @@ function wire() {
   $("#btnParse").onclick = parsePaste; $("#btnImport").onclick = onImport;
   $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
   document.addEventListener("click", e => {
-    const t = e.target.closest("[data-act]"); if (!t) return;
+    const t = e.target.closest("[data-act]");
+    $$(".cmenu").forEach(m => { if (!t || t.dataset.act !== "cmenu" || m.parentNode !== t.parentNode) m.classList.add("hide"); });   // a click anywhere closes open Create menus
+    if (!t) return;
     const id = t.dataset.id, act = t.dataset.act;
+    if (act === "cmenu") { t.nextElementSibling.classList.toggle("hide"); return; }
+    if (act === "create") { createBill(t.dataset.kind); return; }
     if (act === "cvdbill") openDirectBill(SEL);
     else if (act === "note") { EXP[id] = !EXP[id]; renderAll(); }
     else if (act === "cvnotes") { ALLNOTES = t.checked; renderAll(); }
