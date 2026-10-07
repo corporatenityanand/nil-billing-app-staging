@@ -180,6 +180,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="client">By client</button>
     <button data-tab="bills">All bills</button>
     <button data-tab="receipts">Receipts</button>
+    <button data-tab="work">Work done</button>
     <button data-tab="add">Add proformas &amp; receipts</button>
     <button data-tab="forecast">Collections forecast</button>
     <button data-tab="flags">Flags</button>
@@ -244,6 +245,57 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       <div class="sub" style="margin-top:6px">Ledger receipts are read from the receipt dates in each bill's ledger note. Undated ones (the ledger gave no date) are listed last and left out when a date range is set.</div></div>
   </section>
 
+  <section id="tab-work" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <h2>Log a day's work</h2>
+      <div class="form" id="wForm">
+        <label>Date<input type="date" id="wDate"></label>
+        <label>Client<select id="wClient"></select></label>
+        <label>Site / project<input type="text" id="wSite" list="wSites" placeholder="as in the BOQ"></label><datalist id="wSites"></datalist>
+        <label>Rig / machine<input type="text" id="wRig" list="wRigs" placeholder="e.g. Rig 3"></label><datalist id="wRigs"></datalist>
+        <label>BOQ item<select id="wItem"></select></label>
+        <label><span>Quantity <span id="wUnit"></span></span><input type="text" inputmode="decimal" id="wQty" placeholder="e.g. 84.5"></label>
+        <label style="grid-column:1/-1">Note (optional)<input type="text" id="wNote" placeholder="pile numbers, chainage, breakdown hours&hellip;"></label>
+      </div>
+      <div class="preview" id="wPrev"></div>
+      <div style="margin-top:10px"><button class="primary" id="btnWAdd">Add entry</button> <span class="sub">Date, client, site and rig stay filled, so the next item for the same day is just item and quantity.</span></div>
+      <div id="wMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <h2>Make an RA bill from work done</h2>
+      <div class="help">Adds up the work not yet billed for one client and site at the BOQ rates. The proforma form is filled in for you; adding the proforma marks these entries billed so they are never billed twice. Deleting that proforma frees them again.</div>
+      <div class="form">
+        <label>Client<select id="rbClient"></select></label>
+        <label>Site / project<select id="rbSite"></select></label>
+        <label>Work from<input type="date" id="rbFrom"></label>
+        <label>Work up to<input type="date" id="rbTo"></label>
+      </div>
+      <div class="tblwrap" id="rbTbl" style="margin-top:10px"></div>
+      <div style="margin-top:10px"><button class="primary" id="btnRb">Fill in the proforma</button></div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">BOQ rates <span class="sub">rate per unit before GST, by client and site</span></h2><button id="btnBoqAdd">+ BOQ item</button></div>
+      <div class="tblwrap" id="boqTbl"></div>
+    </div>
+
+    <div class="card">
+      <h2>Work logged</h2>
+      <div class="toolbar">
+        <select id="wfClient"></select>
+        <select id="wfRig"></select>
+        <label class="sub">From <input type="date" id="wfFrom"></label>
+        <label class="sub">To <input type="date" id="wfTo"></label>
+        <select id="wfState"><option value="">Billed and not billed</option><option value="open">Not billed yet</option><option value="billed">Billed</option></select>
+        <button id="btnWfReset" class="small">Reset filters</button>
+        <button id="btnCsvWork">Export CSV</button>
+      </div>
+      <div class="grid twocol" style="margin-bottom:12px"><div class="tblwrap" id="wRigTbl"></div><div class="tblwrap" id="wItemTbl"></div></div>
+      <div class="tblwrap" id="wTbl"></div>
+    </div>
+  </section>
+
   <section id="tab-add" class="hide">
     <div class="card" style="margin-bottom:12px">
       <h2>Add one proforma</h2>
@@ -265,6 +317,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       </div>
       <div class="preview" id="aPrev"></div>
       <div class="sub" id="aAdvNote" style="margin-top:6px"></div>
+      <div class="banner hide" id="aWork" style="margin:10px 0 0;background:var(--surface2);border-color:var(--line)"></div>
       <div style="margin-top:10px"><button class="primary" id="btnAdd">Add proforma</button> <span class="sub">Retention is pre-filled from the client's past bills. Advance recovery comes from the client's mobilisation advance (By client tab) and stops once it is fully recovered.</span></div>
       <div id="aMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div>
     </div>
@@ -327,16 +380,18 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
+  n.boq = Array.isArray(o.boq) ? o.boq : [];
+  n.work = Array.isArray(o.work) ? o.work : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -371,16 +426,18 @@ const TABS = {
   direct_bills: ["id", "client", "date", "amt", "note"],
   receipts: ["id", "client", "billId", "amt", "date", "mode"],
   advances: ["id", "client", "site", "date", "amt", "pct", "note"],
+  boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
+  work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances"];   // added after the first Sheets were made: created on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log"];   // added after the first Sheets were made: created on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1 };
 const BOOLC = { dateEst: 1, deleted: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
@@ -477,6 +534,8 @@ async function loadAll() {
   n.dbills = raw.direct_bills;
   n.receipts = raw.receipts.map(x => Object.assign(x, { mode: x.mode === "D" ? "D" : "" }));
   n.advances = raw.advances;
+  n.boq = raw.boq;
+  n.work = raw.work_log;
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -496,6 +555,8 @@ function rowsView() {
   S.dbills.forEach(p => { v.direct_bills[p.id] = pick(p, TABS.direct_bills); });
   S.receipts.forEach(p => { v.receipts[p.id] = pick(p, TABS.receipts); });
   S.advances.forEach(p => { v.advances[p.id] = pick(p, TABS.advances); });
+  S.boq.forEach(p => { v.boq[p.id] = pick(p, TABS.boq); });
+  S.work.forEach(p => { v.work_log[p.id] = pick(p, TABS.work_log); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -661,7 +722,7 @@ function enterApp() {
   HIST = []; LAST = snap(); updateUndo();
   syncSettings(); $("#aDate").value = S.settings.asOn;
   $("#gate").classList.add("hide"); $("#app").classList.remove("hide");
-  renderAll(); onClientChange(); setStatus();
+  renderAll(); onClientChange(); wFill(true); setStatus();
 }
 
 /* ---------- derived data ---------- */
@@ -1094,6 +1155,10 @@ function renderFlags(A) {
   const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
   if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
+  const unb = {};
+  S.work.forEach(w => { if (w.billId) return; const k = w.client + "|" + (w.site || ""), x = unb[k] || (unb[k] = { c: w.client, s: w.site, amt: 0, first: w.date }); x.amt += wVal(w); if (w.date < x.first) x.first = w.date; });
+  Object.keys(unb).map(k => unb[k]).filter(x => x.amt >= 1 && Math.round((toD(S.settings.asOn) - toD(x.first)) / 864e5) > 30).sort((a, b) => b.amt - a.amt)
+    .forEach(x => f.push(["med", "Work not billed: " + x.c + (x.s ? " \u00B7 " + x.s : ""), fmt(x.amt) + " of work logged since " + dmy(x.first) + " is not on any bill yet. Make the RA bill from the Work done tab."]));
   const small = BILLS.filter(b => b.status !== "PI" && b.status !== "Adv" && Math.abs(b.bal) >= 1 && Math.abs(b.bal) < 1000);
   if (small.length) f.push(["low", small.length + " tiny residuals", "Net " + fmt(small.reduce((a, b) => a + b.bal, 0)) + " across bills under \u20B91,000 each. Rounding or small short-payments; consider writing off."]);
   $("#flagsAuto").innerHTML = f.length ? f.map(x => '<div class="flag"><span class="dot ' + x[0] + '"></span><div><b>' + esc(x[1]) + '</b><div class="sub">' + esc(x[2]) + "</div></div></div>").join("") : '<div class="sub">Nothing flagged.</div>';
@@ -1209,7 +1274,7 @@ function renderAll() {
   const A = aggregate();
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
-  renderBills(); renderReceipts(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
+  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
 }
@@ -1272,12 +1337,20 @@ function onAdd() {
       toast("Not added: " + missing.map(m => m[1]).join(", ") + " missing");
       $("#" + missing[0][0]).focus(); return;
     }
-    const date = $("#aDate").value || S.settings.asOn;
-    addPi({ id: uid(), client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
-      base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds) });
+    const date = $("#aDate").value || S.settings.asOn, id = uid();
+    let remark = "", linked = 0;
+    if (PENDING && PENDING.client === client) {   // filled in from work done: those entries are now billed on this proforma
+      S.work.forEach(w => { if (PENDING.ids.indexOf(w.id) >= 0 && !w.billId) { w.billId = id; linked++; } });
+      remark = PENDING.remark;
+    }
+    const dropped = PENDING && !linked;
+    PENDING = null; renderPending();
+    addPi({ id: id, client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
+      base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds), remark: remark });
     $("#aNo").value = ""; $("#aSeq").value = ""; $("#aBase").value = ""; $("#aNew").value = "";
     persist(); renderAll(); advDefaults(); toast("Proforma added");
-    setMsg("Added " + fmt(v.total) + " proforma for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + ". See it under By client or All bills.", true);
+    setMsg("Added " + fmt(v.total) + " proforma for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + "." +
+      (linked ? " " + linked + " work entr" + (linked === 1 ? "y" : "ies") + " marked billed on it." : dropped ? " The client was changed, so no work entries were marked billed." : "") + " See it under By client or All bills.", true);
   } catch (e) {
     setMsg("Something went wrong: " + (e && e.message ? e.message : e), false);
   }
@@ -1338,6 +1411,239 @@ function onImport() {
   persist(); renderAll(); toast(ok.length + " proformas added");
 }
 
+/* ---------- work done -> RA bill ----------
+   BOQ rates (client, site or blank for all its sites, item, unit, rate per unit before GST) and daily work entries
+   (date, client, site, rig, BOQ item, quantity). The unbilled entries of one client + site add up at BOQ rates into a
+   proforma; adding it writes the proforma's id on each entry (billId) so nothing is billed twice. Deleting the
+   proforma frees the entries again. Bills, receipts and advances work exactly as before. */
+let PENDING = null, WROWS = [];
+const UNITS = ["rmt", "cum", "sqm", "nos", "MT", "hrs", "days", "LS"];
+const uniq = a => a.filter((x, i) => x && a.indexOf(x) === i);
+const boqOf = id => S.boq.filter(q => q.id === id)[0] || null;
+const boqFor = (client, site) => S.boq.filter(q => q.client === client && (!q.site || norm(q.site) === norm(site || "")));
+const boqLabel = q => (q.code ? q.code + " · " : "") + q.item;
+const qtyFmt = n => (+n || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+const rateFmt = n => "₹" + (+n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const wVal = w => { const q = boqOf(w.boqId); return q ? round2((+w.qty || 0) * (+q.rate || 0)) : 0; };
+const billLabel = id => { const b = BILLS.filter(x => x.id === id)[0]; return b ? (b.billno || "proforma") + (b.seq ? " " + b.seq : "") : "bill removed"; };
+const optsHtml = (vals, cur, lab) => vals.map(v => '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(lab ? lab(v) : v) + "</option>").join("");
+function workClients() { return uniq(clientNames().concat(S.boq.map(q => q.client), S.work.map(w => w.client))).sort((a, b) => a.localeCompare(b)); }
+function nextSeq(client, site) {
+  let n = 0;
+  BILLS.forEach(b => { if (b.client !== client || (site && b.site && norm(b.site) !== norm(site))) return; const m = /^RA\s*-?\s*(\d+)/i.exec(b.seq || ""); if (m) n = Math.max(n, +m[1]); });
+  return "RA" + (n + 1);
+}
+function wMsg(t, good) { const el = $("#wMsg"); el.textContent = t; el.style.color = good ? "var(--cred)" : "var(--bad)"; }
+
+/* entry form */
+function wFill(clientChanged) {
+  const sel = $("#wClient"), cur = sel.value, names = workClients();
+  sel.innerHTML = optsHtml(names, cur);
+  const c = sel.value;
+  const sites = uniq(S.boq.filter(q => q.client === c).map(q => q.site).concat(S.work.filter(w => w.client === c).map(w => w.site), BILLS.filter(b => b.client === c).map(b => b.site)));
+  $("#wSites").innerHTML = sites.map(x => '<option value="' + esc(x) + '">').join("");
+  $("#wRigs").innerHTML = uniq(S.work.map(w => w.rig)).map(x => '<option value="' + esc(x) + '">').join("");
+  if (clientChanged) {   // the site last logged for this client, else the one its BOQ names
+    const last = S.work.filter(w => w.client === c).sort((a, b) => a.date.localeCompare(b.date)).slice(-1)[0];
+    $("#wSite").value = last ? last.site || "" : (S.boq.filter(q => q.client === c && q.site)[0] || {}).site || "";
+  }
+  wItems();
+}
+function wItems() {
+  const items = boqFor($("#wClient").value, $("#wSite").value.trim()), el = $("#wItem"), cur = el.value;
+  el.innerHTML = items.length ? items.map(q => '<option value="' + esc(q.id) + '">' + esc(boqLabel(q) + " · " + rateFmt(q.rate) + "/" + (q.unit || "unit")) + "</option>").join("")
+    : '<option value="">No BOQ item for this client and site yet</option>';
+  if (items.some(q => q.id === cur)) el.value = cur;
+  wPrev();
+}
+function wPrev() {
+  const q = boqOf($("#wItem").value), qty = parseAmt($("#wQty").value);
+  $("#wUnit").textContent = q && q.unit ? "(" + q.unit + ")" : "";
+  const c = $("#wClient").value, d = $("#wDate").value, rig = $("#wRig").value.trim();
+  const day = S.work.filter(w => w.client === c && w.date === d && (!rig || norm(w.rig || "") === norm(rig)));
+  $("#wPrev").innerHTML = (q ? "<div>Rate<b>" + rateFmt(q.rate) + " / " + esc(q.unit || "unit") + "</b></div><div>Value of this entry<b>" + fmt(qty * (+q.rate || 0)) + "</b></div>"
+    : '<div class="sub">Add the BOQ item with its rate (BOQ rates, below) before logging work against it.</div>') +
+    "<div>Already logged that day" + (rig ? " on " + esc(rig) : "") + "<b>" + day.length + " entr" + (day.length === 1 ? "y" : "ies") + " &middot; " + fmt(day.reduce((a, w) => a + wVal(w), 0)) + "</b></div>";
+}
+function onWAdd() {
+  $$("#wForm .bad").forEach(x => x.classList.remove("bad"));
+  const q = boqOf($("#wItem").value), qty = parseAmt($("#wQty").value), date = $("#wDate").value, client = $("#wClient").value;
+  const miss = [];
+  if (!date) miss.push(["wDate", "date"]);
+  if (!client) miss.push(["wClient", "client"]);
+  if (!q) miss.push(["wItem", "BOQ item"]);
+  if (!(qty > 0)) miss.push(["wQty", "quantity"]);
+  if (miss.length) { miss.forEach(m => $("#" + m[0]).classList.add("bad")); wMsg("Not added. Please fill in: " + miss.map(m => m[1]).join(", ") + ".", false); $("#" + miss[0][0]).focus(); return; }
+  S.work.push({ id: uid(), date: date, client: client, site: $("#wSite").value.trim(), rig: $("#wRig").value.trim(), boqId: q.id, qty: Math.round(qty * 1000) / 1000, note: $("#wNote").value.trim(), billId: "" });
+  $("#wQty").value = ""; $("#wNote").value = "";
+  persist(); renderAll(); toast("Work entry added");
+  wMsg("Added " + qtyFmt(qty) + " " + (q.unit || "") + " of " + boqLabel(q) + " on " + dmy(date) + ", worth " + fmt(qty * q.rate) + ".", true);
+  $("#wQty").focus();
+}
+
+/* roll-up of unbilled work into an RA bill */
+function rbPick() {
+  const open = S.work.filter(w => !w.billId);
+  const cs = uniq(open.map(w => w.client)).sort((a, b) => a.localeCompare(b)), cEl = $("#rbClient"), cur = cEl.value;
+  cEl.innerHTML = cs.length ? optsHtml(cs, cur) : '<option value="">No unbilled work</option>';
+  const sEl = $("#rbSite"), scur = sEl.value, sites = [];
+  open.filter(w => w.client === cEl.value).forEach(w => { if (!sites.some(x => norm(x) === norm(w.site || ""))) sites.push(w.site || ""); });
+  sEl.innerHTML = optsHtml(sites, scur, x => x || "(no site given)");
+}
+function rbRows() {
+  const c = $("#rbClient").value, s = $("#rbSite").value, from = $("#rbFrom").value, to = $("#rbTo").value;
+  return S.work.filter(w => !w.billId && c && w.client === c && norm(w.site || "") === norm(s) && (!from || w.date >= from) && (!to || w.date <= to));
+}
+function rbGroups(rows) {
+  const g = {};
+  rows.forEach(w => { const x = g[w.boqId] || (g[w.boqId] = { q: boqOf(w.boqId), n: 0, qty: 0, amt: 0 }); x.n++; x.qty += +w.qty || 0; x.amt += wVal(w); });
+  return Object.keys(g).map(k => g[k]).sort((a, b) => (a.q ? boqLabel(a.q) : "~").localeCompare(b.q ? boqLabel(b.q) : "~"));
+}
+function renderRollup() {
+  rbPick();
+  const rows = rbRows(), gs = rbGroups(rows), base = round2(gs.reduce((a, x) => a + x.amt, 0));
+  const dates = rows.map(w => w.date).sort();
+  $("#rbTbl").innerHTML = !rows.length ? '<div class="sub">' + (S.work.some(w => !w.billId) ? "No unbilled work for this client and site in these dates." : "All logged work is billed. New entries show up here.") + "</div>" :
+    '<table><thead><tr><th class="l">BOQ item</th><th class="l">Unit</th><th>Entries</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>' +
+    gs.map(x => '<tr><td class="l">' + (x.q ? esc(boqLabel(x.q)) : '<span class="pos-bad">BOQ item deleted</span>') + '</td><td class="l">' + esc(x.q ? x.q.unit : "") + '</td><td class="hm">' + x.n + '</td><td class="hm">' + qtyFmt(x.qty) + '</td><td class="hm">' + (x.q ? rateFmt(x.q.rate) : "–") + '</td><td class="hm">' + fmt(x.amt) + "</td></tr>").join("") +
+    '<tr class="tot"><td class="l">Base amount, before GST</td><td class="l sub">' + dmy(dates[0]) + " to " + dmy(dates[dates.length - 1]) + '</td><td class="hm">' + rows.length + "</td><td></td><td></td><td class=\"hm\">" + fmt(base) + "</td></tr></tbody></table>";
+  $("#btnRb").disabled = !(base > 0);
+}
+function onRb() {
+  const rows = rbRows(), gs = rbGroups(rows), base = round2(gs.reduce((a, x) => a + x.amt, 0));
+  if (!(base > 0)) { toast("Nothing to bill"); return; }
+  const client = $("#rbClient").value, site = $("#rbSite").value, dates = rows.map(w => w.date).sort(), from = dates[0], to = dates[dates.length - 1];
+  const remark = "Work done " + dmy(from) + " to " + dmy(to) + ": " + gs.filter(x => x.q).map(x => boqLabel(x.q) + " " + qtyFmt(x.qty) + " " + (x.q.unit || "") + " @ " + rateFmt(x.q.rate) + " = " + fmt(x.amt)).join("; ") + ".";
+  PENDING = { ids: rows.map(w => w.id), client: client, site: site, base: base, from: from, to: to, remark: remark };
+  showTab("add");
+  const known = Array.prototype.some.call($("#aClient").options, o => o.value === client);
+  if (known) $("#aClient").value = client;
+  onClientChange();
+  if (!known) $("#aNew").value = client;
+  $("#aSite").value = site; $("#aDate").value = $("#rbTo").value || to; $("#aSeq").value = nextSeq(client, site);
+  $("#aBase").value = base.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  advDefaults(); renderPending();
+  $("#aNo").focus();
+}
+function renderPending() {
+  const el = $("#aWork");
+  if (!PENDING) { el.classList.add("hide"); el.innerHTML = ""; return; }
+  el.innerHTML = "<span>Filled in from work done: <b>" + PENDING.ids.length + " entr" + (PENDING.ids.length === 1 ? "y" : "ies") + "</b>, " + dmy(PENDING.from) + " to " + dmy(PENDING.to) + ", base <b>" + fmt(PENDING.base) +
+    "</b>. Adding this proforma marks them billed. Check the proforma no., bill type and deductions first.</span><button class=\"small\" data-act=\"wcancel\">Not from work done</button>";
+  el.classList.remove("hide");
+}
+
+/* BOQ register */
+function renderBoq() {
+  const use = {}; S.work.forEach(w => { const u = use[w.boqId] || (use[w.boqId] = { all: 0, open: 0 }); u.all += +w.qty || 0; if (!w.billId) u.open += +w.qty || 0; });
+  const list = S.boq.slice().sort((a, b) => (a.client + "|" + a.site + "|" + a.code + "|" + a.item).localeCompare(b.client + "|" + b.site + "|" + b.code + "|" + b.item));
+  $("#boqTbl").innerHTML = list.length ? '<table><thead><tr><th class="l">Client</th><th class="l">Site</th><th class="l">Item</th><th class="l">Unit</th><th>Rate</th><th>Logged</th><th>Not billed</th><th></th></tr></thead><tbody>' +
+    list.map(q => { const u = use[q.id] || { all: 0, open: 0 };
+      return '<tr><td class="l">' + esc(q.client) + '</td><td class="l">' + esc(q.site || "all sites") + '</td><td class="l">' + esc(boqLabel(q)) + (q.note ? '<div class="sub">' + esc(q.note) + "</div>" : "") + '</td><td class="l">' + esc(q.unit) + '</td><td class="hm">' + rateFmt(q.rate) + '</td><td class="hm">' + (u.all ? qtyFmt(u.all) : "–") + '</td><td class="hm">' + (u.open ? qtyFmt(u.open) : "–") +
+        '</td><td><button class="small" data-act="boqedit" data-id="' + esc(q.id) + '">Edit</button> <button class="small danger" data-act="boqdel" data-id="' + esc(q.id) + '">✕</button></td></tr>'; }).join("") + "</tbody></table>"
+    : '<div class="sub">No BOQ items yet. Add each item of the work order with its unit and rate, for example &ldquo;600 mm dia bored pile, rmt, &#8377;2,450&rdquo;.</div>';
+}
+function openBoq(id) {
+  const q = id ? boqOf(id) : null, v = q || { client: $("#wClient").value, site: $("#wSite").value.trim(), code: "", item: "", unit: "rmt", rate: "", note: "" };
+  const used = q ? S.work.filter(w => w.boqId === q.id).length : 0;
+  openModal("<h2>" + (q ? "Edit" : "Add") + ' BOQ item</h2><div class="form"><label style="grid-column:1/-1">Client<select id="qClient">' + optsHtml(workClients(), v.client) + "</select></label>" +
+    (q ? "" : '<label style="grid-column:1/-1">Or type a new client<input type="text" id="qNew"></label>') +
+    '<label style="grid-column:1/-1">Site / project<input type="text" id="qSite" value="' + esc(v.site) + '" placeholder="blank = all sites of this client"></label>' +
+    '<label>Item no.<input type="text" id="qCode" value="' + esc(v.code) + '" placeholder="optional, e.g. 2.1"></label><label>Unit<input type="text" id="qUnit" list="qUnits" value="' + esc(v.unit) + '"><datalist id="qUnits">' + UNITS.map(u => '<option value="' + u + '">').join("") + "</datalist></label>" +
+    '<label style="grid-column:1/-1">Description<input type="text" id="qItem" value="' + esc(v.item) + '" placeholder="e.g. 600 mm dia bored cast-in-situ pile"></label>' +
+    '<label>Rate per unit (&#8377;, before GST)<input type="text" inputmode="decimal" id="qRate" value="' + esc(v.rate) + '"></label><label>Note (optional)<input type="text" id="qNote" value="' + esc(v.note) + '"></label></div>' +
+    (used ? '<div class="help">' + used + " work entr" + (used === 1 ? "y uses" : "ies use") + " this item. A new rate changes the value of work not yet billed; proformas already made keep their amounts.</div>" : "") +
+    '<div id="qMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  if (q) $("#qClient").disabled = used > 0;
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const typed = $("#qNew") ? $("#qNew").value.trim() : "", client = typed ? (matchClient(typed) || typed) : $("#qClient").value, rate = parseAmt($("#qRate").value);
+    const item = $("#qItem").value.trim(), unit = $("#qUnit").value.trim();
+    if (!client) { $("#qMsg").textContent = "Pick a client or type a new one."; return; }
+    if (!item || !unit) { $("#qMsg").textContent = "Enter the description and unit."; return; }
+    if (!(rate > 0)) { $("#qMsg").textContent = "Enter the rate per " + unit + "."; return; }
+    const rec = { id: q ? q.id : uid(), client: client, site: $("#qSite").value.trim(), code: $("#qCode").value.trim(), item: item, unit: unit, rate: round2(rate), note: $("#qNote").value.trim() };
+    if (q) Object.assign(q, rec); else S.boq.push(rec);
+    persist(); closeModal();
+    if (!q) { $("#wClient").innerHTML = optsHtml(workClients(), client); $("#wClient").value = client; if (!$("#wSite").value.trim() || rec.site) $("#wSite").value = rec.site; }
+    renderAll(); if (!q) $("#wItem").value = rec.id; wPrev(); toast("BOQ item saved");
+  };
+}
+function deleteBoq(id) {
+  const q = boqOf(id); if (!q) return;
+  const n = S.work.filter(w => w.boqId === id).length;
+  if (n) { openModal('<h2>This BOQ item is in use</h2><div class="help">' + n + " work entr" + (n === 1 ? "y is" : "ies are") + " logged against " + esc(boqLabel(q)) + '. Delete those entries first, or edit the item instead.</div><div style="display:flex;justify-content:flex-end"><button id="mCancel">Close</button></div>'); $("#mCancel").onclick = closeModal; return; }
+  confirmModal("Delete this BOQ item?", esc(q.client) + " &middot; " + esc(boqLabel(q)) + " &middot; " + rateFmt(q.rate) + "/" + esc(q.unit) + ".", "Delete item", () => { S.boq = S.boq.filter(x => x.id !== id); persist(); renderAll(); toast("BOQ item deleted"); });
+}
+
+/* work log */
+function renderWorkLog() {
+  const fc = $("#wfClient"), cc = fc.value || "all", fr = $("#wfRig"), rc = fr.value || "all";
+  fc.innerHTML = '<option value="all">All clients</option>' + optsHtml(uniq(S.work.map(w => w.client)).sort((a, b) => a.localeCompare(b)), cc);
+  if (fc.value !== cc) fc.value = "all";
+  fr.innerHTML = '<option value="all">All rigs</option>' + optsHtml(uniq(S.work.map(w => w.rig)).sort((a, b) => a.localeCompare(b)), rc) + (S.work.some(w => !w.rig) ? '<option value="-"' + (rc === "-" ? " selected" : "") + ">(no rig given)</option>" : "");
+  if (fr.value !== rc) fr.value = "all";
+  const from = $("#wfFrom").value, to = $("#wfTo").value, st = $("#wfState").value;
+  const rows = S.work.filter(w => (fc.value === "all" || w.client === fc.value) && (fr.value === "all" || (fr.value === "-" ? !w.rig : w.rig === fr.value)) &&
+    (!from || w.date >= from) && (!to || w.date <= to) && (!st || (st === "open" ? !w.billId : !!w.billId)))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.client.localeCompare(b.client) || (a.rig || "").localeCompare(b.rig || ""));
+  WROWS = rows;
+  if (!rows.length) {
+    $("#wRigTbl").innerHTML = ""; $("#wItemTbl").innerHTML = "";
+    $("#wTbl").innerHTML = '<div class="sub">' + (S.work.length ? "No work entries match these filters." : "No work logged yet. Add the BOQ items, then log each day's quantities above.") + "</div>";
+    return;
+  }
+  const rig = {}, item = {};
+  rows.forEach(w => {
+    const r = rig[w.rig || ""] || (rig[w.rig || ""] = { days: {}, n: 0, amt: 0, open: 0 }); r.days[w.date] = 1; r.n++; r.amt += wVal(w); if (!w.billId) r.open += wVal(w);
+    const i = item[w.boqId] || (item[w.boqId] = { q: boqOf(w.boqId), qty: 0, amt: 0 }); i.qty += +w.qty || 0; i.amt += wVal(w);
+  });
+  const tot = rows.reduce((a, w) => a + wVal(w), 0), open = rows.filter(w => !w.billId).reduce((a, w) => a + wVal(w), 0);
+  $("#wRigTbl").innerHTML = '<table><thead><tr><th class="l">Rig / machine</th><th>Days</th><th>Value</th><th>Per day</th><th>Not billed</th></tr></thead><tbody>' +
+    Object.keys(rig).sort((a, b) => rig[b].amt - rig[a].amt).map(k => { const r = rig[k], d = Object.keys(r.days).length; return '<tr><td class="l">' + (k ? esc(k) : '<span class="sub">no rig given</span>') + '</td><td class="hm">' + d + '</td><td class="hm">' + fmt(r.amt) + '</td><td class="hm">' + fmt(r.amt / d) + '</td><td class="hm">' + (r.open >= 1 ? fmt(r.open) : "–") + "</td></tr>"; }).join("") +
+    '<tr class="tot"><td class="l">Total</td><td></td><td class="hm">' + fmt(tot) + '</td><td></td><td class="hm">' + fmt(open) + "</td></tr></tbody></table>";
+  $("#wItemTbl").innerHTML = '<table><thead><tr><th class="l">BOQ item</th><th>Quantity</th><th>Value</th></tr></thead><tbody>' +
+    Object.keys(item).map(k => item[k]).sort((a, b) => b.amt - a.amt).map(i => '<tr><td class="l">' + (i.q ? esc(boqLabel(i.q)) : '<span class="pos-bad">BOQ item deleted</span>') + '</td><td class="hm">' + qtyFmt(i.qty) + " " + esc(i.q ? i.q.unit : "") + '</td><td class="hm">' + fmt(i.amt) + "</td></tr>").join("") + "</tbody></table>";
+  const MAX = 300;
+  $("#wTbl").innerHTML = '<table><thead><tr><th>Date</th><th class="l">Client</th><th class="l">Site</th><th class="l">Rig</th><th class="l">BOQ item</th><th>Quantity</th><th>Rate</th><th>Value</th><th class="l">Bill</th><th></th></tr></thead><tbody>' +
+    rows.slice(0, MAX).map(w => { const q = boqOf(w.boqId);
+      return '<tr><td class="hm">' + dmy(w.date) + '</td><td class="l">' + esc(w.client) + '</td><td class="l">' + esc(w.site) + '</td><td class="l">' + esc(w.rig) + '</td><td class="l">' + (q ? esc(boqLabel(q)) : '<span class="pos-bad">BOQ item deleted</span>') + (w.note ? '<div class="sub">' + esc(w.note) + "</div>" : "") +
+        '</td><td class="hm">' + qtyFmt(w.qty) + " " + esc(q ? q.unit : "") + '</td><td class="hm">' + (q ? rateFmt(q.rate) : "–") + '</td><td class="hm">' + fmt(wVal(w)) + '</td><td class="l">' + (w.billId ? '<span class="tag">' + esc(billLabel(w.billId)) + "</span>" : '<span class="tag pi">not billed</span>') +
+        "</td><td>" + (w.billId ? "" : '<button class="small" data-act="wedit" data-id="' + esc(w.id) + '">Edit</button> <button class="small danger" data-act="wdel" data-id="' + esc(w.id) + '">✕</button>') + "</td></tr>"; }).join("") +
+    '<tr class="tot"><td class="l">' + rows.length + ' entries</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hm">' + fmt(tot) + "</td><td></td><td></td></tr></tbody></table>" +
+    (rows.length > MAX ? '<div class="sub" style="margin-top:6px">Showing the latest ' + MAX + " of " + rows.length + " entries; totals cover all of them. Narrow the dates to see older ones.</div>" : "");
+}
+function openWork(id) {
+  const w = S.work.filter(x => x.id === id)[0]; if (!w || w.billId) return;
+  const items = boqFor(w.client, w.site);
+  openModal('<h2>Edit work entry</h2><div class="sub" style="margin-bottom:8px">' + esc(w.client) + (w.site ? " &middot; " + esc(w.site) : "") + '</div><div class="form">' +
+    '<label>Date<input type="date" id="weDate" value="' + esc(w.date) + '"></label><label>Rig / machine<input type="text" id="weRig" value="' + esc(w.rig) + '"></label>' +
+    '<label style="grid-column:1/-1">BOQ item<select id="weItem">' + items.map(q => '<option value="' + esc(q.id) + '"' + (q.id === w.boqId ? " selected" : "") + ">" + esc(boqLabel(q) + " · " + rateFmt(q.rate) + "/" + q.unit) + "</option>").join("") + "</select></label>" +
+    '<label>Quantity<input type="text" inputmode="decimal" id="weQty" value="' + esc(w.qty) + '"></label><label>Note<input type="text" id="weNote" value="' + esc(w.note) + '"></label></div>' +
+    '<div id="weMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const qty = parseAmt($("#weQty").value);
+    if (!$("#weDate").value || !(qty > 0) || !$("#weItem").value) { $("#weMsg").textContent = "Date, BOQ item and a quantity above 0 are needed."; return; }
+    Object.assign(w, { date: $("#weDate").value, rig: $("#weRig").value.trim(), boqId: $("#weItem").value, qty: Math.round(qty * 1000) / 1000, note: $("#weNote").value.trim() });
+    persist(); closeModal(); renderAll(); toast("Work entry saved");
+  };
+}
+function deleteWork(id) {
+  const w = S.work.filter(x => x.id === id)[0]; if (!w || w.billId) return;
+  const q = boqOf(w.boqId);
+  confirmModal("Delete this work entry?", dmy(w.date) + " &middot; " + esc(w.client) + (w.rig ? " &middot; " + esc(w.rig) : "") + " &middot; " + qtyFmt(w.qty) + " " + esc(q ? q.unit : "") + (q ? " of " + esc(boqLabel(q)) : "") + ".", "Delete entry", () => {
+    S.work = S.work.filter(x => x.id !== id); persist(); renderAll(); toast("Work entry deleted");
+  });
+}
+function exportWork() {
+  try {
+    const head = ["Date", "Client", "Site", "Rig", "Item no", "BOQ item", "Unit", "Quantity", "Rate", "Value", "Bill", "Note"];
+    downloadCsv("work_done.csv", [head].concat(WROWS.map(w => { const q = boqOf(w.boqId) || {}; return [w.date, w.client, w.site, w.rig, q.code || "", q.item || "", q.unit || "", w.qty, q.rate || "", wVal(w), w.billId ? billLabel(w.billId) : "not billed", w.note]; })));
+  } catch (e) { toast("Export failed: " + (e && e.message ? e.message : e)); }
+}
+function renderWork() { wFill(false); renderRollup(); renderBoq(); renderWorkLog(); }
+
 /* ---------- modals ---------- */
 function openModal(html) { $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
 function closeModal() { $("#modalbg").classList.remove("show"); }
@@ -1387,11 +1693,14 @@ function confirmModal(title, msgHtml, yesLabel, onYes) {
 function deleteBill(id) {
   const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
   const n = S.receipts.filter(r => r.billId === id).length;
+  const nw = S.work.filter(w => w.billId === id).length;
   confirmModal("Delete this invoice?", "<b>" + esc(b.client) + "</b> &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + fmt(b.total) + ".<br>It will disappear from every total." +
+    (nw ? "<br>The " + nw + " work entr" + (nw === 1 ? "y" : "ies") + " billed on it go back to not billed." : "") +
     (n ? "<br>The " + n + " receipt" + (n === 1 ? "" : "s") + " you logged against it will stay as on-account receipts." : "") +
     (b.added ? "<br>This entry was added in the tool, so it cannot be restored." : "<br>You can restore it from the Add tab."), "Delete invoice", () => {
     if (b.direct) S.dbills = S.dbills.filter(p => p.id !== id); else if (b.added) S.pis = S.pis.filter(p => p.id !== id); else S.deleted[id] = true;
     S.receipts.forEach(r => { if (r.billId === id) r.billId = ""; });
+    S.work.forEach(w => { if (w.billId === id) w.billId = ""; });
     delete S.overrides[id]; persist(); renderAll(); toast("Invoice deleted");
   });
 }
@@ -1453,7 +1762,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "client", "bills", "receipts", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "client", "bills", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
@@ -1509,6 +1818,11 @@ function wire() {
     else if (act === "advedit") openAdvance(id);
     else if (act === "advdel") deleteAdvance(id);
     else if (act === "advmemo") openAdvance(null, SEL, true);
+    else if (act === "boqedit") openBoq(id);
+    else if (act === "boqdel") deleteBoq(id);
+    else if (act === "wedit") openWork(id);
+    else if (act === "wdel") deleteWork(id);
+    else if (act === "wcancel") { PENDING = null; renderPending(); }
     else if (act === "restore") { delete S.deleted[id]; persist(); renderAll(); toast("Invoice restored"); }
   });
   $("#aDate").value = S.settings.asOn;
@@ -1518,6 +1832,20 @@ function wire() {
   $("#btnRcAdd").onclick = () => openReceipt(null, $("#rClient").value !== "all" ? $("#rClient").value : null);
   $("#btnRcReset").onclick = () => { $("#rClient").value = "all"; $("#rFrom").value = ""; $("#rTo").value = ""; $("#rSrc").value = ""; $("#rSearch").value = ""; renderReceipts(); };
   $("#btnCsvRc").onclick = exportReceipts;
+  $("#wDate").value = isoOf(new Date());
+  $("#wClient").onchange = () => wFill(true);
+  $("#wSite").oninput = wItems;
+  $("#wItem").onchange = wPrev;
+  ["wDate", "wRig"].forEach(id => { $("#" + id).onchange = wPrev; });
+  $("#wQty").oninput = () => { $("#wQty").classList.remove("bad"); wPrev(); };
+  $("#wQty").onkeydown = e => { if (e.key === "Enter") onWAdd(); };
+  $("#btnWAdd").onclick = onWAdd;
+  $("#btnBoqAdd").onclick = () => openBoq(null);
+  ["rbClient", "rbSite", "rbFrom", "rbTo"].forEach(id => { $("#" + id).onchange = () => { if (id === "rbClient") $("#rbSite").value = ""; renderRollup(); }; });
+  $("#btnRb").onclick = onRb;
+  ["wfClient", "wfRig", "wfFrom", "wfTo", "wfState"].forEach(id => { $("#" + id).onchange = renderWorkLog; });
+  $("#btnWfReset").onclick = () => { $("#wfClient").value = "all"; $("#wfRig").value = "all"; $("#wfFrom").value = ""; $("#wfTo").value = ""; $("#wfState").value = ""; renderWorkLog(); };
+  $("#btnCsvWork").onclick = exportWork;
 }
 
 function init() {
