@@ -31,9 +31,6 @@ body{overflow-x:hidden}
 h1{font-size:20px;margin:0}
 h2{font-size:15px;margin:0 0 10px}
 .sub{color:var(--muted);font-size:12.5px}
-.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
-.settings{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
-.settings label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
 input,select,textarea,button{font:inherit;color:var(--text)}
 input[type=text],input[type=number],input[type=date],select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 8px;max-width:100%}
 input[type=number]{width:90px}
@@ -137,6 +134,31 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .gatemsg{margin-top:12px;font-size:13px;font-weight:600;min-height:1.4em;overflow-wrap:anywhere}
 .banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--bad) 12%,var(--surface));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
 #savestatus{overflow-wrap:anywhere}
+.appbar{--brand:#14304d;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--brand);color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:6px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{position:relative;flex:none;width:44px;height:44px;border-radius:10px;background:#fff;display:grid;place-items:center;overflow:hidden}
+.logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:3px;background:#fff}
+.logo .mono{font-weight:800;font-size:17px;letter-spacing:.02em;color:#14304d}
+.bt{min-width:0}
+.bname{font-weight:700;font-size:17px;line-height:1.2;letter-spacing:.01em}
+.bapp{font-size:12.5px;color:rgba(255,255,255,.72)}
+.appbar-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:6px 11px;font-size:13px}
+.hbtn:hover{background:rgba(255,255,255,.16)}
+.hbtn:disabled{opacity:.5;cursor:default}
+.hbtn.user{display:inline-flex;align-items:center;gap:8px;padding:4px 10px 4px 4px}
+.avatar{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;color:#14304d;font-weight:700;font-size:13px}
+.uemail{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.umenu-h{padding:8px 10px;overflow-wrap:anywhere}.umenu-h b{display:block;font-size:13px}
+.sync{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.sync i{width:8px;height:8px;border-radius:50%;background:#9aa4ad;flex:none}
+.sync.ok i{background:#4cc38a}.sync.busy i{background:#f0b429}.sync.err{background:#c23b2e;color:#fff}.sync.err i{background:#fff}
+.viewbar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px;color:var(--muted);padding:2px 2px 12px}
+.viewbar label{display:inline-flex;align-items:center;gap:6px}
+.viewbar input[type=date],.viewbar input[type=number]{padding:4px 6px}
+.viewbar input[type=number]{width:70px}
+.vbinfo{margin-left:auto}
+@media (max-width:640px){.uemail,.vbinfo{display:none}.bname{font-size:15px}.appbar-r{width:100%;justify-content:flex-end}}
 .trend{position:relative}
 .trend svg{display:block;width:100%;height:auto;overflow:visible}
 .trend .tk{font-size:11px;fill:var(--muted)}
@@ -164,8 +186,8 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 <div class="envbar hide" id="envbar" role="note"></div>
 <div class="wrap gate" id="gate">
   <div class="card gatecard">
-    <h1>Receivables Control Room</h1>
-    <div class="sub" style="margin:4px 0 16px">Nityanand Infrastructure + NMFPPL</div>
+    <div class="brand" style="margin-bottom:16px"><span class="logo" style="background:#14304d"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" style="color:#fff">NI</span></span>
+      <div class="bt"><h1>Nityanand Infrastructure</h1><div class="sub">Receivables &middot; NIL + NMFPPL</div></div></div>
     <p class="help">Sign in with the Google account that has access to the receivables sheet. Data loads from Google Sheets after you sign in.</p>
     <button class="primary" id="btnSignIn">Sign in with Google</button>
     <div id="gateMsg" class="gatemsg" role="status"></div>
@@ -173,23 +195,20 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 </div>
 <div class="wrap hide" id="app">
 <div class="banner hide" id="banner" role="alert"><span id="bannerMsg"></span><button class="small primary" id="bannerBtn"></button></div>
-  <div class="top">
-    <div>
-      <h1>Receivables Control Room</h1>
-      <div class="sub">Nityanand Infrastructure + NMFPPL &middot; built from the reconciled RA register (<span id="nbills"></span> bills) &middot; <span id="savestatus">loading…</span></div>
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" aria-hidden="true">NI</span></span>
+      <div class="bt"><div class="bname">Nityanand Infrastructure</div><div class="bapp">Receivables &middot; NIL + NMFPPL</div></div>
     </div>
-    <div class="settings">
-      <label>As on <input type="date" id="asOn"></label>
-      <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
-      <label title="Proformas carry no recorded deductions yet. When on, expected TDS and retention are estimated from each client's history, and advance recovery from its mobilisation advance, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
-      <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Direct</label>
-      <button id="btnToday" class="small">Today</button>
-      <button id="btnUndo" class="small" disabled title="Undo the last change (kept until you refresh the page)">Undo</button>
-      <button id="btnRefresh" class="small" title="Load the latest data from the Google Sheet">Refresh</button>
-      <button id="btnSignOut" class="small">Sign out</button>
+    <div class="appbar-r">
+      <span class="sync" id="syncpill" title="Every change is saved to the Google Sheet"><i></i><span id="savestatus">loading…</span></span>
+      <button id="btnUndo" class="hbtn" disabled title="Undo the last change (kept until you refresh the page)">&#8630; Undo</button>
+      <button id="btnRefresh" class="hbtn" title="Load the latest data from the Google Sheet">&#8635; Refresh</button>
+      <span class="cwrap"><button class="hbtn user" data-act="cmenu" aria-haspopup="true" title="Account"><span class="avatar" id="uAvatar">?</span><span class="uemail" id="uEmail"></span> &#9662;</button><div class="cmenu hide" role="menu">
+        <div class="umenu-h"><span class="sub">Signed in as</span><b id="uEmail2"></b></div><hr><button role="menuitem" id="btnSignOut"><b>Sign out</b></button>
+      </div></span>
     </div>
-  </div>
-
+  </header>
   <div id="shelf"><span class="cwrap"><button class="primary" data-act="cmenu" aria-haspopup="true">+ New</button><div class="cmenu up hide" role="menu">
     <button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button>
     <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
@@ -207,6 +226,14 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="forecast">Collections forecast</button>
     <button data-tab="flags">Flags</button>
   </nav>
+
+  <div class="viewbar" role="group" aria-label="View settings">
+    <label>As on <input type="date" id="asOn"></label><button id="btnToday" class="small">Today</button>
+    <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
+    <label title="Proformas carry no recorded deductions yet. When on, expected TDS and retention are estimated from each client's history, and advance recovery from its mobilisation advance, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
+    <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Show direct</label>
+    <span class="sub vbinfo"><span id="nbills"></span> bills from the reconciled RA register</span>
+  </div>
 
   <section id="tab-overview">
     <div class="grid kpis" id="kpis"></div>
@@ -427,7 +454,7 @@ function normalize(o) {
 }
 let HIST = [], LAST = null;
 function snap() { return JSON.stringify(S); }
-function updateUndo() { const b = $("#btnUndo"); if (!b) return; b.disabled = !HIST.length; b.textContent = "Undo" + (HIST.length ? " (" + HIST.length + ")" : ""); }
+function updateUndo() { const b = $("#btnUndo"); if (!b) return; b.disabled = !HIST.length; b.textContent = "\u21B6 Undo" + (HIST.length ? " (" + HIST.length + ")" : ""); }
 function persist() {
   const cur = snap();
   if (LAST !== null && LAST !== cur) { HIST.push(LAST); if (HIST.length > 30) HIST.shift(); }
@@ -672,8 +699,10 @@ async function flush() {
 function setStatus() {
   const el = $("#savestatus"); if (!el) return;
   const t = SAVING ? "saving…" : SAVE_ERR ? "NOT SAVED (" + SAVE_ERR + ")" : DIRTY ? "unsaved changes…" : "saved to Google Sheets";
-  el.textContent = (USER ? USER.email + " · " : "") + t;
-  el.style.color = SAVE_ERR ? "var(--bad)" : "";
+  el.textContent = t;
+  $("#syncpill").className = "sync " + (SAVE_ERR ? "err" : SAVING || DIRTY ? "busy" : "ok");
+  const em = USER ? USER.email : "";
+  $("#uEmail").textContent = em; $("#uEmail2").textContent = em; $("#uAvatar").textContent = em ? em[0].toUpperCase() : "?";
 }
 function showBanner(msg, btn, fn) { $("#bannerMsg").textContent = msg; const b = $("#bannerBtn"); b.textContent = btn; b.onclick = fn; $("#banner").classList.remove("hide"); }
 function hideBanner() { $("#banner").classList.add("hide"); }
