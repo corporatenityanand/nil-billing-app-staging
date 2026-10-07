@@ -26,7 +26,7 @@
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-.wrap{max-width:1280px;width:100%;margin:0 auto;padding:16px 16px 60px}
+.wrap{max-width:1280px;width:100%;margin:0 auto;padding:16px 16px 96px}
 body{overflow-x:hidden}
 h1{font-size:20px;margin:0}
 h2{font-size:15px;margin:0 0 10px}
@@ -48,6 +48,10 @@ button.danger{color:var(--bad)}
 .cmenu button{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;color:var(--text)}
 .cmenu button:hover,.cmenu button:focus{background:var(--surface2)}
 .cmenu .sub{display:block;font-size:12px;font-weight:400}
+.cmenu.up{top:auto;bottom:calc(100% + 6px)}
+.cmenu hr{border:none;border-top:1px solid var(--line);margin:4px 0}
+#shelf{position:fixed;right:16px;bottom:16px;z-index:40}
+#shelf>.cwrap>button{padding:10px 18px;border-radius:99px;box-shadow:0 6px 18px rgba(0,0,0,.22);font-weight:600}
 nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;padding-top:4px}
 nav button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;padding:9px 12px;color:var(--muted)}
 nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
@@ -179,7 +183,6 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       <label>Credit days <input type="number" id="credit" min="0" max="365" step="5"></label>
       <label title="Proformas carry no recorded deductions yet. When on, expected TDS and retention are estimated from each client's history, and advance recovery from its mobilisation advance, so the proforma figure is money you can really expect."><input type="checkbox" id="est"> Net proformas of expected deductions</label>
       <label title="Show or hide the entries marked direct, everywhere in the tool"><input type="checkbox" id="showD"> Direct</label>
-      <span class="cwrap"><button class="primary small" data-act="cmenu" aria-haspopup="true">+ Create &#9662;</button><div class="cmenu hide" role="menu"><button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button><button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button></div></span>
       <button id="btnToday" class="small">Today</button>
       <button id="btnUndo" class="small" disabled title="Undo the last change (kept until you refresh the page)">Undo</button>
       <button id="btnRefresh" class="small" title="Load the latest data from the Google Sheet">Refresh</button>
@@ -187,13 +190,20 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     </div>
   </div>
 
+  <div id="shelf"><span class="cwrap"><button class="primary" data-act="cmenu" aria-haspopup="true">+ New</button><div class="cmenu up hide" role="menu">
+    <button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button>
+    <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
+    <hr><button role="menuitem" data-act="newrc"><b>Receipt</b><span class="sub">Money received from a client</span></button>
+    <button role="menuitem" data-act="newrc" data-mode="D"><b>Direct receipt</b><span class="sub">Received directly, marked Direct</span></button>
+    <hr><button role="menuitem" data-act="openadd"><b>Bills &amp; receipts added here</b><span class="sub">Paste many proformas, deleted invoices</span></button>
+  </div></span></div>
+
   <nav id="tabs">
     <button data-tab="overview" class="on">Overview</button>
     <button data-tab="client">By client</button>
     <button data-tab="bills">All bills</button>
     <button data-tab="receipts">Receipts</button>
     <button data-tab="work">Work done</button>
-    <button data-tab="add">Add bills &amp; receipts</button>
     <button data-tab="forecast">Collections forecast</button>
     <button data-tab="flags">Flags</button>
   </nav>
@@ -1785,11 +1795,11 @@ function renderWork() { wFill(false); renderRollup(); renderBoq(); renderWorkLog
 /* ---------- modals ---------- */
 function openModal(html) { $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
 function closeModal() { $("#modalbg").classList.remove("show"); }
-function openReceipt(billId, clientArg) {
+function openReceipt(billId, clientArg, mode) {
   const b = BILLS.filter(x => x.id === billId)[0];
   const client = b ? b.client : (clientArg || clientNames()[0]);
-  openModal('<h2>Log a receipt</h2><div class="form"><label style="grid-column:1/-1">Client<select id="mClient">' + clientNames().map(n => '<option value="' + esc(n) + '"' + (n === client ? " selected" : "") + ">" + esc(n) + "</option>").join("") + '</select></label>' +
-    '<label style="grid-column:1/-1">Against bill<select id="mBill"></select></label><label>Amount (\u20B9)<input type="number" id="mAmt" step="any"></label><label>Date<input type="date" id="mDate" value="' + esc(S.settings.asOn) + '"></label><label style="grid-column:1/-1">Mode<select id="mMode"><option value="">Standard</option><option value="D">Direct</option></select></label></div>' +
+  openModal('<h2>' + (mode === "D" ? "Log a direct receipt" : "Log a receipt") + '</h2><div class="form"><label style="grid-column:1/-1">Client<select id="mClient">' + clientNames().map(n => '<option value="' + esc(n) + '"' + (n === client ? " selected" : "") + ">" + esc(n) + "</option>").join("") + '</select></label>' +
+    '<label style="grid-column:1/-1">Against bill<select id="mBill"></select></label><label>Amount (\u20B9)<input type="number" id="mAmt" step="any"></label><label>Date<input type="date" id="mDate" value="' + esc(S.settings.asOn) + '"></label><label style="grid-column:1/-1">Mode<select id="mMode"><option value="">Standard</option><option value="D"' + (mode === "D" ? " selected" : "") + '>Direct</option></select></label></div>' +
     '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save receipt</button></div>');
   const fill = () => {
     const c = $("#mClient").value;
@@ -1979,6 +1989,8 @@ function wire() {
     const id = t.dataset.id, act = t.dataset.act;
     if (act === "cmenu") { t.nextElementSibling.classList.toggle("hide"); return; }
     if (act === "create") { createBill(t.dataset.kind); return; }
+    if (act === "newrc") { openReceipt(null, $("#tab-client").classList.contains("hide") ? null : SEL, t.dataset.mode || ""); return; }
+    if (act === "openadd") { showTab("add"); return; }
     if (act === "cvdbill") openDirectBill(SEL);
     else if (act === "note") { EXP[id] = !EXP[id]; renderAll(); }
     else if (act === "cvnotes") { ALLNOTES = t.checked; renderAll(); }
