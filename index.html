@@ -187,7 +187,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="bills">All bills</button>
     <button data-tab="receipts">Receipts</button>
     <button data-tab="work">Work done</button>
-    <button data-tab="add">Add proformas &amp; receipts</button>
+    <button data-tab="add">Add bills &amp; receipts</button>
     <button data-tab="forecast">Collections forecast</button>
     <button data-tab="flags">Flags</button>
   </nav>
@@ -271,7 +271,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
     <div class="card" style="margin-bottom:12px">
       <h2>Make an RA bill from work done</h2>
-      <div class="help">Adds up the work not yet billed for one client and site at the BOQ rates. The proforma form is filled in for you; adding the proforma marks these entries billed so they are never billed twice. Deleting that proforma frees them again.</div>
+      <div class="help">Adds up the work not yet billed for one client and site at the BOQ rates. The bill form is filled in for you (proforma or tax invoice, your choice); adding the bill marks these entries billed so they are never billed twice. Deleting that bill frees them again.</div>
       <div class="form">
         <label>Client<select id="rbClient"></select></label>
         <label>Site / project<select id="rbSite"></select></label>
@@ -279,7 +279,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
         <label>Work up to<input type="date" id="rbTo"></label>
       </div>
       <div class="tblwrap" id="rbTbl" style="margin-top:10px"></div>
-      <div style="margin-top:10px"><button class="primary" id="btnRb">Fill in the proforma</button></div>
+      <div style="margin-top:10px"><button class="primary" id="btnRb">Fill in the bill</button></div>
     </div>
 
     <div class="card" style="margin-bottom:12px">
@@ -305,12 +305,13 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <section id="tab-add" class="hide">
     <div class="card" style="margin-bottom:12px">
-      <h2>Add one proforma</h2>
+      <h2>Add one bill</h2>
       <div class="form" id="addForm">
+        <label title="A proforma is not a GST document and is not yet due. A tax invoice takes the next number in its company's series and is due from its date.">Create<select id="aKind"><option value="PI">Proforma</option><option value="TI">Tax invoice</option></select></label>
         <label>Client<select id="aClient"></select></label>
         <label id="aNewWrap">Or type a new client<input type="text" id="aNew" placeholder="new client name"></label>
         <label>Billed from<select id="aSrc"><option>NIL</option><option>NMFPPL</option></select></label>
-        <label>Proforma no.<input type="text" id="aNo"></label>
+        <label><span id="aNoLbl">Proforma no.</span><input type="text" id="aNo"></label>
         <label>Bill type<input type="text" id="aType" placeholder="Piling, HSD, Excavation…"></label>
         <label>Seq<input type="text" id="aSeq" placeholder="RA6"></label>
         <label>Site / project<input type="text" id="aSite" list="aSites" placeholder="optional"></label><datalist id="aSites"></datalist>
@@ -340,7 +341,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <div class="card" style="margin-bottom:12px"><h2>Deleted invoices <span class="sub" id="delCount"></span></h2><div class="tblwrap" id="delTbl"></div></div>
 
     <div class="grid twocol">
-      <div class="card"><h2>Proformas added here <span class="sub" id="addedCount"></span></h2><div class="tblwrap" id="addedTbl"></div></div>
+      <div class="card"><h2>Bills added here <span class="sub" id="addedCount"></span></h2><div class="tblwrap" id="addedTbl"></div></div>
       <div class="card"><h2>Receipts logged here</h2><div class="tblwrap" id="rcTbl"></div></div>
     </div>
   </section>
@@ -435,7 +436,7 @@ const TABS = {
   advances: ["id", "client", "site", "date", "amt", "pct", "note"],
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
-  overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth"],
+  overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
@@ -443,6 +444,7 @@ const TABS = {
 };
 const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", overrides: "billId", settings: "key" };
 const AUTO_TABS = ["advances", "boq", "work_log"];   // added after the first Sheets were made: created on first load if missing
+const AUTO_COLS = { overrides: ["date", "base", "total"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
 const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1 };
 const BOOLC = { dateEst: 1, deleted: 1 };
@@ -453,7 +455,7 @@ let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError =
 const GRANT_KEY = "rcr_sheets_granted";
 const grantedBefore = () => { try { return localStorage.getItem(GRANT_KEY) === "1"; } catch (e) { return false; } };
 const setGranted = v => { try { if (v) localStorage.setItem(GRANT_KEY, "1"); else localStorage.removeItem(GRANT_KEY); } catch (e) {} };
-let HDR = {}, SHEET_IDS = {}, BASE = null, LOADED_AT = 0;
+let HDR = {}, SHEET_IDS = {}, GRID_COLS = {}, BASE = null, LOADED_AT = 0;
 let DIRTY = false, SAVING = false, EDITS = 0, SAVE_ERR = "";
 
 const isoFromSerial = v => new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5).toISOString().slice(0, 10);
@@ -502,8 +504,9 @@ async function api(method, path, body) {
 
 /* read every tab into DATA and S; rows are matched by header name, so column order in the sheet does not matter */
 async function loadAll() {
-  const meta = await api("GET", "?fields=sheets.properties(sheetId,title)");
-  SHEET_IDS = {}; (meta.sheets || []).forEach(s => { SHEET_IDS[s.properties.title] = s.properties.sheetId; });
+  const meta = await api("GET", "?fields=sheets.properties(sheetId,title,gridProperties(columnCount))");
+  SHEET_IDS = {}; GRID_COLS = {};
+  (meta.sheets || []).forEach(s => { SHEET_IDS[s.properties.title] = s.properties.sheetId; GRID_COLS[s.properties.title] = (s.properties.gridProperties || {}).columnCount || 0; });
   const toMake = AUTO_TABS.filter(t => !(t in SHEET_IDS));
   if (toMake.length) {
     const r0 = await api("POST", ":batchUpdate", { requests: toMake.map(t => ({ addSheet: { properties: { title: t } } })) });
@@ -517,11 +520,19 @@ async function loadAll() {
     tabs.filter(t => t !== "audit").map(t => "ranges=" + encodeURIComponent(qt(t))).join("&") + "&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER");
   const vrs = r.valueRanges || [];
   const raw = {};
+  const colAdds = [], widen = [];
   tabs.forEach((t, i) => {
     HDR[t] = ((vrs[i] && vrs[i].values && vrs[i].values[0]) || []).map(h => String(h).trim());
-    const miss = TABS[t].filter(c => HDR[t].indexOf(c) < 0);
-    if (miss.length) throw new Error("Tab '" + t + "' is missing columns: " + miss.join(", ") + ".");
+    const miss = TABS[t].filter(c => HDR[t].indexOf(c) < 0), auto = miss.filter(c => (AUTO_COLS[t] || []).indexOf(c) >= 0);
+    if (miss.length > auto.length) throw new Error("Tab '" + t + "' is missing columns: " + miss.filter(c => auto.indexOf(c) < 0).join(", ") + ".");
+    if (!auto.length) return;
+    const at = HDR[t].length;
+    if (GRID_COLS[t] && at + auto.length > GRID_COLS[t]) widen.push({ appendDimension: { sheetId: SHEET_IDS[t], dimension: "COLUMNS", length: at + auto.length - GRID_COLS[t] } });
+    colAdds.push({ range: qt(t) + "!" + colL(at) + "1", values: [auto] });
+    HDR[t] = HDR[t].concat(auto);
   });
+  if (widen.length) await api("POST", ":batchUpdate", { requests: widen });
+  if (colAdds.length) await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: colAdds });
   tabs.filter(t => t !== "audit").forEach((t, i) => {
     const rows = ((vrs[tabs.length + i] && vrs[tabs.length + i].values) || []).slice(1);
     const kcol = HDR[t].indexOf(KEY[t] || TABS[t][0]);
@@ -543,7 +554,7 @@ async function loadAll() {
   n.advances = raw.advances;
   n.boq = raw.boq;
   n.work = raw.work_log;
-  raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0) }; });
+  raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
   n.settings = { asOn: DATA.asOn, credit: toNum(st.credit, 30), est: st.est === undefined || st.est === "" ? true : toBool(st.est), showD: st.showD === undefined || st.showD === "" ? true : toBool(st.showD) };
@@ -752,6 +763,7 @@ function rateOf(client) { return RATES[client] || { ret: 0, adv: 0 }; }
 
 let BILLS = [];
 let EXP = {}, ALLNOTES = false;
+const piTag = b => b.piDate ? ' <span class="tag" title="Converted from proforma ' + esc(b.piNo || "-") + " dated " + dmy(b.piDate) + '">from proforma ' + esc(b.piNo || "") + "</span>" : "";
 const noteBtn = b => b.remark ? '<button class="small" data-act="note" data-id="' + esc(b.id) + '">' + ((ALLNOTES || EXP[b.id]) ? "Hide note" : "Note") + "</button> " : "";
 const noteRow = (b, span) => (b.remark && (ALLNOTES || EXP[b.id])) ? '<tr class="noterow"><td class="notecell" colspan="' + span + '">' + esc(b.remark) + "</td></tr>" : "";
 function computeBills() {
@@ -763,9 +775,13 @@ function computeBills() {
   list.forEach(b => {
     const o = S.overrides[b.id];
     if (o) {
+      if (b.status === "PI" && o.status && o.status !== "PI") { b.piNo = b.billno; b.piDate = b.date; }   // converted: the proforma's own no. and date stay on its record
       if (o.status) b.status = o.status;
       if (o.billno) b.billno = o.billno;
+      if (o.date) { b.date = o.date; b.dateEst = false; }
+      if (o.base > 0) { b.base = o.base; if (o.total > 0) b.total = o.total; }
       if (o.manual) { b.tds = o.tds || 0; b.ret = o.ret || 0; b.adv = o.adv || 0; b.oth = o.oth || 0; b.manual = true; }
+      if (b.piDate && b.stage) b.stage = b.client.indexOf("MEIL") >= 0 ? "Not booked by MEIL" : "";
       b.converted = true;
     }
     let ret = b.ret || 0, adv = b.adv || 0, oth = b.oth || 0, tds = b.tds || 0;
@@ -1155,10 +1171,10 @@ function renderBills() {
   let sum = 0;
   rows.forEach(b => {
     sum += b.bal;
-    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (b.est ? ' <span class="tag est" title="Deductions estimated">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "") + (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "");
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + (b.est ? ' <span class="tag est" title="Deductions estimated">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "") + (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "");
     h += "<tr><td>" + esc(b.client) + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") + '</td><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.ded) + '</td><td class="hm">' + fmt(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td>' + noteBtn(b) +
       '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' +
-      (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Invoiced</button>' : "") +
+      (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Make tax invoice</button>' : "") +
       ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 10);
   });
   h += '<tr class="tot"><td>' + rows.length + ' bills</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hm">' + fmt(sum) + "</td><td></td></tr></tbody></table>";
@@ -1168,7 +1184,7 @@ function renderAdded() {
   const mine = BILLS.filter(b => b.added);
   $("#addedCount").textContent = mine.length ? "(" + mine.length + ")" : "";
   $("#addedTbl").innerHTML = mine.length ? '<table><thead><tr><th>Client</th><th class="l">No</th><th>Date</th><th>Total</th><th>Expected net</th><th></th></tr></thead><tbody>' +
-    mine.map(b => "<tr><td>" + esc(b.client) + '</td><td class="l">' + esc(b.billno) + " " + esc(b.seq) + (b.status !== "PI" ? ' <span class="tag">invoiced</span>' : "") + '</td><td class="hm">' + dmy(b.date) + '</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.net) + '</td><td><button class="small danger" data-act="delpi" data-id="' + esc(b.id) + '">\u2715</button></td></tr>').join("") + "</tbody></table>"
+    mine.map(b => "<tr><td>" + esc(b.client) + '</td><td class="l">' + esc(b.billno) + " " + esc(b.seq) + (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : b.piDate ? piTag(b) : ' <span class="tag">tax invoice</span>') + '</td><td class="hm">' + dmy(b.date) + '</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.net) + '</td><td><button class="small danger" data-act="delpi" data-id="' + esc(b.id) + '">\u2715</button></td></tr>').join("") + "</tbody></table>"
     : '<div class="sub">None yet. Add one above or paste a batch.</div>';
   $("#rcTbl").innerHTML = vr().length ? '<table><thead><tr><th>Client</th><th class="l">Against</th><th>Date</th><th>Amount</th><th></th></tr></thead><tbody>' +
     vr().map(r => { const b = BILLS.filter(x => x.id === r.billId)[0]; return "<tr><td>" + esc(r.client) + '</td><td class="l">' + (b ? esc((b.billno || "-") + " " + b.seq) : "on account") + '</td><td class="hm">' + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="delrc" data-id="' + esc(r.id) + '">\u2715</button></td></tr>'; }).join("") + "</tbody></table>"
@@ -1277,11 +1293,11 @@ function renderClientView(A) {
   const rowsH = bills.map(b => {
     run += b.bal; const settled = Math.abs(b.bal) < 1; if (!settled) open++;
     if (CV_HIDE && settled) return "";
-    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + (b.est ? ' <span class="tag est">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") +
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + (b.est ? ' <span class="tag est">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") +
       (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "");
     const z = v => v >= 1 ? fmt(v) : "\u2013";
     return '<tr class="' + (settled ? "settled" : "") + '"><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + z(b.total) + '</td><td class="hm">' + z(b.eTds) + '</td><td class="hm">' + z(b.eRet) + '</td><td class="hm">' + z(b.eAdv) + '</td><td class="hm">' + z(b.eOth) + '</td><td class="hm">' + z(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td class="hm">' + fmt(run) + '</td><td>' + noteBtn(b) +
-      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Invoiced</button>' : "") + ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 13);
+      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Make tax invoice</button>' : "") + ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 13);
   }).join("");
   h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills, oldest first</h2><label class="sub"><input type="checkbox" data-act="cvhide"' + (CV_HIDE ? " checked" : "") + '> hide settled</label><label class="sub"><input type="checkbox" data-act="cvnotes"' + (ALLNOTES ? " checked" : "") + '> show all notes</label><span class="sub">' + open + " of " + bills.length + ' open</span></div><div class="tblwrap"><table><thead><tr><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>TDS</th><th>Retention</th><th>Adv rec.</th><th>Other</th><th>Received</th><th>Balance</th><th>Running</th><th></th></tr></thead><tbody>' + rowsH +
     '<tr class="tot"><td class="l">Total</td><td></td><td></td><td></td><td class="hm">' + fmt(T.total) + '</td><td class="hm">' + fmt(T.tds) + '</td><td class="hm">' + fmt(T.ret) + '</td><td class="hm">' + fmt(T.adv) + '</td><td class="hm">' + fmt(T.oth) + '</td><td class="hm">' + fmt(T.paid) + '</td><td class="hm">' + fmt(T.bal) + "</td><td></td><td></td></tr></tbody></table></div></div>";
@@ -1381,7 +1397,40 @@ function formVals() {
   if (o && adv > o.left) adv = o.left;
   return { base, total, tds, ret, adv, oth, net: total - tds - ret - adv - oth, open: o };
 }
+/* ---------- bill numbers ----------
+   Tax invoices run one series per company (NIL, NMFPPL) per financial year (April to March), e.g. 26-27/30.
+   The next number follows the highest one used that year; a year whose invoices carry plain numbers continues them.
+   Proformas run their own number across both companies, and a converted proforma keeps its number on its record. */
+const fyOf = iso => { const y = +String(iso).slice(0, 4), m = +String(iso).slice(5, 7), st = m >= 4 ? y : y - 1; return String(st % 100).padStart(2, "0") + "-" + String((st + 1) % 100).padStart(2, "0"); };
+const tisOf = (src, date, exceptId) => { const fy = fyOf(date); return BILLS.filter(b => b.status === "TI" && !b.direct && b.src === src && b.id !== exceptId && b.date && fyOf(b.date) === fy); };
+function nextTiNo(src, date, exceptId) {
+  date = date || S.settings.asOn;
+  const fy = fyOf(date), nos = tisOf(src, date, exceptId).map(b => String(b.billno || "").trim());
+  const series = (re, pre) => {
+    let n = -1, w = 2;
+    nos.forEach(x => { const m = re.exec(x); if (m && +m[1] > n) { n = +m[1]; w = m[1].length; } });
+    return n < 0 ? null : pre + String(n + 1).padStart(w, "0");
+  };
+  return series(new RegExp("^" + fy + "\\s*/\\s*(\\d+)$"), fy + "/") || series(/^(\d+)$/, "") || fy + "/01";
+}
+const tiTaken = (src, date, no, exceptId) => tisOf(src, date || S.settings.asOn, exceptId).filter(b => norm(b.billno || "") === norm(no))[0] || null;
+function nextPiNo() {
+  const nums = BILLS.map(b => String((b.status === "PI" ? b.billno : b.piNo) || "").trim()).filter(x => /^\d+$/.test(x)).map(Number);
+  return nums.length ? String(Math.max.apply(null, nums) + 1) : "";
+}
+let A_SUG = "";
+const formKind = () => ($("#aKind").value === "TI" ? "TI" : "PI");
+/* the number box follows the chosen series until someone types their own number */
+function suggestNo() {
+  const ti = formKind() === "TI", el = $("#aNo");
+  $("#aNoLbl").textContent = ti ? "Tax invoice no." : "Proforma no.";
+  $("#btnAdd").textContent = ti ? "Add tax invoice" : "Add proforma";
+  const sug = ti ? nextTiNo($("#aSrc").value, $("#aDate").value) : nextPiNo(), cur = el.value.trim();
+  if (!cur || cur === A_SUG) el.value = sug;
+  A_SUG = sug;
+}
 function updatePreview() {
+  suggestNo();
   const v = formVals();
   $("#aAdvNote").innerHTML = v.open ? "Mobilisation advance: <b>" + fmt(v.open.left) + "</b> still to recover" + (v.open.x.a.site ? " on " + esc(v.open.x.a.site) : "") + ", agreed at " + v.open.pct + "% of base." + ($("#aAdvOn").checked ? (v.adv < v.base * (+$("#aAdv").value || 0) / 100 - 0.5 ? " This bill takes the last " + fmt(v.adv) + "." : "") : " Not recovered on this bill.") : ($("#aAdvOn").checked ? "No advance is recorded for this client and site; the % is applied as typed." : "");
   $("#aPrev").innerHTML = [["Invoice total", v.total], ["TDS", v.tds], ["Retention", v.ret], ["Adv recovery", v.adv], ["Other", v.oth], ["Expected net", v.net]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join("");
@@ -1399,6 +1448,8 @@ function onAdd() {
     const missing = [];
     if (!client) missing.push(["aNew", "client"]);
     if (!(v.base > 0)) missing.push(["aBase", "base amount"]);
+    const kind = formKind(), kname = kind === "TI" ? "tax invoice" : "proforma", no = $("#aNo").value.trim();
+    if (kind === "TI" && !no) missing.push(["aNo", "tax invoice no."]);
     if (missing.length) {
       missing.forEach(m => $("#" + m[0]).classList.add("bad"));
       setMsg("Not added. Please fill in: " + missing.map(m => m[1]).join(" and ") + ".", false);
@@ -1406,6 +1457,12 @@ function onAdd() {
       $("#" + missing[0][0]).focus(); return;
     }
     const date = $("#aDate").value || S.settings.asOn, id = uid();
+    const clash = kind === "TI" ? tiTaken($("#aSrc").value, date, no) : null;
+    if (clash) {
+      $("#aNo").classList.add("bad");
+      setMsg("Not added. Tax invoice no. " + no + " is already used in " + $("#aSrc").value + "'s FY " + fyOf(date) + " series (" + clash.client + ", " + dmy(clash.date) + "). The next free number is " + nextTiNo($("#aSrc").value, date) + ".", false);
+      $("#aNo").focus(); return;
+    }
     let remark = "", linked = 0;
     if (PENDING && PENDING.client === client) {   // filled in from work done: those entries are now billed on this proforma
       S.work.forEach(w => { if (PENDING.ids.indexOf(w.id) >= 0 && !w.billId) { w.billId = id; linked++; } });
@@ -1413,11 +1470,11 @@ function onAdd() {
     }
     const dropped = PENDING && !linked;
     PENDING = null; renderPending();
-    addPi({ id: id, client, src: $("#aSrc").value, status: "PI", billno: $("#aNo").value.trim(), type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
+    addPi({ id: id, client, src: $("#aSrc").value, status: kind, billno: no, type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
       base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds), remark: remark });
     $("#aNo").value = ""; $("#aSeq").value = ""; $("#aBase").value = ""; $("#aNew").value = "";
-    persist(); renderAll(); advDefaults(); toast("Proforma added");
-    setMsg("Added " + fmt(v.total) + " proforma for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + "." +
+    persist(); renderAll(); advDefaults(); toast(kind === "TI" ? "Tax invoice " + no + " added" : "Proforma added");
+    setMsg("Added " + fmt(v.total) + " " + kname + (no ? " " + no : "") + " for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + "." +
       (linked ? " " + linked + " work entr" + (linked === 1 ? "y" : "ies") + " marked billed on it." : dropped ? " The client was changed, so no work entries were marked billed." : "") + " See it under By client or All bills.", true);
   } catch (e) {
     setMsg("Something went wrong: " + (e && e.message ? e.message : e), false);
@@ -1597,7 +1654,7 @@ function renderPending() {
   const el = $("#aWork");
   if (!PENDING) { el.classList.add("hide"); el.innerHTML = ""; return; }
   el.innerHTML = "<span>Filled in from work done: <b>" + PENDING.ids.length + " entr" + (PENDING.ids.length === 1 ? "y" : "ies") + "</b>, " + dmy(PENDING.from) + " to " + dmy(PENDING.to) + ", base <b>" + fmt(PENDING.base) +
-    "</b>. Adding this proforma marks them billed. Check the proforma no., bill type and deductions first.</span><button class=\"small\" data-act=\"wcancel\">Not from work done</button>";
+    "</b>. Adding this bill marks them billed. Check the bill no., bill type and deductions first.</span><button class=\"small\" data-act=\"wcancel\">Not from work done</button>";
   el.classList.remove("hide");
 }
 
@@ -1781,7 +1838,8 @@ function deleteReceipt(rid, reopen) {
 function openEdit(id) {
   const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
   const rcs = vr().filter(r => r.billId === id);
-  let h = "<h2>Edit bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + dmy(b.date) + " &middot; total " + fmt(b.total) + " &middot; balance <b>" + fmt(b.bal) + "</b></div>";
+  let h = "<h2>Edit bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + dmy(b.date) + " &middot; total " + fmt(b.total) + " &middot; balance <b>" + fmt(b.bal) + "</b>" +
+    (b.piDate ? "<br>Tax invoice made from proforma " + esc(b.piNo || "-") + " dated " + dmy(b.piDate) + ' <button class="small" id="eUnconv">Back to proforma</button>' : "") + "</div>";
   if (!b.added) h += '<div class="form"><label style="grid-column:1/-1">Received per billing ledger (\u20B9)<input type="number" id="eLedger" step="any" value="' + (Math.round(b.pay * 100) / 100) + '"></label></div>' +
     '<div class="help">Set to 0 to remove the ledger receipts from this bill.' + (b.payEdited ? " Originally " + fmt(b.payOrig) + "." : "") + " The note on the bill still lists the original receipts.</div>";
   h += '<h2 style="font-size:13px;margin-top:10px">Receipts logged in this tool</h2>' + (rcs.length ? '<table><tbody>' + rcs.map(r => "<tr><td>" + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="medelrc" data-id="' + esc(r.id) + '">Delete</button></td></tr>').join("") + "</tbody></table>" : '<div class="sub">None.</div>');
@@ -1789,6 +1847,7 @@ function openEdit(id) {
   openModal(h);
   $("#eClose").onclick = closeModal;
   $("#eDel").onclick = () => { closeModal(); deleteBill(id); };
+  if (b.piDate) $("#eUnconv").onclick = () => { closeModal(); unconvert(id); };
   if (!b.added) $("#eSave").onclick = () => {
     const v = parseFloat($("#eLedger").value); if (isNaN(v) || v < 0) { toast("Enter a valid amount"); return; }
     if (Math.abs(v - b.payOrig) < 0.005) delete S.payAdj[id]; else S.payAdj[id] = Math.round(v * 100) / 100;
@@ -1796,17 +1855,52 @@ function openEdit(id) {
   };
   $("#modal").dataset.bill = id;
 }
+/* proforma -> tax invoice: the same record (id) becomes the tax invoice through an `overrides` row, so receipts, work entries
+   and advance recovery on it carry over; the proforma's own number and date stay on the record and show as "from proforma". */
 function openInvoiced(billId) {
   const b = BILLS.filter(x => x.id === billId)[0]; if (!b) return;
-  openModal('<h2>Mark as tax invoice</h2><div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + fmt(b.total) + '</div><div class="form"><label style="grid-column:1/-1">Tax invoice no.<input type="text" id="iNo" value="' + esc(b.billno) + '"></label>' +
-    '<label>TDS (\u20B9)<input type="number" id="iTds" step="any" value="' + Math.round(b.eTds) + '"></label><label>Retention (\u20B9)<input type="number" id="iRet" step="any" value="' + Math.round(b.eRet) + '"></label>' +
-    '<label>Adv recovery (\u20B9)<input type="number" id="iAdv" step="any" value="' + Math.round(b.eAdv) + '"></label><label>Other debits (\u20B9)<input type="number" id="iOth" step="any" value="' + Math.round(b.eOth) + '"></label></div>' +
-    '<div class="help">Deductions are prefilled from the estimate. Use the amounts on the actual invoice.' + (function () { const o = advOpen(b.client, b.site, b.date); return o ? " Advance still to recover: " + fmt(o.left + (b.eAdv || 0)) + " at " + o.pct + "% of base. Set Adv recovery to 0 if this bill is not part of the agreement." : ""; })() + '</div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Mark invoiced</button></div>');
+  const today = isoOf(new Date()), gr = b.base > 0 ? b.total / b.base : 1.18, d0 = { tds: b.eTds, ret: b.eRet, adv: b.eAdv, oth: b.eOth };
+  const num = (id, lab, v) => '<label>' + lab + ' (\u20B9)<input type="text" inputmode="decimal" id="' + id + '" value="' + Math.round(v) + '"></label>';
+  openModal('<h2>Make tax invoice</h2><div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; proforma " + esc(b.billno || "-") + " " + esc(b.seq) + " dated " + dmy(b.date) + " &middot; " + fmt(b.total) + " &middot; " + esc(b.src) + "</div>" +
+    '<div class="form"><label>Tax invoice no.<input type="text" id="iNo" value="' + esc(nextTiNo(b.src, today, b.id)) + '"></label><label>Invoice date<input type="date" id="iDate" value="' + today + '"></label>' +
+    '<label style="grid-column:1/-1">Base amount, before GST (\u20B9)<input type="text" inputmode="decimal" id="iBase" value="' + round2(b.base) + '"></label>' +
+    num("iTds", "TDS", d0.tds) + num("iRet", "Retention", d0.ret) + num("iAdv", "Adv recovery", d0.adv) + num("iOth", "Other debits", d0.oth) + "</div>" +
+    '<div class="preview" id="iPrev" style="margin:8px 0"></div>' +
+    '<div class="help">The number is the next in ' + esc(b.src) + "'s tax invoice series for the invoice date's financial year; change it if your books say otherwise. Proforma " + esc(b.billno || "") + " stays on the record, linked to this invoice, and receipts and work entries on it carry over. Ageing and the due date count from the invoice date. Deductions are prefilled from the proforma" + (b.est ? " estimate" : "") + "; use the amounts on the actual invoice." +
+    (function () { const o = advOpen(b.client, b.site, b.date); return o ? " Advance still to recover: " + fmt(o.left + (b.eAdv || 0)) + " at " + o.pct + "% of base. Set Adv recovery to 0 if this bill is not part of the agreement." : ""; })() + "</div>" +
+    '<div id="iMsg" style="margin:6px 0;font-size:13px;font-weight:600;color:var(--bad)"></div><div style="display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Make tax invoice</button></div>');
+  let sug = $("#iNo").value;
+  const vals = () => { const base = parseAmt($("#iBase").value); return { base: base, total: round2(base * gr), tds: parseAmt($("#iTds").value), ret: parseAmt($("#iRet").value), adv: parseAmt($("#iAdv").value), oth: parseAmt($("#iOth").value) }; };
+  const prev = () => { const v = vals(); $("#iPrev").innerHTML = [["Invoice total", v.total], ["Deductions", v.tds + v.ret + v.adv + v.oth], ["Expected net", v.total - v.tds - v.ret - v.adv - v.oth]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join(""); };
+  $("#iDate").onchange = () => { const s2 = nextTiNo(b.src, $("#iDate").value || today, b.id); if ($("#iNo").value.trim() === sug) $("#iNo").value = s2; sug = s2; };
+  $("#iBase").oninput = () => {   // a certified amount different from the proforma: deductions move with it
+    const r = b.base > 0 ? parseAmt($("#iBase").value) / b.base : 1;
+    [["iTds", "tds"], ["iRet", "ret"], ["iAdv", "adv"], ["iOth", "oth"]].forEach(x => { $("#" + x[0]).value = Math.round(d0[x[1]] * r); });
+    prev();
+  };
+  ["iTds", "iRet", "iAdv", "iOth"].forEach(id => { $("#" + id).oninput = prev; });
+  $("#iNo").oninput = () => { $("#iNo").classList.remove("bad"); $("#iMsg").textContent = ""; };
+  prev();
   $("#mCancel").onclick = closeModal;
   $("#mSave").onclick = () => {
-    S.overrides[b.id] = { status: "TI", billno: $("#iNo").value.trim(), manual: true, tds: +$("#iTds").value || 0, ret: +$("#iRet").value || 0, adv: +$("#iAdv").value || 0, oth: +$("#iOth").value || 0 };
-    persist(); closeModal(); renderAll(); toast("Marked as tax invoice");
+    const no = $("#iNo").value.trim(), date = $("#iDate").value, v = vals();
+    $$("#modal .bad").forEach(x => x.classList.remove("bad"));
+    const miss = [];
+    if (!no) miss.push(["iNo", "tax invoice no."]);
+    if (!date) miss.push(["iDate", "invoice date"]);
+    if (!(v.base > 0)) miss.push(["iBase", "base amount"]);
+    if (miss.length) { miss.forEach(m => $("#" + m[0]).classList.add("bad")); $("#iMsg").textContent = "Please fill in: " + miss.map(m => m[1]).join(", ") + "."; return; }
+    const clash = tiTaken(b.src, date, no, b.id);
+    if (clash) { $("#iNo").classList.add("bad"); $("#iMsg").textContent = no + " is already used in " + b.src + "'s FY " + fyOf(date) + " series (" + clash.client + ", " + dmy(clash.date) + "). Next free: " + nextTiNo(b.src, date, b.id) + "."; return; }
+    S.overrides[b.id] = { status: "TI", billno: no, date: date, base: round2(v.base), total: v.total, manual: true, tds: round2(v.tds), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth) };
+    persist(); closeModal(); renderAll(); toast("Proforma " + (b.billno || "") + " is now tax invoice " + no);
   };
+}
+function unconvert(id) {
+  const b = BILLS.filter(x => x.id === id)[0]; if (!b || !b.piDate) return;
+  confirmModal("Back to proforma?", "Tax invoice <b>" + esc(b.billno) + "</b> goes back to proforma <b>" + esc(b.piNo || "-") + "</b> dated " + dmy(b.piDate) + ", with the proforma's amount and deductions. Receipts stay on it.", "Back to proforma", () => {
+    delete S.overrides[id]; persist(); renderAll(); toast("Back to proforma " + (b.piNo || ""));
+  });
 }
 
 /* ---------- export ---------- */
@@ -1855,10 +1949,12 @@ function wire() {
   $("#btnReceipt").onclick = () => openReceipt(null);
   $("#aClient").onchange = onClientChange;
   $("#aAdvOn").onchange = updatePreview;
+  ["aKind", "aSrc"].forEach(id => { $("#" + id).onchange = updatePreview; });
   ["aSite", "aDate"].forEach(id => { $("#" + id).onchange = advDefaults; });
   $("#aNew").onchange = advDefaults;
   ["aBase", "aGst", "aTds", "aRet", "aAdv", "aOth"].forEach(id => { $("#" + id).oninput = () => { $("#" + id).classList.remove("bad"); updatePreview(); }; $("#" + id).onchange = updatePreview; });
   $("#aNew").oninput = () => $("#aNew").classList.remove("bad");
+  $("#aNo").oninput = () => $("#aNo").classList.remove("bad");
   $("#btnAdd").onclick = onAdd;
   $("#btnParse").onclick = parsePaste; $("#btnImport").onclick = onImport;
   $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
