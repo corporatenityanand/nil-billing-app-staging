@@ -142,6 +142,12 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .ttip i{display:inline-block;width:12px;height:2px;border-radius:1px}
 .ttip b{font-variant-numeric:tabular-nums}
 .trendtbl{display:none;margin-top:8px}.trendtbl.show{display:block}
+.paystrip{display:block;width:100%;height:30px;overflow:visible}
+.paystrip .pdot{cursor:default}
+.paystrip .pdot:hover{stroke:var(--text)!important}
+.payax{display:block;width:100%;height:18px;overflow:visible}
+.payax .tk{font-size:11px;fill:var(--muted);text-transform:none;letter-spacing:0;font-weight:400}
+.paytbl td{vertical-align:middle}
 .envbar{position:sticky;top:0;z-index:50;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.04em;color:#1d1d1b;background:repeating-linear-gradient(135deg,#f5b400 0 14px,#ffd45c 14px 28px);border-bottom:2px solid #1d1d1b;overflow-wrap:anywhere}
 </style>
 </head>
@@ -189,6 +195,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
   <section id="tab-overview">
     <div class="grid kpis" id="kpis"></div>
     <div class="card" style="margin-bottom:12px" id="trendAll"></div>
+    <div class="card" style="margin-bottom:12px" id="payAll"></div>
     <div class="card" style="margin-bottom:12px">
       <h2>How old is the money? <span class="sub">(positive balances only, by days since bill date)</span></h2>
       <div class="stackbar" id="ageBar"></div>
@@ -1001,6 +1008,66 @@ function drawTrend(el) {
   $$(".hit", el).forEach(r => { r.addEventListener("pointermove", ev => show(+r.dataset.i, ev)); r.addEventListener("pointerleave", () => { tip.style.display = "none"; r.classList.remove("on"); }); });
 }
 
+/* ---------- who pays on time ----------
+   Every dated receipt tied to a bill is one dot at (receipt date - bill date) days, sized by amount and coloured by
+   how late it was against the credit days set at the top. Invoiced bills still unpaid past the credit days are hollow
+   rings at their current age, so a client that simply has not paid does not look punctual. */
+const PAYX = 180;   // days shown; later dots sit at the right edge
+function payData() {
+  const cr = +S.settings.credit || 0, by = {};
+  const get = n => by[n] || (by[n] = { name: n, pts: [], amt: 0, onAmt: 0, wd: 0, open: [], overdue: 0 });
+  allReceipts().forEach(x => {
+    const b = x.bill; if (!b || b.status === "Adv" || !x.date || !b.date || !(x.amt > 0)) return;
+    const d = Math.round((toD(x.date) - toD(b.date)) / 864e5), c = get(x.client);
+    c.pts.push({ d: d, amt: x.amt, b: b, date: x.date }); c.amt += x.amt; c.wd += Math.max(0, d) * x.amt; if (d <= cr) c.onAmt += x.amt;
+  });
+  BILLS.forEach(b => { if (b.status === "PI" || b.status === "Adv" || b.bal < 1 || b.days <= cr) return; const c = get(b.client); c.open.push(b); c.overdue += b.bal; });
+  return Object.keys(by).map(k => by[k]).map(c => Object.assign(c, { on: c.amt + c.overdue ? c.onAmt / (c.amt + c.overdue) : null, avg: c.amt ? c.wd / c.amt : null }))
+    .sort((a, b) => (b.on == null ? -1 : b.on) - (a.on == null ? -1 : a.on) || a.overdue - b.overdue || a.name.localeCompare(b.name));
+}
+const payCol = (d, cr) => d <= cr ? "var(--cred)" : d <= cr + 30 ? "var(--pi)" : "var(--bad)";
+const payLate = (d, cr) => d < 0 ? "paid " + -d + " days before the bill date" : d <= cr ? "on time, " + d + " days after the bill" : d - cr + " days late (" + d + " days after the bill)";
+function renderPay() {
+  const el = $("#payAll"); if (!el) return;
+  const cr = +S.settings.credit || 0, rows = payData();
+  if (!rows.length) { el.innerHTML = '<h2>Who pays on time</h2><div class="sub">No dated receipts yet.</div>'; return; }
+  const W = 360, H = 30, P = 8, x = d => P + (W - 2 * P) * Math.max(0, Math.min(d, PAYX)) / PAYX;
+  const maxAmt = Math.max.apply(null, rows.map(c => Math.max.apply(null, c.pts.map(p => p.amt).concat(c.open.map(b => b.bal), [1]))));
+  const rad = a => 4 + 6 * Math.sqrt(a / maxAmt);
+  const ticks = [0, 30, 60, 90, 120, 150, 180];
+  const band = '<rect x="' + x(0) + '" y="0" width="' + (x(cr) - x(0)) + '" height="' + H + '" style="fill:var(--cred);opacity:.08"/>' +
+    '<line x1="' + x(cr) + '" x2="' + x(cr) + '" y1="0" y2="' + H + '" style="stroke:var(--cred);stroke-width:1.5;stroke-dasharray:3 3"/>';
+  const axis = '<svg viewBox="0 0 ' + W + ' 18" class="payax" aria-hidden="true">' + ticks.map(t => '<text class="tk" x="' + x(t) + '" y="13" text-anchor="' + (t === 0 ? "start" : t === PAYX ? "end" : "middle") + '">' + (t === PAYX ? t + "+ d" : t) + "</text>").join("") + "</svg>";
+  let tips = [];
+  const strip = c => {
+    let s = '<svg viewBox="0 0 ' + W + " " + H + '" class="paystrip" role="img" aria-label="' + esc(c.name) + ' payments by days after bill">' + band +
+      '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + H / 2 + '" y2="' + H / 2 + '" style="stroke:var(--line);stroke-width:1"/>';
+    c.pts.slice().sort((a, b) => b.amt - a.amt).forEach(p => { tips.push([c.name, (p.b.billno || "-") + (p.b.seq ? " " + p.b.seq : ""), dmy(p.b.date), "Paid " + dmy(p.date), fmt(p.amt), payLate(p.d, cr)]);
+      s += '<circle class="pdot" data-t="' + (tips.length - 1) + '" cx="' + x(p.d) + '" cy="' + H / 2 + '" r="' + rad(p.amt) + '" style="fill:' + payCol(p.d, cr) + ';fill-opacity:.85;stroke:var(--surface);stroke-width:2"/>'; });
+    c.open.forEach(b => { tips.push([c.name, (b.billno || "-") + (b.seq ? " " + b.seq : ""), dmy(b.date), "Not paid", fmt(b.bal) + " due", b.days - cr + " days overdue (" + b.days + " days since the bill)"]);
+      s += '<circle class="pdot" data-t="' + (tips.length - 1) + '" cx="' + x(b.days) + '" cy="' + H / 2 + '" r="' + rad(b.bal) + '" style="fill:none;stroke:var(--bad);stroke-width:2"/>'; });
+    return s + "</svg>";
+  };
+  const pct = v => v == null ? '<span class="sub">no dated payments</span>' : Math.round(v * 100) + "%";
+  el.innerHTML = '<h2>Who pays on time <span class="sub">each dot is a payment, placed at days from bill date to payment</span></h2>' +
+    '<div class="legend" style="margin:0 0 8px"><span><i style="background:var(--cred);border-radius:50%"></i>Within ' + cr + ' credit days</span><span><i style="background:var(--pi);border-radius:50%"></i>Up to 30 days late</span><span><i style="background:var(--bad);border-radius:50%"></i>More than 30 days late</span><span><i style="background:none;border:2px solid var(--bad);border-radius:50%;width:10px;height:10px;box-sizing:border-box"></i>Not paid, overdue now</span><span class="sub">Bigger dot = bigger amount. Change credit days at the top.</span></div>' +
+    '<div class="tblwrap"><table class="paytbl"><thead><tr><th class="l">Client</th><th class="l" style="min-width:300px">' + axis + '</th><th title="Money paid within the credit days, as a share of everything paid plus what is overdue and still unpaid">Paid on time</th><th title="Average days from bill date to payment, weighted by amount">Avg days to pay</th><th>Overdue now</th></tr></thead><tbody>' +
+    rows.map(c => '<tr><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(c.name) + '">' + esc(c.name) + '</a></td><td class="l" style="padding:2px 8px">' + strip(c) + '</td><td class="hm"><b style="color:' + (c.on == null ? "inherit" : c.on >= .8 ? "var(--cred)" : c.on >= .5 ? "var(--pi)" : "var(--bad)") + '">' + pct(c.on) + '</b></td><td class="hm">' + (c.avg == null ? "–" : Math.round(c.avg) + " d") + '</td><td class="hm' + (c.overdue >= 1 ? " pos-bad" : "") + '">' + (c.overdue >= 1 ? fmt(c.overdue) + ' <span class="sub">' + c.open.length + " bill" + (c.open.length === 1 ? "" : "s") + "</span>" : "–") + "</td></tr>").join("") +
+    '</tbody></table></div><div class="ttip"></div><div class="sub" style="margin-top:6px">Only receipts with a date and a bill count; ledger receipts with no date, on-account receipts and advances are left out. Paid on time = money paid within the credit days, out of everything paid plus what is overdue and unpaid, so a client sitting on overdue bills scores low. Clients are sorted by it.</div>';
+  const tip = $(".ttip", el); el.style.position = "relative";
+  $$(".pdot", el).forEach(d => {
+    d.addEventListener("pointermove", ev => {
+      const t = tips[+d.dataset.t]; tip.textContent = "";
+      const line = (txt, bold) => { const r = document.createElement("div"); r.textContent = txt; if (bold) r.style.fontWeight = "600"; tip.appendChild(r); };
+      line(t[0], true); line("Bill " + t[1] + " of " + t[2]); line(t[3] + " · " + t[4], true); line(t[5]);
+      tip.style.display = "block";
+      const box = el.getBoundingClientRect(), px = ev.clientX - box.left, py = ev.clientY - box.top;
+      tip.style.left = Math.max(0, Math.min(px + 14, box.width - tip.offsetWidth)) + "px"; tip.style.top = Math.max(0, py - tip.offsetHeight - 10) + "px";
+    });
+    d.addEventListener("pointerleave", () => { tip.style.display = "none"; });
+  });
+}
+
 /* ---------- receipts: billing-ledger receipts (from each bill's note) + receipts logged in this tool ---------- */
 const RC_RE = /(\d{1,2})\.(\d{1,2})\.(\d{2,4})?\s*\u20B9\s?([\d,]+(?:\.\d+)?)|\u20B9\s?([\d,]+(?:\.\d+)?)/g;
 function ledgerReceipts(b) {
@@ -1274,6 +1341,7 @@ function renderAll() {
   const A = aggregate();
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
+  renderPay();
   renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
