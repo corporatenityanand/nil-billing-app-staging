@@ -1,4 +1,4 @@
-// Published by scripts/publish.py from nil-billing-erp ad4bf66 for staging. Edit app/config.js there, not here.
+// Published by scripts/publish.py from nil-billing-erp d30393f for staging. Edit app/config.js there, not here.
 // Deployment settings for the Receivables Control Room. See docs/DEPLOY.md.
 // This file is public once hosted, so put no secrets here. The OAuth client ID is not a secret.
 window.RCR_CONFIG = {
@@ -10,5 +10,5 @@ window.RCR_CONFIG = {
   // The long id in the sheet's URL: https://docs.google.com/spreadsheets/d/<sheetId>/edit
   sheetId: "1j6qMR3rJL9mq9_swNTy7yuloA2CjmWNkj04K2Lz6uWI",
   // Only these Google accounts can use the tool. Each one must also have the sheet shared with them (Editor).
-  allowedEmails: ["vjprabhu9@gmail.com", "corporate.nityanand@gmail.com", "ajit.nityanand@gmail.com", "jayanthsprabhu@gmail.com"]
+  allowedEmails: ["vjprabhu9@gmail.com", "corporate.nityanand@gmail.com", "ajit.nityanand@gmail.com", "jayanthsprabhu@gmail.com", "nilmisetu3@gmail.com"]
 };
