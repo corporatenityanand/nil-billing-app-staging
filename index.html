@@ -90,6 +90,13 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .plcard.late{border-left:3px solid var(--bad)}
 .plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cnt{font-size:11px;color:var(--muted)}
+#modal.wide{width:min(760px,100%)}
+.woterms{display:grid;gap:8px 16px;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));font-size:13px}
+.woph{margin:14px 0 6px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.woph button{margin-left:auto}
+.cktbl td{vertical-align:top}.cktbl.fix{table-layout:fixed;width:100%;min-width:560px}.cktbl.fix td{overflow-wrap:anywhere}.cktbl td.l{text-align:left}
+tr.sel td{background:var(--surface2)}
+.tplpick{display:flex;flex-direction:column;gap:4px;font-size:13px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px}.tplpick b{margin-top:6px}
+label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--surface)}
 .plov{display:grid;gap:10px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0}
 @media(max-width:640px){.plov{grid-template-columns:minmax(0,1fr)}}
 .plov>a{display:block;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;color:inherit;text-decoration:none}
@@ -227,6 +234,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button>
     <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
     <button role="menuitem" data-act="newpl"><b>Bill in pipeline</b><span class="sub">A bill the team is still preparing</span></button>
+    <button role="menuitem" data-act="newwo"><b>Work order</b><span class="sub">Contract terms and its checklist</span></button>
     <hr><button role="menuitem" data-act="newrc"><b>Receipt</b><span class="sub">Money received from a client</span></button>
     <button role="menuitem" data-act="newrc" data-mode="D"><b>Direct receipt</b><span class="sub">Received directly, marked Direct</span></button>
     <button role="menuitem" data-act="newfu"><b>Payment follow-up</b><span class="sub">Note a client's promise to pay</span></button>
@@ -235,9 +243,11 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <nav id="tabs">
     <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="tasks">My tasks <span class="cnt" id="tkCnt"></span></button>
     <button data-tab="client">By client</button>
     <button data-tab="bills">All bills</button>
     <button data-tab="pipeline">In pipeline <span class="cnt" id="plCnt"></span></button>
+    <button data-tab="wo">Work orders</button>
     <button data-tab="receipts">Receipts</button>
     <button data-tab="work">Work done</button>
     <button data-tab="forecast">Collections forecast</button>
@@ -418,6 +428,26 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <div class="card"><h2>Submitted or dropped, last 30 days</h2><div class="tblwrap" id="plDone"></div></div>
   </section>
 
+  <section id="tab-tasks" class="hide">
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tasks</h2><span class="sub" id="tkSum"></span><span style="flex:1"></span>
+        <label class="sub">For <select id="tkOwner"></select></label></div>
+      <div class="help">Checklist items from each work order, documents still needed for bills in the pipeline, and the bills themselves, by due date. Set who does each one on the Work orders tab or in a bill's Documents.</div>
+      <div id="tkList"></div>
+    </div>
+  </section>
+
+  <section id="tab-wo" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Work orders</h2><span class="sub" id="woSum"></span><span style="flex:1"></span>
+        <label class="small btnlike" title="A .json file with work orders and their checklists">Import<input type="file" id="woFile" accept=".json,application/json" hidden></label>
+        <button class="primary small" data-act="newwo">+ Work order</button></div>
+      <div class="help">Each contract's billing terms and the papers it asks for: at the start, every month, with every RA bill and at the close. Bills in the pipeline linked to a work order get its RA bill documents to tick off.</div>
+      <div class="tblwrap" id="woTbl"></div>
+    </div>
+    <div class="card hide" id="woDetail"></div>
+  </section>
+
   <section id="tab-forecast" class="hide">
     <div class="card" style="margin-bottom:12px">
       <h2>Money in by week</h2>
@@ -469,20 +499,23 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
   n.work = Array.isArray(o.work) ? o.work : [];
   n.commits = Array.isArray(o.commits) ? o.commits : [];
   n.pipe = Array.isArray(o.pipe) ? o.pipe : [];
+  n.wos = Array.isArray(o.wos) ? o.wos : [];
+  n.checks = Array.isArray(o.checks) ? o.checks : [];
+  n.bdocs = Array.isArray(o.bdocs) ? o.bdocs : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -520,19 +553,22 @@ const TABS = {
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
   commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
-  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn"],
+  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId"],
+  work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
+  wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
+  bill_docs: ["id", "pipeId", "woId", "cat", "item", "owner", "due", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline"];   // added after the first Sheets were made: created on first load if missing
-const AUTO_COLS = { overrides: ["date", "base", "total"] };   // columns added later: appended to the header row on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs"];   // added after the first Sheets were made: created on first load if missing
+const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1 };
-const BOOLC = { dateEst: 1, deleted: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1 };
+const BOOLC = { dateEst: 1, deleted: 1, blocks: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 // Until this browser has once received the Sheets permission, always show Google's permission screen:
@@ -641,6 +677,9 @@ async function loadAll() {
   n.work = raw.work_log;
   n.commits = raw.commitments.map(c => Object.assign(c, { loggedOn: toIso(c.loggedOn), closedOn: toIso(c.closedOn), status: c.status || "open" }));
   n.pipe = raw.pipeline.map(x => Object.assign(x, { target: toIso(x.target), addedOn: toIso(x.addedOn), updatedOn: toIso(x.updatedOn), stage: PL_ST[x.stage] ? x.stage : "prep", kind: x.kind === "TI" ? "TI" : "PI" }));
+  n.wos = raw.work_orders.map(w => Object.assign(w, { woDate: toIso(w.woDate), start: toIso(w.start), end: toIso(w.end), kind: w.kind === "LOI" ? "LOI" : "WO", status: w.status === "closed" ? "closed" : "active" }));
+  n.checks = raw.wo_checks.map(c => Object.assign(c, { due: toIso(c.due), expires: toIso(c.expires), doneOn: toIso(c.doneOn), phase: WO_PH[c.phase] ? c.phase : "start", status: CK_ST[c.status] ? c.status : "open", dueDay: c.dueDay || "" }));
+  n.bdocs = raw.bill_docs.map(d => Object.assign(d, { due: toIso(d.due), doneOn: toIso(d.doneOn), status: CK_ST[d.status] ? d.status : "open" }));
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -664,6 +703,9 @@ function rowsView() {
   S.work.forEach(p => { v.work_log[p.id] = pick(p, TABS.work_log); });
   S.commits.forEach(p => { v.commitments[p.id] = pick(p, TABS.commitments); });
   S.pipe.forEach(p => { v.pipeline[p.id] = pick(p, TABS.pipeline); });
+  S.wos.forEach(p => { v.work_orders[p.id] = pick(p, TABS.work_orders); });
+  S.checks.forEach(p => { v.wo_checks[p.id] = pick(p, TABS.wo_checks); });
+  S.bdocs.forEach(p => { v.bill_docs[p.id] = pick(p, TABS.bill_docs); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -1020,7 +1062,7 @@ function renderPipeline() {
         (x.note ? '<div class="sub" style="margin-top:3px">' + esc(x.note) + "</div>" : "") +
         '<div class="acts">' + (i > 0 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i - 1] + '" title="Back to ' + PL_ST[PL_OPEN[i - 1]] + '">&larr;</button>' : "") +
         (i < 2 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i + 1] + '">' + PL_ST[PL_OPEN[i + 1]] + " &rarr;</button>" : '<button class="small primary" data-act="plbill" data-id="' + esc(x.id) + '">Make bill</button><button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="sub" title="Already billed elsewhere">Mark submitted</button>') +
-        '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
+        docBadge(x) + '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
   }).join("");
   const lateAll = open.filter(late).sort((a, b) => a.target.localeCompare(b.target));
   $("#plOv").innerHTML = '<div class="toolbar" style="margin-bottom:0"><h2 style="margin:0">Bills being prepared</h2><span class="sub">' + (open.length ? open.length + " in pipeline &middot; ~" + fmt(open.reduce((a, x) => a + (+x.amt || 0), 0)) + " before GST &middot; not in the receivables above" : "nothing in the pipeline") + '</span><span style="flex:1"></span><button class="small" data-act="plopen">Open pipeline</button></div>' +
@@ -1036,7 +1078,8 @@ function renderPipeline() {
 function plTouch(x, stage) { x.stage = stage; x.updatedOn = isoOf(new Date()); }
 function movePipe(id, to) {
   const x = S.pipe.filter(y => y.id === id)[0]; if (!x || !PL_ST[to]) return;
-  plTouch(x, to); persist(); renderAll(); toast(x.client + ": " + PL_ST[to]);
+  const go = () => { plTouch(x, to); persist(); renderAll(); toast(x.client + ": " + PL_ST[to]); };
+  if (to === "ready" || to === "sub") docsGate(x, to === "ready" ? "Move it to Ready to submit" : "Mark it submitted", go); else go();
 }
 function openPipe(id, clientArg) {
   const x = id ? S.pipe.filter(y => y.id === id)[0] : null, names = clientNames();
@@ -1051,9 +1094,14 @@ function openPipe(id, clientArg) {
     '<label>Stage<select id="plStage">' + Object.keys(PL_ST).map(k => '<option value="' + k + '"' + (k === v.stage ? " selected" : "") + ">" + PL_ST[k] + "</option>").join("") + "</select></label>" +
     '<label>Who is making it<input type="text" id="plWho" list="plWhos" value="' + esc(v.owner) + '"><datalist id="plWhos">' + plOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist></label>" +
     '<label>Submit by<input type="date" id="plTarget" value="' + esc(v.target) + '"></label>' +
+    '<label style="grid-column:1/-1">Work order <span class="sub">(gives the bill its document checklist)</span><select id="plWo"></select></label>' +
     '<label style="grid-column:1/-1">Note<input type="text" id="plNote" value="' + esc(v.note) + '" placeholder="e.g. waiting for measurement sheet from site"></label></div>' +
     (x && x.addedOn ? '<div class="help">Added ' + dmy(x.addedOn) + (x.addedBy ? " by " + esc(whoOf(x.addedBy)) : "") + (x.updatedOn ? ", last moved " + dmy(x.updatedOn) : "") + ".</div>" : "") +
     '<div id="plMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (x ? '<button id="plDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  const woOpts = () => { const c = $("#plNew").value.trim() ? (matchClient($("#plNew").value.trim()) || $("#plNew").value.trim()) : $("#plClient").value, ws = S.wos.filter(w => w.client === c && (w.status !== "closed" || w.id === v.woId));
+    $("#plWo").innerHTML = '<option value="">None</option>' + ws.map(w => '<option value="' + esc(w.id) + '"' + (w.id === v.woId ? " selected" : "") + ">" + esc(woLabel(w)) + "</option>").join("");
+    if (!v.woId && ws.length === 1) $("#plWo").value = ws[0].id; };
+  woOpts(); $("#plClient").onchange = woOpts; $("#plNew").onchange = woOpts;
   $("#mCancel").onclick = closeModal;
   if (x) $("#plDel").onclick = () => { closeModal(); confirmModal("Delete this pipeline entry?", esc(x.client) + " &middot; " + esc(x.desc || "") + ". Use Dropped instead to keep it in the history.", "Delete", () => { S.pipe = S.pipe.filter(y => y !== x); persist(); renderAll(); toast("Pipeline entry deleted"); }); };
   $("#mSave").onclick = () => {
@@ -1061,15 +1109,18 @@ function openPipe(id, clientArg) {
     if (!client) { $("#plMsg").textContent = "Pick a client or type a new one."; return; }
     if (!desc) { $("#plMsg").textContent = "Say what is being billed, e.g. RA-6 or the month."; $("#plDesc").focus(); return; }
     const today = isoOf(new Date()), stage = $("#plStage").value;
-    const rec = { client: client, site: $("#plSite").value.trim(), desc: desc, kind: $("#plKind").value, amt: parseAmt($("#plAmt").value) ? round2(parseAmt($("#plAmt").value)) : "", owner: $("#plWho").value.trim(), target: $("#plTarget").value, note: $("#plNote").value.trim() };
+    const rec = { client: client, site: $("#plSite").value.trim(), desc: desc, kind: $("#plKind").value, amt: parseAmt($("#plAmt").value) ? round2(parseAmt($("#plAmt").value)) : "", owner: $("#plWho").value.trim(), target: $("#plTarget").value, note: $("#plNote").value.trim(), woId: $("#plWo").value };
+    let e = x;
     if (x) { if (stage !== x.stage) plTouch(x, stage); Object.assign(x, rec); }
-    else S.pipe.push(Object.assign({ id: uid(), stage: stage, billId: "", addedBy: USER ? USER.email : "", addedOn: today, updatedOn: today }, rec));
-    persist(); closeModal(); renderAll(); toast(x ? "Pipeline entry saved" : "Added to the pipeline: " + client);
+    else { e = Object.assign({ id: uid(), stage: stage, billId: "", addedBy: USER ? USER.email : "", addedOn: today, updatedOn: today }, rec); S.pipe.push(e); }
+    const nd = ensureDocs(e);
+    persist(); closeModal(); renderAll(); toast((x ? "Pipeline entry saved" : "Added to the pipeline: " + client) + (nd ? ", with " + nd + " documents to collect" : ""));
   };
 }
 /* fill the bill form from a pipeline entry; onAdd links the new bill back to it */
-function billPipe(id) {
+function billPipe(id, sure) {
   const x = S.pipe.filter(y => y.id === id)[0]; if (!x) return;
+  if (!sure && docsMissing(x.id).length) { docsGate(x, "Make the bill", () => billPipe(id, true)); return; }
   PENDING = null; createBill(x.kind); PL = x.id;
   const known = Array.prototype.some.call($("#aClient").options, o => o.value === x.client);
   if (known) $("#aClient").value = x.client;
@@ -1079,6 +1130,288 @@ function billPipe(id) {
   if (+x.amt) $("#aBase").value = (+x.amt).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   advDefaults(); renderPending();
   $("#aNo").focus();
+}
+
+/* ---------- work orders, compliance checklists and RA bill documents ----------
+   work_orders: one row per contract (LOI or WO) with its billing terms.
+   wo_checks: the contract's checklist. Phases start / month / close are tasks with an owner and a due date; phase bill
+   rows are the documents every RA bill on that contract needs (a template: no status of their own).
+   bill_docs: those documents copied onto a bill in the pipeline (pipeline.woId), each with owner, status and file link.
+   A pipeline bill does not move to Ready to submit while a required document is open unless the user says so.
+   Monthly tasks roll on: ticking one adds next month's. Nothing here sends a message to anyone. */
+const WO_PH = { start: "At start", month: "Every month", bill: "Every RA bill", close: "At close" };
+const WO_PHS = ["start", "month", "bill", "close"];
+const CK_ST = { open: "To do", done: "Done", na: "Not needed" };
+// [phase, category, item, options]  req: an RA bill cannot be submitted without it; day: monthly due day; exp: has an expiry date
+const WO_TPL = [
+  ["start", "Contract", "Signed LOI / work order acceptance", {}],
+  ["start", "Contract", "Vendor registration KYC: PAN, Aadhaar, cancelled cheque, Shop Act, Udyam, GST certificate", {}],
+  ["start", "Contract", "Performance security (bank guarantee or undated cheque)", { exp: 1 }],
+  ["start", "Insurance", "Workmen's compensation policy", { exp: 1 }],
+  ["start", "Insurance", "CAR and third-party insurance", { exp: 1 }],
+  ["start", "Labour", "Labour licence, BOCW and contract labour registration", {}],
+  ["start", "Labour", "PF and ESIC registration numbers to client", {}],
+  ["start", "Planning", "Work completion programme", {}],
+  ["start", "Planning", "Method statement", {}],
+  ["start", "Machinery", "List of plant, equipment and personnel", {}],
+  ["start", "Machinery", "Rig papers: RC, insurance, fitness certificate", { exp: 1 }],
+  ["start", "Machinery", "Third-party inspection report for each rig", { exp: 1 }],
+  ["start", "Machinery", "Operator licences and training certificates", {}],
+  ["month", "Labour", "PF challan paid", { day: 15 }],
+  ["month", "Labour", "ESIC challan paid", { day: 15 }],
+  ["month", "Labour", "Attendance register sent to client", { day: 3 }],
+  ["bill", "Measurement", "Joint measurement sheet signed by client engineer", { req: 1 }],
+  ["bill", "Measurement", "Abstract of quantities", { req: 1 }],
+  ["bill", "Measurement", "Pile log / bore log sheets and piles marked on drawing", { req: 1 }],
+  ["bill", "Measurement", "Muck disposal trip register", {}],
+  ["bill", "Invoice", "RA bill / invoice with WO no., GST and PAN", { req: 1 }],
+  ["bill", "Reconciliation", "Material reconciliation statement", {}],
+  ["bill", "Reconciliation", "Debit notes and basic-rate reconciliation (HSD, steel, concrete)", {}],
+  ["bill", "Labour", "Last month's PF challan", { req: 1 }],
+  ["bill", "Labour", "Last month's ESIC challan", {}],
+  ["bill", "Labour", "Attendance register", {}],
+  ["bill", "Insurance", "Workmen's compensation policy copy", {}],
+  ["bill", "Tax", "GST paid challan", {}],
+  ["bill", "Quality", "Quality compliance sign-off (cube and pile tests)", {}],
+  ["bill", "Safety", "Safety compliance sign-off", {}],
+  ["close", "Closeout", "Virtual completion / taking-over certificate", {}],
+  ["close", "Closeout", "Final bill", {}],
+  ["close", "Closeout", "Clearance and No Claim certificates", {}],
+  ["close", "Closeout", "Retention release: first part", {}],
+  ["close", "Closeout", "Retention release: balance after defect liability period", {}],
+  ["close", "Closeout", "Performance security returned", {}]
+];
+let WO_SEL = null;
+const woOf = id => S.wos.filter(w => w.id === id)[0];
+const woLabel = w => w ? (w.woNo ? (w.kind === "LOI" ? "LOI " : "WO ") + w.woNo : (w.kind || "WO")) + (w.site ? " · " + w.site : "") : "";
+const woShort = w => w ? w.client.split(" ")[0] + " " + woLabel(w) : "";
+const addDays = (iso, n) => isoOf(new Date(toD(iso).getTime() + n * 864e5));
+function nextDay(iso, day, after) {   // first date on the given day of month on or after iso (strictly after when 'after')
+  const d = toD(iso); let y = d.getFullYear(), m = d.getMonth();
+  const at = (yy, mm) => isoOf(new Date(yy, mm, Math.min(day, new Date(yy, mm + 1, 0).getDate())));
+  let c = at(y, m);
+  if (c < iso || (after && c === iso)) { m++; c = at(y, m); }
+  return c;
+}
+const today = () => S.settings.asOn || isoOf(new Date());
+const ckLate = x => x.status === "open" && x.due && x.due < today();
+const woChecks = id => S.checks.filter(c => c.woId === id);
+const plDocs = id => S.bdocs.filter(d => d.pipeId === id);
+const docsMissing = id => plDocs(id).filter(d => d.blocks && d.status === "open");
+function woFolder(w) { return "NIL Contracts / " + w.client + " / " + [w.woNo, w.site].filter(Boolean).join(" ") ; }
+function knownOwners() {
+  return S.checks.map(x => x.owner).concat(S.bdocs.map(x => x.owner), S.pipe.map(x => x.owner), (CFG.allowedEmails || []).map(whoOf), USER ? [whoOf(USER.email)] : [])
+    .filter((x, i, a) => x && a.indexOf(x) === i).sort();
+}
+const linkHtml = u => /^https?:\/\//i.test(u || "") ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Open file</a>' : "";
+
+/* checklist rows for a new contract from the ticked template lines */
+function tplChecks(w, picks) {
+  const from = w.woDate || w.start || today();
+  return picks.map(i => {
+    const t = WO_TPL[i], o = t[3];
+    const due = t[0] === "start" ? addDays(from, 10) : t[0] === "month" ? nextDay(w.start || from, o.day) : (t[0] === "close" && i === WO_TPL.findIndex(x => x[0] === "close") ? (w.end || "") : "");
+    return { id: uid(), woId: w.id, phase: t[0], cat: t[1], item: t[2], owner: "", due: due, dueDay: o.day || "", expires: "", status: "open", link: "", blocks: !!o.req, note: "", doneOn: "", doneBy: "" };
+  });
+}
+function renderWo() {
+  const act = S.wos.filter(w => w.status !== "closed"), all = S.wos.slice().sort((a, b) => (a.status === "closed") - (b.status === "closed") || a.client.localeCompare(b.client));
+  if (WO_SEL && !woOf(WO_SEL)) WO_SEL = null;
+  const stat = w => { const cs = woChecks(w.id).filter(c => c.phase !== "bill" && c.status !== "na"), d = cs.filter(c => c.status === "done").length, l = cs.filter(ckLate).length; return { n: cs.length, d: d, l: l }; };
+  $("#woSum").textContent = act.length ? act.length + " active contract" + (act.length === 1 ? "" : "s") : "";
+  $("#woTbl").innerHTML = all.length ? '<table><thead><tr><th class="l">Client</th><th class="l">Contract</th><th>Value</th><th class="l">Period</th><th class="l">Payment</th><th class="l">Checklist</th><th></th></tr></thead><tbody>' +
+    all.map(w => { const s = stat(w); return '<tr' + (w.id === WO_SEL ? ' class="sel"' : "") + '><td class="l">' + esc(w.client) + '</td><td class="l">' + esc(woLabel(w)) + (w.status === "closed" ? ' <span class="tag">closed</span>' : "") + "</td><td>" + (+w.amt ? fmt(+w.amt) : "") + '</td><td class="l">' + (w.start ? dmy(w.start) : "") + (w.end ? " to " + dmy(w.end) : "") + '</td><td class="l sub">' + esc(w.payTerms || "") + '</td><td class="l">' + (s.n ? s.d + " of " + s.n + " done" + (s.l ? ' <span class="tag bad">' + s.l + " overdue</span>" : "") : '<span class="sub">no checklist</span>') + '</td><td><button class="small" data-act="wopick" data-id="' + esc(w.id) + '">' + (w.id === WO_SEL ? "Showing" : "Open") + "</button></td></tr>"; }).join("") + "</tbody></table>"
+    : '<div class="sub">No contracts yet. Use + Work order to add one with its terms and a checklist, or Import to load several from a file.</div>';
+  const w = woOf(WO_SEL), el = $("#woDetail");
+  if (!w) { el.classList.add("hide"); el.innerHTML = ""; return; }
+  el.classList.remove("hide");
+  const terms = [["Bill when", w.billRule], ["Payment", w.payTerms], ["Retention", (+w.retPct ? w.retPct + "%" : "") + (w.retTerms ? (+w.retPct ? ", " : "") + w.retTerms : "")], ["Defect liability", +w.dlp ? w.dlp + " months" : ""], ["TDS", +w.tdsPct ? w.tdsPct + "%" : ""], ["Security", w.security], ["Advance", w.advance], ["Delay penalty", w.penalty], ["Note", w.note]].filter(x => x[1]);
+  const cs = woChecks(w.id);
+  const row = c => { const late = ckLate(c); return '<tr><td class="l">' + (c.phase === "bill" ? "" : '<input type="checkbox" data-act="cktick" data-id="' + esc(c.id) + '"' + (c.status === "done" ? " checked" : "") + (c.status === "na" ? " disabled" : "") + ' aria-label="Done">') + '</td><td class="l"' + (c.status === "na" ? ' style="text-decoration:line-through;color:var(--muted)"' : "") + ">" + esc(c.item) + ' <span class="sub">' + esc(c.cat) + "</span>" + (c.blocks ? ' <span class="tag pi" title="An RA bill cannot be submitted without it">required</span>' : "") + (c.note ? '<div class="sub">' + esc(c.note) + "</div>" : "") + '</td><td class="l">' + esc(c.owner || "") + '</td><td class="l">' + (c.phase === "bill" ? '<span class="sub">each bill</span>' : c.status === "done" ? '<span class="tag ok">done ' + (c.doneOn ? dmy(c.doneOn) : "") + "</span>" : c.due ? '<span style="' + (late ? "color:var(--bad);font-weight:600" : "") + '">' + dmy(c.due) + "</span>" : "") + (c.expires ? '<div class="sub"' + (c.expires < addDays(today(), 30) ? ' style="color:var(--bad)"' : "") + ">expires " + dmy(c.expires) + "</div>" : "") + '</td><td class="l">' + linkHtml(c.link) + '</td><td><button class="small" data-act="ckedit" data-id="' + esc(c.id) + '">Edit</button></td></tr>'; };
+  el.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(w.client) + " &middot; " + esc(woLabel(w)) + '</h2><span style="flex:1"></span><button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit terms</button><button class="small" data-act="woclose">Close</button></div>' +
+    '<div class="woterms">' + terms.map(t => "<div><span class=\"sub\">" + t[0] + "</span><br>" + esc(t[1]) + "</div>").join("") + "</div>" +
+    '<div class="sub" style="margin:8px 0">Drive folder: ' + (w.folder ? linkHtml(w.folder).replace("Open file", "open") + " &middot; " : "") + "<code>" + esc(woFolder(w)) + "</code></div>" +
+    WO_PHS.map(ph => { const xs = cs.filter(c => c.phase === ph).sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || (a.due || "9").localeCompare(b.due || "9")); return '<h3 class="woph">' + WO_PH[ph] + (ph === "bill" ? ' <span class="sub">copied onto each bill in the pipeline for this contract</span>' : ph === "month" ? ' <span class="sub">ticking one adds next month\'s</span>' : "") + '<button class="small" data-act="ckadd" data-ph="' + ph + '">+ Item</button></h3>' +
+      (xs.length ? '<div class="tblwrap"><table class="cktbl fix"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:110px"><col style="width:80px"><col style="width:64px"></colgroup><tbody>' + xs.map(row).join("") + "</tbody></table></div>" : '<div class="sub">None</div>'); }).join("");
+}
+function openWo(id, clientArg) {
+  const w = id ? woOf(id) : null, names = clientNames();
+  const v = w || { client: clientArg && names.indexOf(clientArg) >= 0 ? clientArg : names[0], site: "", woNo: "", kind: "WO", woDate: "", amt: "", start: "", end: "", billRule: "Monthly", payTerms: "", retPct: 5, retTerms: "", dlp: 12, tdsPct: 2, security: "", advance: "", penalty: "", folder: "", status: "active", note: "" };
+  const known = names.indexOf(v.client) >= 0;
+  const inp = (k, lab, ph, full, type) => '<label' + (full ? ' style="grid-column:1/-1"' : "") + ">" + lab + '<input type="' + (type || "text") + '" id="wo_' + k + '" value="' + esc(v[k]) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : "") + "></label>";
+  openModal("<h2>" + (w ? "Edit work order" : "New work order") + '</h2><div class="form">' +
+    '<label style="grid-column:1/-1">Client<select id="wo_clientSel">' + optsHtml(names, known ? v.client : names[0]) + '</select></label><label style="grid-column:1/-1">Or type a new client<input type="text" id="wo_new" value="' + (known ? "" : esc(v.client)) + '"></label>' +
+    '<label>Document<select id="wo_kind"><option value="WO"' + (v.kind !== "LOI" ? " selected" : "") + '>Work order</option><option value="LOI"' + (v.kind === "LOI" ? " selected" : "") + ">Letter of intent</option></select></label>" + inp("woNo", "Number", "e.g. 2700009910") +
+    inp("site", "Site / project", "", true) + inp("woDate", "Dated", "", false, "date") + inp("amt", "Value (&#8377;, before GST)", "") + inp("start", "Start", "", false, "date") + inp("end", "Finish", "", false, "date") +
+    inp("billRule", "When to bill", "e.g. monthly, or after 100 piles then every 60", true) + inp("payTerms", "Payment terms", "e.g. 70% in 21 days, 30% in 30 days", true) +
+    inp("retPct", "Retention %", "") + inp("dlp", "Defect liability (months)", "") + inp("retTerms", "Retention release", "e.g. half on completion, half after DLP", true) + inp("tdsPct", "TDS %", "") + inp("security", "Performance security", "e.g. 10% undated cheque") +
+    inp("advance", "Advance", "e.g. 35%, recovered once billing reaches 50%", true) + inp("penalty", "Delay penalty", "", true) + inp("folder", "Drive folder link", "https://drive.google.com/...", true) + inp("note", "Note", "", true) +
+    (w ? '<label>Status<select id="wo_status"><option value="active"' + (v.status !== "closed" ? " selected" : "") + '>Active</option><option value="closed"' + (v.status === "closed" ? " selected" : "") + ">Closed</option></select></label>" : "") + "</div>" +
+    (w ? "" : '<h3 style="margin:14px 0 4px;font-size:14px">Checklist</h3><div class="help">Untick what this client does not ask for. You can add, edit or remove items later.</div><div class="tplpick">' +
+      WO_PHS.map(ph => "<b>" + WO_PH[ph] + "</b>" + WO_TPL.map((t, i) => t[0] !== ph ? "" : '<label><input type="checkbox" data-tpl="' + i + '" checked> ' + esc(t[2]) + (t[3].req ? ' <span class="sub">(required on every bill)</span>' : "") + "</label>").join("")).join("") + "</div>") +
+    '<div id="woMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (w ? '<button id="woDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").classList.add("wide");
+  $("#mCancel").onclick = closeModal;
+  if (w) $("#woDel").onclick = () => { closeModal(); confirmModal("Delete this work order?", esc(w.client) + " &middot; " + esc(woLabel(w)) + ". Its checklist goes too. Bills in the pipeline keep their documents. Use Status: Closed instead to keep it.", "Delete", () => { S.wos = S.wos.filter(x => x !== w); S.checks = S.checks.filter(c => c.woId !== w.id); persist(); renderAll(); toast("Work order deleted"); }); };
+  $("#mSave").onclick = () => {
+    const typed = $("#wo_new").value.trim(), client = typed ? (matchClient(typed) || typed) : $("#wo_clientSel").value, g = k => $("#wo_" + k).value.trim();
+    if (!client) { $("#woMsg").textContent = "Pick a client or type a new one."; return; }
+    if (!g("woNo") && !g("site")) { $("#woMsg").textContent = "Give the work order number or the site, so it can be told apart."; return; }
+    if (g("folder") && !/^https?:\/\//i.test(g("folder"))) { $("#woMsg").textContent = "The Drive folder should be a link starting with https://"; return; }
+    const num = k => { const n = parseAmt(g(k)); return n ? round2(n) : ""; };
+    const rec = { client: client, kind: $("#wo_kind").value, woNo: g("woNo"), site: g("site"), woDate: g("woDate"), amt: num("amt"), start: g("start"), end: g("end"), billRule: g("billRule"), payTerms: g("payTerms"), retPct: num("retPct"), dlp: num("dlp"), retTerms: g("retTerms"), tdsPct: num("tdsPct"), security: g("security"), advance: g("advance"), penalty: g("penalty"), folder: g("folder"), note: g("note") };
+    if (w) { Object.assign(w, rec, { status: $("#wo_status").value }); }
+    else {
+      const n = Object.assign({ id: uid(), status: "active" }, rec);
+      S.wos.push(n);
+      S.checks = S.checks.concat(tplChecks(n, $$("#modal [data-tpl]").filter(x => x.checked).map(x => +x.dataset.tpl)));
+      WO_SEL = n.id;
+    }
+    persist(); closeModal(); renderAll(); if (!w) showTab("wo"); toast(w ? "Work order saved" : "Work order added with its checklist");
+  };
+}
+function openCheck(id, phase) {
+  const c = id ? S.checks.filter(x => x.id === id)[0] : null, w = woOf(c ? c.woId : WO_SEL); if (!w) return;
+  const v = c || { phase: phase, cat: "", item: "", owner: "", due: phase === "start" ? addDays(today(), 7) : "", dueDay: phase === "month" ? 15 : "", expires: "", status: "open", link: "", blocks: false, note: "" };
+  const ph = v.phase;
+  openModal("<h2>" + (c ? "Edit checklist item" : "New checklist item") + '</h2><div class="sub" style="margin-bottom:8px">' + esc(woShort(w)) + " &middot; " + WO_PH[ph] + '</div><div class="form">' +
+    '<label style="grid-column:1/-1">Item<input type="text" id="ckItem" value="' + esc(v.item) + '" placeholder="e.g. Last month\'s PF challan"></label>' +
+    '<label>Category<input type="text" id="ckCat" list="ckCats" value="' + esc(v.cat) + '"><datalist id="ckCats">' + WO_TPL.map(t => t[1]).filter((x, i, a) => a.indexOf(x) === i).map(x => '<option value="' + esc(x) + '">').join("") + "</datalist></label>" +
+    '<label>Who does it<input type="text" id="ckOwner" list="ckOwners" value="' + esc(v.owner) + '"><datalist id="ckOwners">' + knownOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist></label>" +
+    (ph === "bill" ? '<label style="grid-column:1/-1"><span class="chk"><input type="checkbox" id="ckReq"' + (v.blocks ? " checked" : "") + "> Required: a bill cannot be submitted without it</span></label>"
+      : '<label>Due<input type="date" id="ckDue" value="' + esc(v.due) + '"></label>' + (ph === "month" ? '<label>Repeats on day<input type="number" min="1" max="31" id="ckDay" value="' + esc(v.dueDay) + '"></label>' : "") +
+        '<label>Expires<input type="date" id="ckExp" value="' + esc(v.expires) + '"></label><label>Status<select id="ckSt">' + Object.keys(CK_ST).map(k => '<option value="' + k + '"' + (k === v.status ? " selected" : "") + ">" + CK_ST[k] + "</option>").join("") + "</select></label>" +
+        '<label style="grid-column:1/-1">File link<input type="text" id="ckLink" value="' + esc(v.link) + '" placeholder="Drive link to the document"></label>') +
+    '<label style="grid-column:1/-1">Note<input type="text" id="ckNote" value="' + esc(v.note) + '"></label></div>' +
+    (c && c.doneOn ? '<div class="help">Done ' + dmy(c.doneOn) + (c.doneBy ? " by " + esc(whoOf(c.doneBy)) : "") + ".</div>" : "") +
+    '<div id="ckMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (c ? '<button id="ckDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#mCancel").onclick = closeModal;
+  if (c) $("#ckDel").onclick = () => { S.checks = S.checks.filter(x => x !== c); persist(); closeModal(); renderAll(); toast("Item removed"); };
+  $("#mSave").onclick = () => {
+    const item = $("#ckItem").value.trim(); if (!item) { $("#ckMsg").textContent = "Say what the item is."; $("#ckItem").focus(); return; }
+    const link = $("#ckLink") ? $("#ckLink").value.trim() : "";
+    if (link && !/^https?:\/\//i.test(link)) { $("#ckMsg").textContent = "The file link should start with https://"; return; }
+    const rec = { item: item, cat: $("#ckCat").value.trim(), owner: $("#ckOwner").value.trim(), note: $("#ckNote").value.trim() };
+    if (ph === "bill") rec.blocks = $("#ckReq").checked;
+    else Object.assign(rec, { due: $("#ckDue").value, dueDay: $("#ckDay") ? (+$("#ckDay").value || "") : "", expires: $("#ckExp").value, link: link });
+    const st = ph === "bill" ? "open" : $("#ckSt").value;
+    if (c) { Object.assign(c, rec); setCheck(c, st); }
+    else { const n = Object.assign({ id: uid(), woId: w.id, phase: ph, status: "open", doneOn: "", doneBy: "", blocks: false, dueDay: "", expires: "", link: "", due: "" }, rec); S.checks.push(n); setCheck(n, st); }
+    persist(); closeModal(); renderAll(); toast("Checklist saved");
+  };
+}
+/* status change; a monthly item ticked done adds next month's */
+function setCheck(c, st) {
+  if (c.status === st) return;
+  const was = c.status; c.status = st;
+  if (st === "done") { c.doneOn = isoOf(new Date()); c.doneBy = USER ? USER.email : ""; } else { c.doneOn = ""; c.doneBy = ""; }
+  if (c.phase === "month" && st === "done" && was === "open" && c.dueDay && !S.checks.some(x => x !== c && x.woId === c.woId && x.phase === "month" && x.item === c.item && x.status === "open")) {
+    S.checks.push(Object.assign({}, c, { id: uid(), due: nextDay(c.due || today(), +c.dueDay, true), status: "open", link: "", doneOn: "", doneBy: "", note: "" }));
+  }
+}
+function tickCheck(id, on) {
+  const c = S.checks.filter(x => x.id === id)[0]; if (!c) return;
+  setCheck(c, on ? "done" : "open"); persist(); renderAll(); toast(on ? "Done: " + c.item : "Back to do: " + c.item);
+}
+
+/* documents for one bill in the pipeline */
+function ensureDocs(x) {
+  if (!x.woId || plDocs(x.id).length) return 0;
+  const tpl = woChecks(x.woId).filter(c => c.phase === "bill");
+  tpl.forEach(c => S.bdocs.push({ id: uid(), pipeId: x.id, woId: x.woId, cat: c.cat, item: c.item, owner: c.owner, due: x.target || "", status: "open", link: "", blocks: !!c.blocks, note: "", doneOn: "", doneBy: "" }));
+  return tpl.length;
+}
+function docBadge(x) {
+  const ds = plDocs(x.id).filter(d => d.status !== "na"); if (!ds.length) return "";
+  const done = ds.filter(d => d.status === "done").length, miss = ds.filter(d => d.blocks && d.status === "open").length;
+  return '<button class="small" data-act="pldocs" data-id="' + esc(x.id) + '">Documents ' + done + "/" + ds.length + (miss ? ' <span style="color:var(--bad)">&middot; ' + miss + " required missing</span>" : done === ds.length ? " &#10003;" : "") + "</button>";
+}
+function openDocs(pipeId) {
+  const x = S.pipe.filter(y => y.id === pipeId)[0]; if (!x) return;
+  const w = woOf(x.woId), ds = plDocs(x.id), owners = knownOwners();
+  openModal("<h2>Documents for this bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(x.client) + " &middot; " + esc(x.desc || "") + (w ? " &middot; " + esc(woLabel(w)) : "") + (x.target ? " &middot; submit by " + dmy(x.target) : "") + "</div>" +
+    (w ? '<div class="sub" style="margin-bottom:8px">Save files in <code>' + esc(woFolder(w)) + " / 03 RA bills / " + esc(x.desc || "") + "</code>" + (w.folder ? " (" + linkHtml(w.folder).replace("Open file", "contract folder") + ")" : "") + "</div>" : "") +
+    (ds.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Document</th><th class="l">Who</th><th class="l">Status</th><th class="l">File link</th></tr></thead><tbody>' + ds.map(d => '<tr data-doc="' + esc(d.id) + '"><td class="l">' + esc(d.item) + (d.blocks ? ' <span class="tag pi">required</span>' : "") + '</td><td class="l"><input type="text" class="dOwner" list="dOwners" value="' + esc(d.owner) + '" style="width:110px"></td><td class="l"><select class="dSt">' + Object.keys(CK_ST).map(k => '<option value="' + k + '"' + (k === d.status ? " selected" : "") + ">" + CK_ST[k] + "</option>").join("") + '</select></td><td class="l"><input type="text" class="dLink" value="' + esc(d.link) + '" placeholder="https://" style="width:150px"> ' + linkHtml(d.link).replace("Open file", "open") + "</td></tr>").join("") + '</tbody></table></div><datalist id="dOwners">' + owners.map(o => '<option value="' + esc(o) + '">').join("") + "</datalist>"
+      : '<div class="help">' + (w ? "This work order has no Every RA bill items yet. Add them on the Work orders tab, or add one here." : "Link this bill to its work order (Edit) to get the contract's document list, or add documents one by one.") + "</div>") +
+    '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Add a document<input type="text" id="dNew" placeholder="e.g. Rolling margin certificate"></label></div>' +
+    '<div id="dMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").classList.add("wide");
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    const bad = $$("#modal tr[data-doc] .dLink").filter(i => i.value.trim() && !/^https?:\/\//i.test(i.value.trim()));
+    if (bad.length) { bad[0].classList.add("bad"); $("#dMsg").textContent = "File links should start with https://"; return; }
+    $$("#modal tr[data-doc]").forEach(tr => {
+      const d = S.bdocs.filter(y => y.id === tr.dataset.doc)[0]; if (!d) return;
+      const st = $(".dSt", tr).value;
+      d.owner = $(".dOwner", tr).value.trim(); d.link = $(".dLink", tr).value.trim();
+      if (st !== d.status) { d.status = st; d.doneOn = st === "done" ? isoOf(new Date()) : ""; d.doneBy = st === "done" && USER ? USER.email : ""; }
+    });
+    const nv = $("#dNew").value.trim();
+    if (nv) S.bdocs.push({ id: uid(), pipeId: x.id, woId: x.woId || "", cat: "", item: nv, owner: "", due: x.target || "", status: "open", link: "", blocks: false, note: "", doneOn: "", doneBy: "" });
+    persist(); closeModal(); renderAll(); toast("Documents saved");
+  };
+}
+/* moving a bill to Ready or Submitted with required documents open asks first */
+function docsGate(x, what, go) {
+  const m = docsMissing(x.id); if (!m.length) return go();
+  confirmModal("Required documents still missing", esc(x.client) + " &middot; " + esc(x.desc || "") + ":<br>" + m.map(d => "&bull; " + esc(d.item) + (d.owner ? " (" + esc(d.owner) + ")" : "")).join("<br>") + "<br><br>" + what + " anyway?", "Yes, " + what.toLowerCase(), go);
+}
+
+/* tasks for everyone: open checklist items, documents on open pipeline bills, and the bills themselves */
+function allTasks() {
+  const t = [], open = {}; plOpen().forEach(x => { open[x.id] = x; });
+  S.checks.forEach(c => { const w = woOf(c.woId); if (c.phase === "bill" || c.status !== "open" || !w || w.status === "closed") return; t.push({ k: "ck", id: c.id, what: c.item, ctx: woShort(w), owner: c.owner, due: c.due, link: c.link }); });
+  S.checks.forEach(c => { const w = woOf(c.woId); if (c.phase === "bill" || c.status !== "done" || !c.expires || !w || w.status === "closed" || c.expires > addDays(today(), 30)) return; t.push({ k: "exp", id: c.id, what: "Renew: " + c.item + " (expires " + dmy(c.expires) + ")", ctx: woShort(w), owner: c.owner, due: addDays(c.expires, -7), link: c.link }); });
+  S.bdocs.forEach(d => { const x = open[d.pipeId]; if (!x || d.status !== "open") return; t.push({ k: "doc", id: d.id, pipe: x.id, what: d.item, ctx: x.client.split(" ")[0] + " " + (x.desc || ""), owner: d.owner, due: d.due || x.target, req: d.blocks, link: d.link }); });
+  plOpen().forEach(x => { t.push({ k: "pl", id: x.id, what: "Get bill ready: " + (x.desc || ""), ctx: x.client.split(" ")[0] + " &middot; " + PL_ST[x.stage], owner: x.owner, due: x.target }); });
+  return t;
+}
+let TK_OWNER = null;
+function renderTasks() {
+  const all = allTasks(), td = today(), wk = addDays(td, 7), me = USER ? whoOf(USER.email) : "";
+  const owners = all.map(x => x.owner).filter((x, i, a) => x && a.indexOf(x) === i).sort();
+  const pickd = TK_OWNER === null ? (owners.indexOf(me) >= 0 ? me : "") : TK_OWNER;   // until someone picks, open on the signed-in person's own items
+  const sel = $("#tkOwner"); sel.innerHTML = '<option value="">Everyone</option>' + owners.map(o => '<option value="' + esc(o) + '">' + esc(o) + (o === me ? " (you)" : "") + "</option>").join("") + '<option value="-">Nobody yet</option>';
+  sel.value = owners.indexOf(pickd) >= 0 || pickd === "-" ? pickd : "";
+  const mine = all.filter(x => !sel.value || (sel.value === "-" ? !x.owner : x.owner === sel.value));
+  const late = all.filter(x => x.due && x.due < td).length;
+  $("#tkCnt").textContent = late ? "(" + late + ")" : "";
+  const grp = [["Overdue", x => x.due && x.due < td], ["Due in the next 7 days", x => x.due && x.due >= td && x.due <= wk], ["Later", x => x.due && x.due > wk], ["No date", x => !x.due]];
+  const btn = x => x.k === "ck" ? '<button class="small" data-act="tkdone" data-id="' + esc(x.id) + '">Done</button><button class="small" data-act="ckedit" data-id="' + esc(x.id) + '">Edit</button>'
+    : x.k === "exp" ? '<button class="small" data-act="ckedit" data-id="' + esc(x.id) + '">Edit</button>'
+    : x.k === "doc" ? '<button class="small" data-act="tkdoc" data-id="' + esc(x.id) + '">Done</button><button class="small" data-act="pldocs" data-id="' + esc(x.pipe) + '">All documents</button>'
+    : '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button>';
+  $("#tkSum").textContent = mine.length ? mine.length + " open" : "";
+  $("#tkList").innerHTML = mine.length ? grp.map(g => { const xs = mine.filter(g[1]).sort((a, b) => (a.due || "").localeCompare(b.due || "")); return xs.length ? '<h3 class="woph">' + g[0] + ' <span class="sub">' + xs.length + '</span></h3><div class="tblwrap"><table class="cktbl fix"><colgroup><col><col style="width:110px"><col style="width:90px"><col style="width:80px"><col style="width:170px"></colgroup><tbody>' +
+      xs.map(x => '<tr><td class="l">' + esc(x.what) + (x.req ? ' <span class="tag pi">required</span>' : "") + '<div class="sub">' + x.ctx.split("&middot;").map(esc).join("&middot;") + "</div></td><td class=\"l\">" + (x.owner ? esc(x.owner) : '<span class="sub">nobody</span>') + '</td><td class="l"' + (x.due && x.due < td ? ' style="color:var(--bad);font-weight:600"' : "") + ">" + (x.due ? dmy(x.due) : "") + '</td><td class="l">' + linkHtml(x.link) + '</td><td class="l" style="white-space:nowrap">' + btn(x) + "</td></tr>").join("") + "</tbody></table></div>" : ""; }).join("")
+    : '<div class="sub">Nothing open' + (sel.value ? " for " + esc(sel.value === "-" ? "nobody" : sel.value) : "") + ".</div>";
+}
+function tickDoc(id) {
+  const d = S.bdocs.filter(x => x.id === id)[0]; if (!d) return;
+  d.status = "done"; d.doneOn = isoOf(new Date()); d.doneBy = USER ? USER.email : ""; persist(); renderAll(); toast("Done: " + d.item);
+}
+/* load contracts from a JSON file: { work_orders: [ { client, woNo, ..., checks: [ { phase, cat, item, owner, due, req } ] } ] }.
+   Without checks a contract gets the full template. Contracts already here (same client and number) are skipped. */
+function importWo(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    let j; try { j = JSON.parse(rd.result); } catch (e) { toast("That file is not JSON."); return; }
+    const list = Array.isArray(j) ? j : (j.work_orders || []); let nw = 0, nc = 0, skip = 0;
+    list.forEach(o => {
+      if (!o || !o.client || (!o.woNo && !o.site)) return;
+      const cl = matchClient(String(o.client)) || String(o.client);
+      if (S.wos.some(w => w.client === cl && String(w.woNo || "") === String(o.woNo || "").trim() && String(w.site || "") === String(o.site || "").trim())) { skip++; return; }
+      const w = { id: uid(), status: "active" };
+      TABS.work_orders.forEach(c => { if (c !== "id") w[c] = o[c] == null ? "" : NUMC[c] ? toNum(o[c], "") : String(o[c]).trim(); });
+      w.client = matchClient(w.client) || w.client; w.kind = w.kind === "LOI" ? "LOI" : "WO"; w.status = w.status === "closed" ? "closed" : "active";
+      S.wos.push(w); nw++;
+      const cs = Array.isArray(o.checks) ? o.checks.filter(c => c && c.item && WO_PH[c.phase]).map(c => ({ id: uid(), woId: w.id, phase: c.phase, cat: String(c.cat || ""), item: String(c.item), owner: String(c.owner || ""), due: toIso(c.due || ""), dueDay: +c.dueDay || "", expires: toIso(c.expires || ""), status: CK_ST[c.status] ? c.status : "open", link: String(c.link || ""), blocks: !!(c.req || c.blocks), note: String(c.note || ""), doneOn: "", doneBy: "" }))
+        : tplChecks(w, WO_TPL.map((t, i) => i));
+      S.checks = S.checks.concat(cs); nc += cs.length;
+    });
+    persist(); renderAll(); toast(nw ? "Imported " + nw + " work order" + (nw === 1 ? "" : "s") + " with " + nc + " checklist items" + (skip ? ", " + skip + " already here" : "") : skip ? "All " + skip + " were already here" : "No work orders found in that file");
+  };
+  rd.readAsText(file);
 }
 
 /* follow-up dialog: the bill's promise history and a form for the next one */
@@ -1580,6 +1913,10 @@ function renderFlags(A) {
   Object.keys(CM).forEach(k => { const m = CM[k]; m.open.filter(x => x.st === "broken").forEach(x => f.push(["high", "Promise broken: " + m.client, fmt(x.rem) + " promised by " + dmy(x.c.date) + (m.acct ? " on account" : " on bill " + (m.b ? m.b.billno || "-" : "-")) + " has not come in. Follow up and log the new date."])); });
   const pll = plOpen().filter(x => x.target && x.target < S.settings.asOn);
   if (pll.length) f.push(["med", pll.length + " bill" + (pll.length === 1 ? "" : "s") + " in pipeline past the submit-by date", pll.slice(0, 6).map(x => x.client.split(" ")[0] + " " + x.desc + " (" + dmy(x.target) + (x.owner ? ", " + x.owner : "") + ")").join(", ") + (pll.length > 6 ? "\u2026" : "") + ". See the In pipeline tab."]);
+  const ckl = S.checks.filter(c => c.phase !== "bill" && ckLate(c) && woOf(c.woId) && woOf(c.woId).status !== "closed");
+  if (ckl.length) f.push(["med", ckl.length + " work order checklist item" + (ckl.length === 1 ? "" : "s") + " overdue", ckl.slice(0, 6).map(c => woShort(woOf(c.woId)) + ": " + c.item + " (" + dmy(c.due) + (c.owner ? ", " + c.owner : "") + ")").join("; ") + (ckl.length > 6 ? "\u2026" : "") + ". See My tasks."]);
+  const dml = plOpen().filter(x => x.stage === "ready" && docsMissing(x.id).length);
+  if (dml.length) f.push(["high", dml.length + " bill" + (dml.length === 1 ? "" : "s") + " marked ready with required documents missing", dml.map(x => x.client.split(" ")[0] + " " + x.desc + ": " + docsMissing(x.id).map(d => d.item).join(", ")).join("; ") + "."]);
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
   const unb = {};
   S.work.forEach(w => { if (w.billId) return; const k = w.client + "|" + (w.site || ""), x = unb[k] || (unb[k] = { c: w.client, s: w.site, amt: 0, first: w.date }); x.amt += wVal(w); if (w.date < x.first) x.first = w.date; });
@@ -1707,7 +2044,7 @@ function renderAll() {
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
   renderPay();
-  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderPipeline(); renderFlags(A);
+  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderPipeline(); renderWo(); renderTasks(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
 }
@@ -2131,7 +2468,7 @@ function exportWork() {
 function renderWork() { wFill(false); renderRollup(); renderBoq(); renderWorkLog(); }
 
 /* ---------- modals ---------- */
-function openModal(html) { $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
+function openModal(html) { $("#modal").className = ""; $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
 function closeModal() { $("#modalbg").classList.remove("show"); }
 function openReceipt(billId, clientArg, mode) {
   const b = BILLS.filter(x => x.id === billId)[0];
@@ -2285,7 +2622,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "client", "bills", "pipeline", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "tasks", "client", "bills", "pipeline", "wo", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
@@ -2338,6 +2675,16 @@ function wire() {
     if (act === "plmove") { movePipe(id, t.dataset.to); return; }
     if (act === "plbill") { billPipe(id); return; }
     if (act === "plopen") { showTab("pipeline"); return; }
+    if (act === "newwo") { openWo(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
+    if (act === "wopick") { WO_SEL = id; renderWo(); $("#woDetail").scrollIntoView({ block: "start" }); return; }
+    if (act === "woedit") { openWo(id); return; }
+    if (act === "woclose") { WO_SEL = null; renderWo(); return; }
+    if (act === "ckadd") { openCheck(null, t.dataset.ph); return; }
+    if (act === "ckedit") { openCheck(id); return; }
+    if (act === "cktick") { tickCheck(id, t.checked); return; }
+    if (act === "tkdone") { tickCheck(id, true); return; }
+    if (act === "tkdoc") { tickDoc(id); return; }
+    if (act === "pldocs") { openDocs(id); return; }
     if (act === "plcancel") { PL = null; renderPending(); return; }
     if (act === "newfu") { openCommit(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "cvdbill") openDirectBill(SEL);
@@ -2390,6 +2737,8 @@ function wire() {
   $("#btnWfReset").onclick = () => { $("#wfClient").value = "all"; $("#wfRig").value = "all"; $("#wfFrom").value = ""; $("#wfTo").value = ""; $("#wfState").value = ""; renderWorkLog(); };
   $("#btnCsvWork").onclick = exportWork;
   $("#plOwner").onchange = renderPipeline;
+  $("#tkOwner").onchange = e => { TK_OWNER = e.target.value; renderTasks(); };
+  $("#woFile").onchange = e => { const f = e.target.files[0]; if (f) importWo(f); e.target.value = ""; };
 }
 
 function init() {
