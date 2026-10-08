@@ -90,6 +90,10 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .plcard.late{border-left:3px solid var(--bad)}
 .plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cnt{font-size:11px;color:var(--muted)}
+.plov{display:grid;gap:10px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0}
+@media(max-width:640px){.plov{grid-template-columns:minmax(0,1fr)}}
+.plov>a{display:block;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;color:inherit;text-decoration:none}
+.plov b{display:block;font-size:18px}
 .crow{display:grid;grid-template-columns:minmax(100px,230px) minmax(0,1fr) 110px;gap:10px;align-items:center;padding:4px 0}
 .crow .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbar{display:flex;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden}
@@ -250,6 +254,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <section id="tab-overview">
     <div class="grid kpis" id="kpis"></div>
+    <div class="card" style="margin-bottom:12px" id="plOv"></div>
     <div class="card" style="margin-bottom:12px" id="trendAll"></div>
     <div class="card" style="margin-bottom:12px" id="payAll"></div>
     <div class="card" style="margin-bottom:12px">
@@ -1017,6 +1022,11 @@ function renderPipeline() {
         (i < 2 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i + 1] + '">' + PL_ST[PL_OPEN[i + 1]] + " &rarr;</button>" : '<button class="small primary" data-act="plbill" data-id="' + esc(x.id) + '">Make bill</button><button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="sub" title="Already billed elsewhere">Mark submitted</button>') +
         '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
   }).join("");
+  const lateAll = open.filter(late).sort((a, b) => a.target.localeCompare(b.target));
+  $("#plOv").innerHTML = '<div class="toolbar" style="margin-bottom:0"><h2 style="margin:0">Bills being prepared</h2><span class="sub">' + (open.length ? open.length + " in pipeline &middot; ~" + fmt(open.reduce((a, x) => a + (+x.amt || 0), 0)) + " before GST &middot; not in the receivables above" : "nothing in the pipeline") + '</span><span style="flex:1"></span><button class="small" data-act="plopen">Open pipeline</button></div>' +
+    (open.length ? '<div class="plov">' + PL_OPEN.map(st => { const xs = open.filter(x => x.stage === st); return '<a data-act="plopen">' + PL_ST[st] + "<b>" + xs.length + '</b><span class="sub">' + (xs.length ? "~" + cmp(xs.reduce((a, x) => a + (+x.amt || 0), 0)) + (xs.filter(late).length ? ' &middot; <span style="color:var(--bad)">' + xs.filter(late).length + " late</span>" : "") : "&nbsp;") + "</span></a>"; }).join("") + "</div>" +
+      (lateAll.length ? '<div class="sub"><span style="color:var(--bad);font-weight:600">Past submit-by date:</span> ' + lateAll.slice(0, 5).map(x => esc(x.client.split(" ")[0] + " " + x.desc) + " (" + dmy(x.target) + (x.owner ? ", " + esc(x.owner) : "") + ")").join(" &middot; ") + (lateAll.length > 5 ? " &hellip;" : "") + "</div>" : "")
+      : '<div class="sub" style="margin-top:6px">Use + New &gt; Bill in pipeline to note a bill the team is making.</div>');
   const cut = isoOf(new Date(toD(asOn).getTime() - 30 * 864e5));
   const done = S.pipe.filter(x => PL_OPEN.indexOf(x.stage) < 0 && (x.updatedOn || "") >= cut).sort((a, b) => (b.updatedOn || "").localeCompare(a.updatedOn || ""));
   $("#plDone").innerHTML = done.length ? '<table><thead><tr><th>On</th><th class="l">Client</th><th class="l">Bill</th><th class="l">Status</th><th class="l">Owner</th><th></th></tr></thead><tbody>' +
@@ -2327,6 +2337,7 @@ function wire() {
     if (act === "pledit") { openPipe(id); return; }
     if (act === "plmove") { movePipe(id, t.dataset.to); return; }
     if (act === "plbill") { billPipe(id); return; }
+    if (act === "plopen") { showTab("pipeline"); return; }
     if (act === "plcancel") { PL = null; renderPending(); return; }
     if (act === "newfu") { openCommit(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "cvdbill") openDirectBill(SEL);
