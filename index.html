@@ -489,6 +489,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
 <div id="modalbg"><div id="modal"></div></div>
 <div class="toast" id="toast"></div>
+<input type="file" id="upFile" multiple class="hide">
 
 <script src="config.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -568,7 +569,7 @@ const TABS = {
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
   commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
-  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId", "seq", "periodFrom", "periodTo"],
+  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId", "seq", "periodFrom", "periodTo", "folder"],
   ra_lines: ["id", "pipeId", "woId", "boqId", "code", "item", "unit", "rate", "prevQty", "qty"],
   work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
   wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
@@ -581,7 +582,7 @@ const TABS = {
 };
 const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", overrides: "billId", settings: "key" };
 const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines"];   // added after the first Sheets were made: created on first load if missing
-const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo"] };   // columns added later: appended to the header row on first load if missing
+const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo", "folder"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
 const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1 };
 const BOOLC = { dateEst: 1, deleted: 1, blocks: 1 };
@@ -836,12 +837,128 @@ function requestToken(prompt) {
         rej(new Error("Google did not give access to the sheet: the box \u201CSee, edit, create and delete all your Google Sheets spreadsheets\u201D was not ticked. Click Sign in with Google again and tick that box on Google's permission screen, then Continue."));
         return;
       }
-      setGranted(true);
+      setGranted(true); DRIVE_OK = google.accounts.oauth2.hasGrantedAllScopes(r, DRIVE_SCOPE);
       TOKEN = r.access_token; TOKEN_EXP = Date.now() + (Math.max(120, +r.expires_in || 3600) - 60) * 1000; res();
     };
     if (!grantedBefore()) prompt = "consent";
     tokenClient.requestAccessToken(USER ? { prompt: prompt, login_hint: USER.email } : { prompt: prompt });
   });
+}
+/* ---------- Google Drive: documents go into a folder per contract and bill ----------
+   Root: CFG.driveRoot (a shared folder's id) or "NIL Contracts" in the uploader's My Drive. Drive access is asked for only on the
+   first upload. Layout: root / client / "<WO no> <site>" / 03 RA bills / RA-01 <date> / 01 Measurement | 02 Invoice | 03 Compliance;
+   checklist items go to 01 Onboarding, 02 Monthly/<yyyy-mm>, 05 Closeout. */
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+const DRIVE_API = "https://www.googleapis.com/drive/v3/files", DRIVE_UP = "https://www.googleapis.com/upload/drive/v3/files";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+let DRIVE_OK = false, driveClient = null, driveErr = () => {}, UP_TARGET = null, UP_FILES = null;
+const FOLDER_IDS = {};
+const driveReady = () => DRIVE_OK && TOKEN && Date.now() < TOKEN_EXP;
+function requestDrive() {
+  return new Promise((res, rej) => {
+    if (!driveClient) driveClient = google.accounts.oauth2.initTokenClient({ client_id: CFG.clientId, scope: "openid email " + SHEETS_SCOPE + " " + DRIVE_SCOPE, callback: () => {}, error_callback: e => driveErr(e) });
+    driveErr = e => rej(new Error(e && e.type === "popup_failed_to_open" ? "The browser blocked the Google window. Allow pop-ups for this site and try again." : "Google Drive access was not given."));
+    driveClient.callback = r => {
+      if (!r || r.error || !google.accounts.oauth2.hasGrantedAllScopes(r, DRIVE_SCOPE)) { rej(new Error("Google did not give access to Drive. Click again and tick the Google Drive box on Google's screen.")); return; }
+      TOKEN = r.access_token; TOKEN_EXP = Date.now() + (Math.max(120, +r.expires_in || 3600) - 60) * 1000; DRIVE_OK = true; res();
+    };
+    driveClient.requestAccessToken(USER ? { prompt: "", login_hint: USER.email } : { prompt: "" });
+  });
+}
+async function dapi(method, url, body, headers) {
+  if (!driveReady()) { DRIVE_OK = false; throw new Error("Google Drive access has expired. Click Upload again."); }
+  const r = await fetch(url, { method: method, headers: Object.assign({ Authorization: "Bearer " + TOKEN }, body && !(body instanceof Blob) ? { "Content-Type": "application/json" } : {}, headers || {}), body: body ? (body instanceof Blob ? body : JSON.stringify(body)) : undefined });
+  if (r.status === 401) { DRIVE_OK = false; throw new Error("Google Drive access has expired. Click Upload again."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = (j.error && j.error.message) || ("HTTP " + r.status);
+    throw new Error(/has not been used|is disabled/i.test(m) ? "Google Drive is not switched on for this app yet (Drive API in the Google Cloud project). Ask Vignesh." : "Google Drive error: " + m);
+  }
+  return j;
+}
+const dq = s => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+const ALL_DRIVES = "supportsAllDrives=true";
+async function driveFolder(parts) {   // finds or makes each folder in the path; returns { id, link } of the last
+  let parent = CFG.driveRoot || null, link = "", key = "";
+  if (!parent) parts = [CFG.env && CFG.env !== "production" ? "NIL Contracts (" + CFG.env + ")" : "NIL Contracts"].concat(parts);
+  for (const raw of parts) {
+    const name = String(raw).replace(/[\/\\]/g, "-").trim() || "-"; key += "/" + name;
+    if (FOLDER_IDS[key]) { parent = FOLDER_IDS[key].id; link = FOLDER_IDS[key].link; continue; }
+    const q = "name='" + dq(name) + "' and mimeType='" + FOLDER_MIME + "' and trashed=false and '" + (parent || "root") + "' in parents";
+    const f = await dapi("GET", DRIVE_API + "?" + ALL_DRIVES + "&includeItemsFromAllDrives=true&fields=" + encodeURIComponent("files(id,webViewLink)") + "&q=" + encodeURIComponent(q));
+    let hit = (f.files || [])[0];
+    if (!hit) hit = await dapi("POST", DRIVE_API + "?" + ALL_DRIVES + "&fields=id,webViewLink", { name: name, mimeType: FOLDER_MIME, parents: [parent || "root"] });
+    FOLDER_IDS[key] = { id: hit.id, link: hit.webViewLink || "https://drive.google.com/drive/folders/" + hit.id };
+    parent = hit.id; link = FOLDER_IDS[key].link;
+  }
+  return { id: parent, link: link };
+}
+async function driveUpload(file, name, folderId) {
+  const meta = { name: name, parents: [folderId] }, q = "?" + ALL_DRIVES + "&fields=id,webViewLink";
+  if (file.size <= 5 * 1024 * 1024) {
+    const b = "nil" + Math.random().toString(36).slice(2);
+    const body = new Blob(["--" + b + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(meta) + "\r\n--" + b + "\r\nContent-Type: " + (file.type || "application/octet-stream") + "\r\n\r\n", file, "\r\n--" + b + "--"]);
+    return dapi("POST", DRIVE_UP + q + "&uploadType=multipart", body, { "Content-Type": "multipart/related; boundary=" + b });
+  }
+  if (!driveReady()) throw new Error("Google Drive access has expired. Click Upload again.");
+  const r0 = await fetch(DRIVE_UP + q + "&uploadType=resumable", { method: "POST", headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json", "X-Upload-Content-Type": file.type || "application/octet-stream" }, body: JSON.stringify(meta) });
+  const loc = r0.headers.get("Location");
+  if (!r0.ok || !loc) throw new Error("Google Drive did not accept the upload of " + file.name + ".");
+  const r1 = await fetch(loc, { method: "PUT", body: file });
+  const j = await r1.json().catch(() => ({}));
+  if (!r1.ok) throw new Error("Upload of " + file.name + " failed (HTTP " + r1.status + ").");
+  return j;
+}
+/* where a document goes */
+function billFolderName(x) { const n = String(x.seq || "").match(/\d+/); return n ? "RA-" + n[0].padStart(2, "0") + (x.periodTo || x.target ? " " + (x.periodTo || x.target) : "") : (x.desc || "Bill").slice(0, 60); }
+function contractParts(client, w) { return w ? [w.client, [w.woNo, w.site].filter(Boolean).join(" ") || "Work order"] : [client, "Without work order"]; }
+function docCatFolder(cat) { return /measure/i.test(cat) ? "01 Measurement" : /invoice|tax|gst/i.test(cat) ? "02 Invoice" : "03 Compliance"; }
+function upPlace(kind, id) {
+  if (kind === "doc") {
+    const d = S.bdocs.filter(y => y.id === id)[0], x = d && S.pipe.filter(y => y.id === d.pipeId)[0]; if (!x) return null;
+    const w = woOf(x.woId);
+    return { rec: d, pipe: x, parts: contractParts(x.client, w).concat(["03 RA bills", billFolderName(x)]), sub: docCatFolder(d.cat), w: w };
+  }
+  const c = S.checks.filter(y => y.id === id)[0], w = c && woOf(c.woId); if (!w) return null;
+  const ph = c.phase === "start" ? ["01 Onboarding"] : c.phase === "month" ? ["02 Monthly", (c.due || today()).slice(0, 7)] : c.phase === "close" ? ["05 Closeout"] : ["03 RA bills"];
+  return { rec: c, parts: contractParts(w.client, w).concat(ph), sub: "", w: w };
+}
+function upFolderLabel(x) { return [CFG.driveRoot ? "(shared folder)" : CFG.env && CFG.env !== "production" ? "NIL Contracts (" + CFG.env + ")" : "NIL Contracts"].concat(contractParts(x.client, woOf(x.woId)), ["03 RA bills", billFolderName(x)]).join(" / "); }
+function upPath(kind, id) { const p = upPlace(kind, id); return p ? p.parts.concat(p.sub ? [p.sub] : []).join(" / ") : ""; }
+function upMsg(id, html) { $$('[data-up="' + id + '"]').forEach(el => { el.innerHTML = html; }); }
+function pickUpload(kind, id) {
+  UP_TARGET = { kind: kind, id: id };
+  const inp = $("#upFile"); inp.value = ""; inp.click();
+}
+async function runUpload(click) {
+  const t = UP_TARGET, files = UP_FILES; if (!t || !files || !files.length) return;
+  const p = upPlace(t.kind, t.id); if (!p) return;
+  try {
+    if (!driveReady()) {
+      if (!click) { upMsg(t.id, '<button class="small primary" data-act="upretry" data-id="' + esc(t.id) + '">Allow Google Drive and upload</button>'); if (!$('[data-up="' + t.id + '"]')) runUpload(true); return; }
+      upMsg(t.id, "Asking Google for Drive access…"); await requestDrive();
+    }
+    upMsg(t.id, "Uploading " + files.length + " file" + (files.length === 1 ? "" : "s") + "…");
+    const bill = await driveFolder(p.parts), dest = p.sub ? await driveFolder(p.parts.concat([p.sub])) : bill;
+    let last = null;
+    for (const f of files) last = await driveUpload(f, (p.rec.item + " - " + f.name).slice(0, 180), dest.id);
+    UP_FILES = null;
+    const link = files.length === 1 ? (last.webViewLink || "https://drive.google.com/file/d/" + last.id + "/view") : dest.link;
+    const r = p.rec; r.link = link;
+    if (r.status !== "done") { if (t.kind === "doc") { r.status = "done"; r.doneOn = isoOf(new Date()); r.doneBy = USER ? USER.email : ""; } else setCheck(r, "done"); }
+    if (p.pipe && !p.pipe.folder) p.pipe.folder = bill.link;
+    if (p.w && !p.w.folder) { const cf = await driveFolder(contractParts(p.w.client, p.w)); p.w.folder = cf.link; }
+    persist();
+    const tr = $('#modal tr[data-doc="' + t.id + '"]'), ck = t.kind === "ck" && $("#ckLink") && $("#modal").dataset.ck === t.id;
+    const done = '<span style="color:var(--cred)">Uploaded</span> ' + linkHtml(link).replace("Open file", "open");
+    if (tr) { $(".dLink", tr).value = link; $(".dSt", tr).value = "done"; upMsg(t.id, done); }   // a dialog is open: show it there and keep its other edits
+    else if (ck) { $("#ckLink").value = link; $("#ckSt").value = "done"; upMsg(t.id, done); }
+    else renderAll();
+    toast(files.length === 1 ? "Uploaded to Drive: " + files[0].name : files.length + " files uploaded to Drive");
+  } catch (e) {
+    upMsg(t.id, '<span style="color:var(--bad)">' + esc(e.message || String(e)) + "</span>" + (UP_FILES ? ' <button class="small" data-act="upretry" data-id="' + esc(t.id) + '">Try again</button>' : ""));
+    if (!$('[data-up="' + t.id + '"]')) toast(e.message || String(e));
+  }
 }
 const allowed = email => (CFG.allowedEmails || []).map(x => String(x).trim().toLowerCase()).indexOf(email) >= 0;
 function gateMsg(t, bad) { const el = $("#gateMsg"); el.textContent = t || ""; el.style.color = bad ? "var(--bad)" : ""; }
@@ -1303,10 +1420,12 @@ function openCheck(id, phase) {
     (ph === "bill" ? '<label style="grid-column:1/-1"><span class="chk"><input type="checkbox" id="ckReq"' + (v.blocks ? " checked" : "") + "> Required: a bill cannot be submitted without it</span></label>"
       : '<label>Due<input type="date" id="ckDue" value="' + esc(v.due) + '"></label>' + (ph === "month" ? '<label>Repeats on day<input type="number" min="1" max="31" id="ckDay" value="' + esc(v.dueDay) + '"></label>' : "") +
         '<label>Expires<input type="date" id="ckExp" value="' + esc(v.expires) + '"></label><label>Status<select id="ckSt">' + Object.keys(CK_ST).map(k => '<option value="' + k + '"' + (k === v.status ? " selected" : "") + ">" + CK_ST[k] + "</option>").join("") + "</select></label>" +
-        '<label style="grid-column:1/-1">File link<input type="text" id="ckLink" value="' + esc(v.link) + '" placeholder="Drive link to the document"></label>') +
+        '<label style="grid-column:1/-1">File link<input type="text" id="ckLink" value="' + esc(v.link) + '" placeholder="Drive link to the document"></label>' +
+        (c ? '<div style="grid-column:1/-1"><button class="small primary" data-act="upl" data-k="ck" data-id="' + esc(c.id) + '">Upload to Drive</button> <span class="sub" data-up="' + esc(c.id) + '">' + esc(upPath("ck", c.id)) + "</span></div>" : "")) +
     '<label style="grid-column:1/-1">Note<input type="text" id="ckNote" value="' + esc(v.note) + '"></label></div>' +
     (c && c.doneOn ? '<div class="help">Done ' + dmy(c.doneOn) + (c.doneBy ? " by " + esc(whoOf(c.doneBy)) : "") + ".</div>" : "") +
     '<div id="ckMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (c ? '<button id="ckDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").dataset.ck = c ? c.id : "";
   $("#mCancel").onclick = closeModal;
   if (c) $("#ckDel").onclick = () => { S.checks = S.checks.filter(x => x !== c); persist(); closeModal(); renderAll(); toast("Item removed"); };
   $("#mSave").onclick = () => {
@@ -1352,8 +1471,8 @@ function openDocs(pipeId) {
   const x = S.pipe.filter(y => y.id === pipeId)[0]; if (!x) return;
   const w = woOf(x.woId), ds = plDocs(x.id), owners = knownOwners();
   openModal("<h2>Documents for this bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(x.client) + " &middot; " + esc(x.desc || "") + (w ? " &middot; " + esc(woLabel(w)) : "") + (x.target ? " &middot; submit by " + dmy(x.target) : "") + "</div>" +
-    (w ? '<div class="sub" style="margin-bottom:8px">Save files in <code>' + esc(woFolder(w)) + " / 03 RA bills / " + esc(x.desc || "") + "</code>" + (w.folder ? " (" + linkHtml(w.folder).replace("Open file", "contract folder") + ")" : "") + "</div>" : "") +
-    (ds.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Document</th><th class="l">Who</th><th class="l">Status</th><th class="l">File link</th></tr></thead><tbody>' + ds.map(d => '<tr data-doc="' + esc(d.id) + '"><td class="l">' + esc(d.item) + (d.blocks ? ' <span class="tag pi">required</span>' : "") + '</td><td class="l"><input type="text" class="dOwner" list="dOwners" value="' + esc(d.owner) + '" style="width:110px"></td><td class="l"><select class="dSt">' + Object.keys(CK_ST).map(k => '<option value="' + k + '"' + (k === d.status ? " selected" : "") + ">" + CK_ST[k] + "</option>").join("") + '</select></td><td class="l"><input type="text" class="dLink" value="' + esc(d.link) + '" placeholder="https://" style="width:150px"> ' + linkHtml(d.link).replace("Open file", "open") + "</td></tr>").join("") + '</tbody></table></div><datalist id="dOwners">' + owners.map(o => '<option value="' + esc(o) + '">').join("") + "</datalist>"
+    '<div class="sub" style="margin-bottom:8px">Upload puts the file in Google Drive: <code>' + esc(upFolderLabel(x)) + "</code>" + (x.folder ? " (" + linkHtml(x.folder).replace("Open file", "open folder") + ")" : "") + "</div>" +
+    (ds.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Document</th><th class="l">Who</th><th class="l">Status</th><th class="l">File</th></tr></thead><tbody>' + ds.map(d => '<tr data-doc="' + esc(d.id) + '"><td class="l">' + esc(d.item) + (d.blocks ? ' <span class="tag pi">required</span>' : "") + '</td><td class="l"><input type="text" class="dOwner" list="dOwners" value="' + esc(d.owner) + '" style="width:110px"></td><td class="l"><select class="dSt">' + Object.keys(CK_ST).map(k => '<option value="' + k + '"' + (k === d.status ? " selected" : "") + ">" + CK_ST[k] + "</option>").join("") + '</select></td><td class="l"><button class="small primary" data-act="upl" data-k="doc" data-id="' + esc(d.id) + '">Upload</button> <span data-up="' + esc(d.id) + '">' + linkHtml(d.link).replace("Open file", "open") + '</span><div><input type="text" class="dLink" value="' + esc(d.link) + '" placeholder="or paste a link" style="width:170px;margin-top:4px"></div></td></tr>').join("") + '</tbody></table></div><datalist id="dOwners">' + owners.map(o => '<option value="' + esc(o) + '">').join("") + "</datalist>"
       : '<div class="help">' + (w ? "This work order has no Every RA bill items yet. Add them on the Work orders tab, or add one here." : "Link this bill to its work order (Edit) to get the contract's document list, or add documents one by one.") + "</div>") +
     '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Add a document<input type="text" id="dNew" placeholder="e.g. Rolling margin certificate"></label></div>' +
     '<div id="dMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
@@ -1399,13 +1518,14 @@ function renderTasks() {
   const late = all.filter(x => x.due && x.due < td).length;
   $("#tkCnt").textContent = late ? "(" + late + ")" : "";
   const grp = [["Overdue", x => x.due && x.due < td], ["Due in the next 7 days", x => x.due && x.due >= td && x.due <= wk], ["Later", x => x.due && x.due > wk], ["No date", x => !x.due]];
-  const btn = x => x.k === "ck" ? '<button class="small" data-act="tkdone" data-id="' + esc(x.id) + '">Done</button><button class="small" data-act="ckedit" data-id="' + esc(x.id) + '">Edit</button>'
+  const up = x => x.k === "ck" || x.k === "doc" ? '<button class="small primary" data-act="upl" data-k="' + x.k + '" data-id="' + esc(x.id) + '">Upload</button>' : "";
+  const btn = x => up(x) + (x.k === "ck" ? '<button class="small" data-act="tkdone" data-id="' + esc(x.id) + '">Done</button><button class="small" data-act="ckedit" data-id="' + esc(x.id) + '">Edit</button>'
     : x.k === "exp" ? '<button class="small" data-act="ckedit" data-id="' + esc(x.id) + '">Edit</button>'
     : x.k === "doc" ? '<button class="small" data-act="tkdoc" data-id="' + esc(x.id) + '">Done</button><button class="small" data-act="pldocs" data-id="' + esc(x.pipe) + '">All documents</button>'
-    : '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button>';
+    : '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button>');
   $("#tkSum").textContent = mine.length ? mine.length + " open" : "";
-  $("#tkList").innerHTML = mine.length ? grp.map(g => { const xs = mine.filter(g[1]).sort((a, b) => (a.due || "").localeCompare(b.due || "")); return xs.length ? '<h3 class="woph">' + g[0] + ' <span class="sub">' + xs.length + '</span></h3><div class="tblwrap"><table class="cktbl fix"><colgroup><col><col style="width:110px"><col style="width:90px"><col style="width:80px"><col style="width:170px"></colgroup><tbody>' +
-      xs.map(x => '<tr><td class="l">' + esc(x.what) + (x.req ? ' <span class="tag pi">required</span>' : "") + '<div class="sub">' + x.ctx.split("&middot;").map(esc).join("&middot;") + "</div></td><td class=\"l\">" + (x.owner ? esc(x.owner) : '<span class="sub">nobody</span>') + '</td><td class="l"' + (x.due && x.due < td ? ' style="color:var(--bad);font-weight:600"' : "") + ">" + (x.due ? dmy(x.due) : "") + '</td><td class="l">' + linkHtml(x.link) + '</td><td class="l" style="white-space:nowrap">' + btn(x) + "</td></tr>").join("") + "</tbody></table></div>" : ""; }).join("")
+  $("#tkList").innerHTML = mine.length ? grp.map(g => { const xs = mine.filter(g[1]).sort((a, b) => (a.due || "").localeCompare(b.due || "")); return xs.length ? '<h3 class="woph">' + g[0] + ' <span class="sub">' + xs.length + '</span></h3><div class="tblwrap"><table class="cktbl fix"><colgroup><col><col style="width:110px"><col style="width:90px"><col style="width:150px"><col style="width:230px"></colgroup><tbody>' +
+      xs.map(x => '<tr><td class="l">' + esc(x.what) + (x.req ? ' <span class="tag pi">required</span>' : "") + '<div class="sub">' + x.ctx.split("&middot;").map(esc).join("&middot;") + "</div></td><td class=\"l\">" + (x.owner ? esc(x.owner) : '<span class="sub">nobody</span>') + '</td><td class="l"' + (x.due && x.due < td ? ' style="color:var(--bad);font-weight:600"' : "") + ">" + (x.due ? dmy(x.due) : "") + '</td><td class="l"><span data-up="' + esc(x.id) + '">' + linkHtml(x.link) + '</span></td><td class="l" style="white-space:nowrap">' + btn(x) + "</td></tr>").join("") + "</tbody></table></div>" : ""; }).join("")
     : '<div class="sub">Nothing open' + (sel.value ? " for " + esc(sel.value === "-" ? "nobody" : sel.value) : "") + ".</div>";
 }
 function tickDoc(id) {
@@ -2969,6 +3089,8 @@ function wire() {
     if (act === "tkdone") { tickCheck(id, true); return; }
     if (act === "tkdoc") { tickDoc(id); return; }
     if (act === "pldocs") { openDocs(id); return; }
+    if (act === "upl") { pickUpload(t.dataset.k, id); return; }
+    if (act === "upretry") { if (UP_TARGET && UP_TARGET.id === id) runUpload(true); return; }
     if (act === "rwnew") { openWizard(!$("#tab-wo").classList.contains("hide") ? WO_SEL : null); return; }
     if (act === "rwedit") { openWizard(null, id); return; }
     if (act === "rwgo") { if (RW && +t.dataset.i < RW.step) { if (RW.step === 0) rwRead0(); else if (RW.step === 1) rwRead1(); else if (RW.step === 2) rwRead2(); RW.step = +t.dataset.i; renderWizard(); } return; }
@@ -3030,6 +3152,7 @@ function wire() {
   $("#btnWfReset").onclick = () => { $("#wfClient").value = "all"; $("#wfRig").value = "all"; $("#wfFrom").value = ""; $("#wfTo").value = ""; $("#wfState").value = ""; renderWorkLog(); };
   $("#btnCsvWork").onclick = exportWork;
   $("#plOwner").onchange = renderPipeline;
+  $("#upFile").onchange = () => { UP_FILES = Array.from($("#upFile").files || []); runUpload(false); };
   $("#rwNext").onclick = () => rwNext(false); $("#rwBack").onclick = () => rwNext(true); $("#rwPrint").onclick = () => printAbstract(null);
   $("#tkOwner").onchange = e => { TK_OWNER = e.target.value; renderTasks(); };
   $("#woFile").onchange = e => { const f = e.target.files[0]; if (f) importWo(f); e.target.value = ""; };
