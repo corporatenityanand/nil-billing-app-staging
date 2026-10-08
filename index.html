@@ -80,6 +80,8 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .tag.pi{color:var(--pi);border-color:var(--pi)}
 .tag.est{color:var(--muted);border-style:dashed}
 .tag.new{color:var(--inv);border-color:var(--inv)}
+.tag.cm,.tag.ok{color:var(--cred);border-color:var(--cred)}
+.tag.bad{color:var(--bad);border-color:var(--bad)}
 .crow{display:grid;grid-template-columns:minmax(100px,230px) minmax(0,1fr) 110px;gap:10px;align-items:center;padding:4px 0}
 .crow .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbar{display:flex;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden}
@@ -214,6 +216,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
     <hr><button role="menuitem" data-act="newrc"><b>Receipt</b><span class="sub">Money received from a client</span></button>
     <button role="menuitem" data-act="newrc" data-mode="D"><b>Direct receipt</b><span class="sub">Received directly, marked Direct</span></button>
+    <button role="menuitem" data-act="newfu"><b>Payment follow-up</b><span class="sub">Note a client's promise to pay</span></button>
     <hr><button role="menuitem" data-act="openadd"><b>Bills &amp; receipts added here</b><span class="sub">Paste many proformas, deleted invoices</span></button>
   </div></span></div>
 
@@ -391,6 +394,15 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 
   <section id="tab-forecast" class="hide">
     <div class="card" style="margin-bottom:12px">
+      <h2>Money in by week</h2>
+      <div class="help">Green = what clients promised to pay (logged with Follow up), on the promised week. Blue = the rest of each tax invoice's balance on its due date (bill date + credit days), because no promise was logged. Proformas count only when a promise is logged. Red = the date has already passed.</div>
+      <div class="grid kpis" id="cfKpis" style="margin-bottom:12px"></div>
+      <div id="cfBars"></div>
+      <div class="legend"><span><i style="background:var(--cred)"></i>Promised</span><span><i class="hatch" style="background-color:var(--inv)"></i>Due, no promise</span><span><i style="background:var(--bad)"></i>Date passed</span></div>
+      <div class="tblwrap" id="cfTbl" style="margin-top:10px"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px"><h2>Open promises</h2><div class="tblwrap" id="cfPromises"></div></div>
+    <div class="card" style="margin-bottom:12px">
       <h2>When will the money come in?</h2>
       <div class="help">Expected date = bill date + credit days (set at the top). Anything already past that date is shown as overdue. Proformas use their net-of-deductions figure when that option is on. Credits are not netted off here.</div>
       <div id="fcBars"></div>
@@ -431,18 +443,19 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
   n.work = Array.isArray(o.work) ? o.work : [];
+  n.commits = Array.isArray(o.commits) ? o.commits : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -479,14 +492,15 @@ const TABS = {
   advances: ["id", "client", "site", "date", "amt", "pct", "note"],
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
+  commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log"];   // added after the first Sheets were made: created on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments"];   // added after the first Sheets were made: created on first load if missing
 const AUTO_COLS = { overrides: ["date", "base", "total"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
 const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1 };
@@ -597,6 +611,7 @@ async function loadAll() {
   n.advances = raw.advances;
   n.boq = raw.boq;
   n.work = raw.work_log;
+  n.commits = raw.commitments.map(c => Object.assign(c, { loggedOn: toIso(c.loggedOn), closedOn: toIso(c.closedOn), status: c.status || "open" }));
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -618,6 +633,7 @@ function rowsView() {
   S.advances.forEach(p => { v.advances[p.id] = pick(p, TABS.advances); });
   S.boq.forEach(p => { v.boq[p.id] = pick(p, TABS.boq); });
   S.work.forEach(p => { v.work_log[p.id] = pick(p, TABS.work_log); });
+  S.commits.forEach(p => { v.commitments[p.id] = pick(p, TABS.commitments); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -849,6 +865,135 @@ function computeBills() {
   BILLS = list;
   ADV = allocateAdvances(list);
   list.forEach(b => { b.ded = b.eRet + b.eAdv + b.eOth + b.eTds; b.net = b.total - b.ded; b.bal = round2(b.net - b.paid); });
+  computeCommits();
+}
+
+/* ---------- payment commitments ----------
+   The accounts team logs what a client promised to pay against a bill: date, amount, note, and who logged it when.
+   Receipts logged here against that bill, dated on or after the day the promise was logged, are matched to its promises
+   earliest-date first, so promises close themselves as money comes in. A promise whose date has passed without full
+   payment shows as broken but its money is still expected (overdue). Logging a new promise on a bill replaces its broken
+   ones (they stay in the history as broken); promises still in the future are kept, so instalments work. */
+let CM = {};   // billId -> { b, list: [{ c, got, rem, st, open }], open, openAmt, broken }
+const CM_ST = { promised: ["Promised", "cm"], part: ["Part received", "pi"], received: ["Received", "ok"], broken: ["Broken", "bad"], cancelled: ["Cancelled", ""], replaced: ["Replaced", ""] };
+const cmTag = st => '<span class="tag ' + CM_ST[st][1] + '">' + CM_ST[st][0] + "</span>";
+function computeCommits() {
+  CM = {};
+  const asOn = S.settings.asOn, by = {};
+  S.commits.forEach(c => { (by[c.billId] || (by[c.billId] = [])).push(c); });
+  Object.keys(by).forEach(id => {
+    const b = BILLS.filter(x => x.id === id)[0] || null;
+    const list = by[id].map(c => ({ c: c, got: 0, last: "" })).sort((x, y) => (x.c.date || "").localeCompare(y.c.date || "") || (x.c.loggedOn || "").localeCompare(y.c.loggedOn || ""));
+    const live = list.filter(x => x.c.status !== "cancelled");
+    S.receipts.filter(r => r.billId === id).sort((x, y) => (x.date || "").localeCompare(y.date || "")).forEach(r => {
+      let left = +r.amt || 0;
+      live.forEach(x => {
+        const lo = x.c.loggedOn || asOn, from = lo < asOn ? lo : asOn;   // earlier of the day it was logged and the as-on day
+        if (left <= 0 || (r.date || "") < from || (x.c.status === "replaced" && (r.date || "") > (x.c.closedOn || ""))) return;
+        const take = Math.min(left, (+x.c.amt || 0) - x.got);
+        if (take > 0) { x.got += take; left -= take; x.last = r.date; }
+      });
+    });
+    list.forEach(x => {
+      x.rem = round2((+x.c.amt || 0) - x.got);
+      x.st = x.c.status === "cancelled" ? "cancelled" : x.rem < 1 ? "received" : x.c.status === "replaced" ? "broken" : (x.c.date || "") < asOn ? "broken" : x.got > 0 ? "part" : "promised";
+      x.open = x.c.status === "open" && x.rem >= 1 && !!b && b.bal >= 1;   // money still expected on this promise
+    });
+    const open = list.filter(x => x.open);
+    CM[id] = { b: b, list: list, open: open, openAmt: open.reduce((a, x) => a + x.rem, 0), broken: list.filter(x => x.st === "broken").length };
+  });
+}
+function cmBillTag(b) {
+  const m = CM[b.id]; if (!m || !m.open.length) return "";
+  const x = m.open[0];
+  return x.st === "broken" ? ' <span class="tag bad" title="Promised ' + fmt(x.rem) + " by " + dmy(x.c.date) + '">promise broken ' + dmy(x.c.date) + "</span>"
+    : ' <span class="tag cm" title="' + m.open.length + " open promise" + (m.open.length === 1 ? "" : "s") + '">promised ' + cmp(m.openAmt) + " &middot; " + dmy(x.c.date) + "</span>";
+}
+const fuBtn = b => b.bal >= 1 && b.status !== "Adv" ? ' <button class="small" data-act="fu" data-id="' + esc(b.id) + '">Follow up</button>' : "";
+
+/* weekly money in: open promises on their promised week, the rest of each tax invoice's balance on its due week
+   (bill date + credit days). Proformas count only through promises: they are not yet due. */
+const CF_W = 12;
+function weekStart(iso) { const d = toD(iso); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d; }
+function inflow() {
+  const asOn = S.settings.asOn, w0 = weekStart(asOn);
+  const slot = iso => { if (iso < asOn) return 0; const k = Math.floor((toD(iso) - w0) / (7 * 864e5)); return k >= CF_W ? CF_W + 1 : k + 1; };
+  const com = Array(CF_W + 2).fill(0), due = Array(CF_W + 2).fill(0), rows = [];
+  BILLS.forEach(b => {
+    if (b.bal < 1 || b.status === "Adv") return;
+    let left = b.bal;
+    (CM[b.id] ? CM[b.id].open : []).forEach(x => { const a = Math.min(left, x.rem); if (a < 1) return; left -= a; com[slot(x.c.date)] += a; rows.push({ b: b, amt: a, date: x.c.date, kind: "promise", x: x }); });
+    if (left >= 1 && b.status !== "PI") { const dd = isoOf(new Date(toD(b.date).getTime() + (S.settings.credit || 0) * 864e5)); due[slot(dd)] += left; rows.push({ b: b, amt: left, date: dd, kind: "due" }); }
+  });
+  const labels = ["Overdue"];
+  for (let i = 0; i < CF_W; i++) { const d = new Date(w0.getTime() + i * 7 * 864e5); labels.push("w/c " + dmy(isoOf(d)).slice(0, 5)); }
+  labels.push("Later");
+  return { labels: labels, com: com, due: due, rows: rows };
+}
+function renderInflow() {
+  const cf = inflow(), n = cf.labels.length, mx = Math.max.apply(null, cf.com.map((v, i) => v + cf.due[i]).concat([1]));
+  const sum = (a, i0, i1) => a.slice(i0, i1).reduce((x, y) => x + y, 0);
+  const kp = (l, v, col, note) => '<div class="card kpi"><div class="lbl" style="color:' + col + '">' + l + '</div><div class="val" style="font-size:22px">' + v + '</div><div class="note">' + note + "</div></div>";
+  const nb = S.commits.length ? Object.keys(CM).reduce((a, k) => a + CM[k].open.filter(x => x.st === "broken").length, 0) : 0;
+  $("#cfKpis").innerHTML = kp("Promised, next 4 weeks", cmp(sum(cf.com, 1, 5)), "var(--cred)", "commitments from clients") +
+    kp("Promised, date passed", cmp(cf.com[0]), "var(--bad)", nb + " broken promise" + (nb === 1 ? "" : "s") + " still unpaid") +
+    kp("Due, next 4 weeks", cmp(sum(cf.due, 1, 5)), "var(--inv)", "no promise yet: bill date + " + (S.settings.credit || 0) + " days") +
+    kp("Overdue, no promise", cmp(cf.due[0]), "var(--muted)", "chase these for a commitment");
+  $("#cfBars").innerHTML = cf.labels.map((l, i) => '<div class="crow"><div class="nm">' + esc(l) + '</div><div class="cbar" style="height:22px"><div style="width:' + (cf.com[i] / mx * 100) + '%;background:' + (i === 0 ? "var(--bad)" : "var(--cred)") + '" title="Promised ' + fmt(cf.com[i]) + '"></div><div class="hatch" style="width:' + (cf.due[i] / mx * 100) + '%;background-color:' + (i === 0 ? "color-mix(in srgb,var(--bad) 45%,var(--surface2))" : "var(--inv)") + '" title="Due, no promise ' + fmt(cf.due[i]) + '"></div></div><div class="amt">' + cmp(cf.com[i] + cf.due[i]) + "</div></div>").join("");
+  const tbl = '<table><thead><tr><th class="l">Week</th><th>Promised</th><th>Due, no promise</th><th>Total</th><th>Running total</th></tr></thead><tbody>' +
+    (function () { let run = 0; return cf.labels.map((l, i) => { run += cf.com[i] + cf.due[i]; return '<tr><td class="l">' + esc(l) + '</td><td class="hm">' + (cf.com[i] >= 1 ? fmt(cf.com[i]) : "\u2013") + '</td><td class="hm">' + (cf.due[i] >= 1 ? fmt(cf.due[i]) : "\u2013") + '</td><td class="hm"><b>' + fmt(cf.com[i] + cf.due[i]) + '</b></td><td class="hm">' + fmt(run) + "</td></tr>"; }).join(""); })() + "</tbody></table>";
+  $("#cfTbl").innerHTML = tbl;
+  const pr = cf.rows.filter(r => r.kind === "promise").sort((a, b) => a.date.localeCompare(b.date));
+  $("#cfPromises").innerHTML = pr.length ? '<table><thead><tr><th>Promised for</th><th class="l">Client</th><th class="l">Bill</th><th>Expected</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+    pr.map(r => '<tr><td class="hm">' + dmy(r.date) + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(r.b.client) + '">' + esc(r.b.client) + '</a></td><td class="l">' + esc((r.b.billno || "-") + (r.b.seq ? " " + r.b.seq : "")) + (r.b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td class="l">' + cmTag(r.x.st) + (r.x.got >= 1 ? ' <span class="sub">' + fmt(r.x.got) + " in</span>" : "") + '</td><td class="l sub">' + esc(r.x.c.note || "") + '</td><td><button class="small" data-act="rcpt" data-id="' + esc(r.b.id) + '">Receipt</button> <button class="small" data-act="fu" data-id="' + esc(r.b.id) + '">Follow up</button></td></tr>').join("") + "</tbody></table>"
+    : '<div class="sub">No open promises. Use Follow up on a bill, or + New &gt; Payment follow-up, to note what a client committed to pay.</div>';
+}
+
+/* follow-up dialog: the bill's promise history and a form for the next one */
+function openCommit(billId, clientArg) {
+  const pick = !billId;
+  const openBills = c => BILLS.filter(x => x.client === c && x.bal >= 1 && x.status !== "Adv").sort((a, b) => a.date.localeCompare(b.date));
+  const clients = clientNames().filter(n => openBills(n).length);
+  let b = BILLS.filter(x => x.id === billId)[0];
+  const client0 = b ? b.client : (clientArg && clients.indexOf(clientArg) >= 0 ? clientArg : clients[0]);
+  const plus7 = isoOf(new Date(toD(S.settings.asOn).getTime() + 7 * 864e5));
+  openModal('<h2>Payment follow-up</h2>' +
+    (pick ? '<div class="form"><label style="grid-column:1/-1">Client<select id="fuClient">' + optsHtml(clients, client0) + '</select></label><label style="grid-column:1/-1">Bill<select id="fuBill"></select></label></div>' : "") +
+    '<div class="sub" id="fuHead" style="margin:6px 0 8px"></div><div class="tblwrap" id="fuHist"></div>' +
+    '<h2 style="font-size:13px;margin-top:12px">New commitment</h2><div class="form"><label>Will pay on<input type="date" id="fuDate" value="' + plus7 + '"></label><label>Amount (\u20B9)<input type="text" inputmode="decimal" id="fuAmt"></label>' +
+    '<label style="grid-column:1/-1">Note (who said what)<input type="text" id="fuNote" placeholder="e.g. Spoke to Mr Rao, accounts; cheque after certification"></label></div>' +
+    '<div class="help">Receipts you log against this bill close the promise automatically. A new promise replaces earlier ones whose date has passed; later instalments stay.</div>' +
+    '<div id="fuMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Close</button><button class="primary" id="mSave">Save commitment</button></div>');
+  const cur = () => BILLS.filter(x => x.id === (pick ? $("#fuBill").value : billId))[0];
+  const show = () => {
+    b = cur(); if (!b) { $("#fuHead").textContent = "No open bill for this client."; $("#fuHist").innerHTML = ""; return; }
+    const m = CM[b.id];
+    $("#fuHead").innerHTML = "<b>" + esc(b.client) + "</b> &middot; " + esc((b.billno || "-") + (b.seq ? " " + b.seq : "")) + (b.status === "PI" ? " (proforma)" : "") + " &middot; dated " + dmy(b.date) + " &middot; balance <b>" + fmt(b.bal) + "</b>" + (m && m.openAmt >= 1 ? " &middot; already promised " + fmt(Math.min(m.openAmt, b.bal)) : "");
+    $("#fuHist").innerHTML = m && m.list.length ? '<table><thead><tr><th>Logged</th><th>Promised for</th><th>Amount</th><th>Received</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+      m.list.slice().sort((x, y) => (y.c.loggedOn || "").localeCompare(x.c.loggedOn || "") || (y.c.date || "").localeCompare(x.c.date || "")).map(x => '<tr><td class="hm">' + (x.c.loggedOn ? dmy(x.c.loggedOn) : "") + '<div class="sub">' + esc((x.c.by || "").split("@")[0]) + '</div></td><td class="hm">' + dmy(x.c.date) + '</td><td class="hm">' + fmt(+x.c.amt || 0) + '</td><td class="hm">' + (x.got >= 1 ? fmt(x.got) : "\u2013") + '</td><td class="l">' + cmTag(x.st) + '</td><td class="l sub">' + esc(x.c.note || "") + '</td><td>' + (x.c.status === "open" && x.rem >= 1 ? '<button class="small" data-act="fucancel" data-id="' + esc(x.c.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
+      : '<div class="sub">No commitments logged on this bill yet.</div>';
+    $("#fuAmt").value = Math.round(Math.max(0, b.bal - (m ? m.open.filter(x => x.st !== "broken").reduce((a, x) => a + x.rem, 0) : 0))) || Math.round(b.bal);
+  };
+  if (pick) {
+    const fill = () => { $("#fuBill").innerHTML = openBills($("#fuClient").value).map(x => '<option value="' + esc(x.id) + '">' + esc((x.billno || "-") + " " + x.seq + " \u00B7 " + dmy(x.date) + " \u00B7 due " + fmt(x.bal)) + (x.status === "PI" ? " (proforma)" : "") + "</option>").join(""); show(); };
+    $("#fuClient").onchange = fill; $("#fuBill").onchange = show; fill();
+  } else show();
+  $("#modal").dataset.fu = billId || "";
+  $("#mCancel").onclick = closeModal;
+  $("#mSave").onclick = () => {
+    b = cur(); const amt = parseAmt($("#fuAmt").value), date = $("#fuDate").value;
+    if (!b) { $("#fuMsg").textContent = "Pick a bill."; return; }
+    if (!date || !(amt > 0)) { $("#fuMsg").textContent = "Enter the date and the amount promised."; return; }
+    const today = isoOf(new Date());
+    S.commits.forEach(c => { if (c.billId === b.id && c.status === "open" && (c.date || "") < S.settings.asOn) { const x = (CM[b.id] ? CM[b.id].list : []).filter(y => y.c === c)[0]; if (!x || x.rem >= 1) { c.status = "replaced"; c.closedOn = today; } } });
+    S.commits.push({ id: uid(), billId: b.id, client: b.client, date: date, amt: round2(amt), status: "open", note: $("#fuNote").value.trim(), by: USER ? USER.email : "", loggedOn: today, closedOn: "" });
+    persist(); closeModal(); renderAll(); toast("Commitment saved: " + fmt(amt) + " by " + dmy(date));
+  };
+}
+function cancelCommit(id) {
+  const c = S.commits.filter(x => x.id === id)[0]; if (!c) return;
+  c.status = "cancelled"; c.closedOn = isoOf(new Date());
+  persist(); renderAll(); openCommit($("#modal").dataset.fu || c.billId); toast("Commitment cancelled");
 }
 
 /* ---------- mobilisation advances ----------
@@ -1216,9 +1361,9 @@ function renderBills() {
   let sum = 0;
   rows.forEach(b => {
     sum += b.bal;
-    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + (b.est ? ' <span class="tag est" title="Deductions estimated">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "") + (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "");
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + cmBillTag(b) + (b.est ? ' <span class="tag est" title="Deductions estimated">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "") + (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "");
     h += "<tr><td>" + esc(b.client) + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") + '</td><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + fmt(b.total) + '</td><td class="hm">' + fmt(b.ded) + '</td><td class="hm">' + fmt(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td>' + noteBtn(b) +
-      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' +
+      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + fuBtn(b) +
       (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Make tax invoice</button>' : "") +
       ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 10);
   });
@@ -1282,6 +1427,7 @@ function renderFlags(A) {
   Object.keys(tiers).map(k => tiers[k]).sort((a, b) => b.a - a.a).forEach(x => f.push([x.t === "180" ? "high" : "med", x.c + ": " + x.n + " bill" + (x.n === 1 ? "" : "s") + " over " + x.t + " days", fmt(x.a) + " outstanding, oldest " + x.mx + " days since bill date."]));
   const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
   if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
+  Object.keys(CM).forEach(k => { const m = CM[k]; m.open.filter(x => x.st === "broken").forEach(x => f.push(["high", "Promise broken: " + m.b.client, fmt(x.rem) + " promised by " + dmy(x.c.date) + " on bill " + (m.b.billno || "-") + " has not come in. Follow up and log the new date."])); });
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
   const unb = {};
   S.work.forEach(w => { if (w.billId) return; const k = w.client + "|" + (w.site || ""), x = unb[k] || (unb[k] = { c: w.client, s: w.site, amt: 0, first: w.date }); x.amt += wVal(w); if (w.date < x.first) x.first = w.date; });
@@ -1338,14 +1484,20 @@ function renderClientView(A) {
   const rowsH = bills.map(b => {
     run += b.bal; const settled = Math.abs(b.bal) < 1; if (!settled) open++;
     if (CV_HIDE && settled) return "";
-    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + (b.est ? ' <span class="tag est">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") +
+    const tags = (b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + piTag(b) + cmBillTag(b) + (b.est ? ' <span class="tag est">est. net</span>' : "") + (b.added ? ' <span class="tag new">added</span>' : "") + (b.src !== "NIL" ? ' <span class="tag">' + esc(b.src) + "</span>" : "") +
       (b.stage ? ' <span class="tag pi">' + esc(b.stage) + "</span>" : "") + (b.payEdited ? ' <span class="tag">receipt edited</span>' : "") + (b.direct ? ' <span class="tag">direct</span>' : "") + (b.held ? ' <span class="tag">GST held ' + cmp(b.held) + "</span>" : "") + (b.status === "Adv" ? ' <span class="tag">advance / unmatched</span>' : "");
     const z = v => v >= 1 ? fmt(v) : "\u2013";
     return '<tr class="' + (settled ? "settled" : "") + '"><td class="l">' + esc(b.billno || "-") + " " + esc(b.seq) + tags + '</td><td class="l">' + esc(b.type) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + dmy(b.date) + '</td><td class="hm">' + (b.dateEst ? "~" : "") + b.days + ' d</td><td class="hm">' + z(b.total) + '</td><td class="hm">' + z(b.eTds) + '</td><td class="hm">' + z(b.eRet) + '</td><td class="hm">' + z(b.eAdv) + '</td><td class="hm">' + z(b.eOth) + '</td><td class="hm">' + z(b.paid) + '</td><td class="hm ' + (b.bal < 0 ? "neg" : "") + '"><b>' + fmt(b.bal) + '</b></td><td class="hm">' + fmt(run) + '</td><td>' + noteBtn(b) +
-      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Make tax invoice</button>' : "") + ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 13);
+      '<button class="small" data-act="rcpt" data-id="' + esc(b.id) + '">Receipt</button>' + fuBtn(b) + (b.status === "PI" ? ' <button class="small" data-act="inv" data-id="' + esc(b.id) + '">Make tax invoice</button>' : "") + ' <button class="small" data-act="edit" data-id="' + esc(b.id) + '">Edit</button>' + "</td></tr>" + noteRow(b, 13);
   }).join("");
   h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills, oldest first</h2><label class="sub"><input type="checkbox" data-act="cvhide"' + (CV_HIDE ? " checked" : "") + '> hide settled</label><label class="sub"><input type="checkbox" data-act="cvnotes"' + (ALLNOTES ? " checked" : "") + '> show all notes</label><span class="sub">' + open + " of " + bills.length + ' open</span></div><div class="tblwrap"><table><thead><tr><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>TDS</th><th>Retention</th><th>Adv rec.</th><th>Other</th><th>Received</th><th>Balance</th><th>Running</th><th></th></tr></thead><tbody>' + rowsH +
     '<tr class="tot"><td class="l">Total</td><td></td><td></td><td></td><td class="hm">' + fmt(T.total) + '</td><td class="hm">' + fmt(T.tds) + '</td><td class="hm">' + fmt(T.ret) + '</td><td class="hm">' + fmt(T.adv) + '</td><td class="hm">' + fmt(T.oth) + '</td><td class="hm">' + fmt(T.paid) + '</td><td class="hm">' + fmt(T.bal) + "</td><td></td><td></td></tr></tbody></table></div></div>";
+  const fus = []; Object.keys(CM).forEach(k => { if (CM[k].b && CM[k].b.client === SEL) CM[k].list.forEach(x => fus.push({ b: CM[k].b, x: x })); });
+  fus.sort((p, q) => (q.x.c.loggedOn || "").localeCompare(p.x.c.loggedOn || "") || (q.x.c.date || "").localeCompare(p.x.c.date || ""));
+  const nbk = fus.filter(f => f.x.st === "broken").length, nkept = fus.filter(f => f.x.st === "received").length;
+  h += '<div class="card" style="margin-top:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Payment follow-ups</h2><span class="sub">' + (fus.length ? fus.length + " commitment" + (fus.length === 1 ? "" : "s") + " &middot; " + nkept + " kept &middot; " + nbk + " broken" : "none logged yet") + '</span><button class="small" data-act="newfu">+ Follow up</button></div>' +
+    (fus.length ? '<div class="tblwrap"><table><thead><tr><th>Logged</th><th class="l">Bill</th><th>Promised for</th><th>Amount</th><th>Received</th><th class="l">Status</th><th class="l">Note</th></tr></thead><tbody>' +
+      fus.map(f => '<tr><td class="hm">' + (f.x.c.loggedOn ? dmy(f.x.c.loggedOn) : "") + ' <span class="sub">' + esc((f.x.c.by || "").split("@")[0]) + '</span></td><td class="l"><a class="lnk" data-act="fu" data-id="' + esc(f.b.id) + '">' + esc((f.b.billno || "-") + (f.b.seq ? " " + f.b.seq : "")) + '</a></td><td class="hm">' + dmy(f.x.c.date) + '</td><td class="hm">' + fmt(+f.x.c.amt || 0) + '</td><td class="hm">' + (f.x.got >= 1 ? fmt(f.x.got) : "\u2013") + '</td><td class="l">' + cmTag(f.x.st) + '</td><td class="l sub">' + esc(f.x.c.note || "") + "</td></tr>").join("") + "</tbody></table></div>" : "") + "</div>";
   const rc = rcSort(allReceipts().filter(x => x.client === SEL));
   if (rc.length) { const last = rc.filter(x => x.date)[0];
     h += '<div class="card" style="margin-top:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Receipts, newest first</h2><span class="sub">' + rc.length + " receipt" + (rc.length === 1 ? "" : "s") + " &middot; " + fmt(rc.reduce((a, x) => a + x.amt, 0)) + (last ? " &middot; last on " + dmy(last.date) : "") + '</span><button class="small" data-act="cvrcpt">+ Log receipt</button></div><div class="tblwrap">' + receiptsTable(rc, false) + "</div></div>"; }
@@ -1403,7 +1555,7 @@ function renderAll() {
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
   renderPay();
-  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderFlags(A);
+  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
 }
@@ -2020,6 +2172,9 @@ function wire() {
     if (act === "create") { createBill(t.dataset.kind); return; }
     if (act === "newrc") { openReceipt(null, $("#tab-client").classList.contains("hide") ? null : SEL, t.dataset.mode || ""); return; }
     if (act === "openadd") { showTab("add"); return; }
+    if (act === "fu") { openCommit(id); return; }
+    if (act === "fucancel") { cancelCommit(id); return; }
+    if (act === "newfu") { openCommit(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "cvdbill") openDirectBill(SEL);
     else if (act === "note") { EXP[id] = !EXP[id]; renderAll(); }
     else if (act === "cvnotes") { ALLNOTES = t.checked; renderAll(); }
