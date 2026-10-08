@@ -898,19 +898,23 @@ function computeBills() {
    Receipts logged here against that bill, dated on or after the day the promise was logged, are matched to its promises
    earliest-date first, so promises close themselves as money comes in. A promise whose date has passed without full
    payment shows as broken but its money is still expected (overdue). Logging a new promise on a bill replaces its broken
-   ones (they stay in the history as broken); promises still in the future are kept, so instalments work. */
-let CM = {};   // billId -> { b, list: [{ c, got, rem, st, open }], open, openAmt, broken }
-const CM_ST = { promised: ["Promised", "cm"], part: ["Part received", "pi"], received: ["Received", "ok"], broken: ["Broken", "bad"], cancelled: ["Cancelled", ""], replaced: ["Replaced", ""] };
+   ones (they stay in the history as broken); promises still in the future are kept, so instalments work.
+   A promise can also be on account (billId blank, e.g. a GST hold to be released): it is keyed "@client", closed by that
+   client's on-account receipts or by "Mark received" (status done), and is capped at what the client still owes. */
+let CM = {};   // billId or "@client" -> { b, client, acct, list: [{ c, got, rem, st, open }], open, openAmt, broken }
+const cmKey = c => c.billId || "@" + c.client;
+const clientBal = name => BILLS.filter(b => b.client === name && b.status !== "Adv" && b.bal >= 1).reduce((a, b) => a + b.bal, 0);
+const CM_ST = { promised: ["Promised", "cm"], part: ["Part received", "pi"], received: ["Received", "ok"], broken: ["Broken", "bad"], cancelled: ["Cancelled", ""], replaced: ["Replaced", ""] };   // "done" (marked received by hand) shows as Received
 const cmTag = st => '<span class="tag ' + CM_ST[st][1] + '">' + CM_ST[st][0] + "</span>";
 function computeCommits() {
   CM = {};
   const asOn = S.settings.asOn, by = {};
-  S.commits.forEach(c => { (by[c.billId] || (by[c.billId] = [])).push(c); });
+  S.commits.forEach(c => { const k = cmKey(c); (by[k] || (by[k] = [])).push(c); });
   Object.keys(by).forEach(id => {
-    const b = BILLS.filter(x => x.id === id)[0] || null;
-    const list = by[id].map(c => ({ c: c, got: 0, last: "" })).sort((x, y) => (x.c.date || "").localeCompare(y.c.date || "") || (x.c.loggedOn || "").localeCompare(y.c.loggedOn || ""));
-    const live = list.filter(x => x.c.status !== "cancelled");
-    S.receipts.filter(r => r.billId === id).sort((x, y) => (x.date || "").localeCompare(y.date || "")).forEach(r => {
+    const acct = id.charAt(0) === "@", client = acct ? id.slice(1) : "", b = acct ? null : BILLS.filter(x => x.id === id)[0] || null;
+    const list = by[id].map(c => ({ c: c, got: c.status === "done" ? +c.amt || 0 : 0, last: "" })).sort((x, y) => (x.c.date || "").localeCompare(y.c.date || "") || (x.c.loggedOn || "").localeCompare(y.c.loggedOn || ""));
+    const live = list.filter(x => x.c.status !== "cancelled" && x.c.status !== "done");
+    S.receipts.filter(r => acct ? r.client === client && !r.billId : r.billId === id).sort((x, y) => (x.date || "").localeCompare(y.date || "")).forEach(r => {
       let left = +r.amt || 0;
       live.forEach(x => {
         const lo = x.c.loggedOn || asOn, from = lo < asOn ? lo : asOn;   // earlier of the day it was logged and the as-on day
@@ -922,10 +926,10 @@ function computeCommits() {
     list.forEach(x => {
       x.rem = round2((+x.c.amt || 0) - x.got);
       x.st = x.c.status === "cancelled" ? "cancelled" : x.rem < 1 ? "received" : x.c.status === "replaced" ? "broken" : (x.c.date || "") < asOn ? "broken" : x.got > 0 ? "part" : "promised";
-      x.open = x.c.status === "open" && x.rem >= 1 && !!b && b.bal >= 1;   // money still expected on this promise
+      x.open = x.c.status === "open" && x.rem >= 1 && (acct ? clientBal(client) >= 1 : !!b && b.bal >= 1);   // money still expected on this promise
     });
     const open = list.filter(x => x.open);
-    CM[id] = { b: b, list: list, open: open, openAmt: open.reduce((a, x) => a + x.rem, 0), broken: list.filter(x => x.st === "broken").length };
+    CM[id] = { b: b, client: acct ? client : b ? b.client : "", acct: acct, list: list, open: open, openAmt: open.reduce((a, x) => a + x.rem, 0), broken: list.filter(x => x.st === "broken").length };
   });
 }
 function cmBillTag(b) {
@@ -943,13 +947,25 @@ function weekStart(iso) { const d = toD(iso); d.setDate(d.getDate() - (d.getDay(
 function inflow() {
   const asOn = S.settings.asOn, w0 = weekStart(asOn);
   const slot = iso => { if (iso < asOn) return 0; const k = Math.floor((toD(iso) - w0) / (7 * 864e5)); return k >= CF_W ? CF_W + 1 : k + 1; };
-  const com = Array(CF_W + 2).fill(0), due = Array(CF_W + 2).fill(0), rows = [];
+  const com = Array(CF_W + 2).fill(0), due = Array(CF_W + 2).fill(0), rows = [], piLeft = {};
   BILLS.forEach(b => {
     if (b.bal < 1 || b.status === "Adv") return;
     let left = b.bal;
     (CM[b.id] ? CM[b.id].open : []).forEach(x => { const a = Math.min(left, x.rem); if (a < 1) return; left -= a; com[slot(x.c.date)] += a; rows.push({ b: b, amt: a, date: x.c.date, kind: "promise", x: x }); });
-    if (left >= 1 && b.status !== "PI") { const dd = isoOf(new Date(toD(b.date).getTime() + (S.settings.credit || 0) * 864e5)); due[slot(dd)] += left; rows.push({ b: b, amt: left, date: dd, kind: "due" }); }
+    if (left >= 1 && b.status !== "PI") { const dd = isoOf(new Date(toD(b.date).getTime() + (S.settings.credit || 0) * 864e5)); rows.push({ b: b, amt: left, date: dd, kind: "due" }); }
+    else if (left >= 1) piLeft[b.client] = (piLeft[b.client] || 0) + left;
   });
+  // on-account promises are part of what the client already owes: they take the place of that client's unpromised due dates, oldest first
+  Object.keys(CM).filter(k => CM[k].acct).forEach(k => {
+    const m = CM[k], dues = rows.filter(r => r.kind === "due" && r.b.client === m.client).sort((a, b) => a.b.date.localeCompare(b.b.date));
+    let cap = dues.reduce((a, r) => a + r.amt, 0) + (piLeft[m.client] || 0);
+    m.open.forEach(x => {
+      let a = Math.min(cap, x.rem); if (a < 1) return; cap -= a;
+      com[slot(x.c.date)] += a; rows.push({ b: null, client: m.client, amt: a, date: x.c.date, kind: "promise", x: x });
+      dues.forEach(r => { const t = Math.min(a, r.amt); r.amt -= t; a -= t; });
+    });
+  });
+  rows.forEach(r => { if (r.kind === "due") due[slot(r.date)] += r.amt; });
   const labels = ["Overdue"];
   for (let i = 0; i < CF_W; i++) { const d = new Date(w0.getTime() + i * 7 * 864e5); labels.push("w/c " + dmy(isoOf(d)).slice(0, 5)); }
   labels.push("Later");
@@ -970,7 +986,7 @@ function renderInflow() {
   $("#cfTbl").innerHTML = tbl;
   const pr = cf.rows.filter(r => r.kind === "promise").sort((a, b) => a.date.localeCompare(b.date));
   $("#cfPromises").innerHTML = pr.length ? '<table><thead><tr><th>Promised for</th><th class="l">Client</th><th class="l">Bill</th><th>Expected</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
-    pr.map(r => '<tr><td class="hm">' + dmy(r.date) + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(r.b.client) + '">' + esc(r.b.client) + '</a></td><td class="l">' + esc((r.b.billno || "-") + (r.b.seq ? " " + r.b.seq : "")) + (r.b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td class="l">' + cmTag(r.x.st) + (r.x.got >= 1 ? ' <span class="sub">' + fmt(r.x.got) + " in</span>" : "") + '</td><td class="l sub">' + esc(r.x.c.note || "") + '</td><td><button class="small" data-act="rcpt" data-id="' + esc(r.b.id) + '">Receipt</button> <button class="small" data-act="fu" data-id="' + esc(r.b.id) + '">Follow up</button></td></tr>').join("") + "</tbody></table>"
+    pr.map(r => { const cl = r.b ? r.b.client : r.client; return '<tr><td class="hm">' + dmy(r.date) + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(cl) + '">' + esc(cl) + '</a></td><td class="l">' + (r.b ? esc((r.b.billno || "-") + (r.b.seq ? " " + r.b.seq : "")) + (r.b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") : '<span class="tag">on account</span>') + '</td><td class="hm">' + fmt(r.amt) + '</td><td class="l">' + cmTag(r.x.st) + (r.x.got >= 1 ? ' <span class="sub">' + fmt(r.x.got) + " in</span>" : "") + '</td><td class="l sub">' + esc(r.x.c.note || "") + '</td><td>' + (r.b ? '<button class="small" data-act="rcpt" data-id="' + esc(r.b.id) + '">Receipt</button> <button class="small" data-act="fu" data-id="' + esc(r.b.id) + '">Follow up</button>' : '<button class="small" data-act="rcptc" data-name="' + esc(cl) + '">Receipt</button> <button class="small" data-act="fu" data-id="' + esc("@" + cl) + '">Follow up</button>') + "</td></tr>"; }).join("") + "</tbody></table>"
     : '<div class="sub">No open promises. Use Follow up on a bill, or + New &gt; Payment follow-up, to note what a client committed to pay.</div>';
 }
 
@@ -1056,50 +1072,68 @@ function billPipe(id) {
 }
 
 /* follow-up dialog: the bill's promise history and a form for the next one */
-function openCommit(billId, clientArg) {
+function openCommit(billId, clientArg, acct) {
+  if (billId && billId.charAt(0) === "@") { clientArg = billId.slice(1); billId = null; acct = true; }
   const pick = !billId;
   const openBills = c => BILLS.filter(x => x.client === c && x.bal >= 1 && x.status !== "Adv").sort((a, b) => a.date.localeCompare(b.date));
-  const clients = clientNames().filter(n => openBills(n).length);
+  const clients = clientNames();
   let b = BILLS.filter(x => x.id === billId)[0];
   const client0 = b ? b.client : (clientArg && clients.indexOf(clientArg) >= 0 ? clientArg : clients[0]);
   const plus7 = isoOf(new Date(toD(S.settings.asOn).getTime() + 7 * 864e5));
   openModal('<h2>Payment follow-up</h2>' +
-    (pick ? '<div class="form"><label style="grid-column:1/-1">Client<select id="fuClient">' + optsHtml(clients, client0) + '</select></label><label style="grid-column:1/-1">Bill<select id="fuBill"></select></label></div>' : "") +
+    (pick ? '<div class="form"><label style="grid-column:1/-1">Client<select id="fuClient">' + optsHtml(clients, client0) + '</select></label><label style="grid-column:1/-1">Against<select id="fuBill"></select></label></div>' : "") +
     '<div class="sub" id="fuHead" style="margin:6px 0 8px"></div><div class="tblwrap" id="fuHist"></div>' +
     '<h2 style="font-size:13px;margin-top:12px">New commitment</h2><div class="form"><label>Will pay on<input type="date" id="fuDate" value="' + plus7 + '"></label><label>Amount (\u20B9)<input type="text" inputmode="decimal" id="fuAmt"></label>' +
     '<label style="grid-column:1/-1">Note (who said what)<input type="text" id="fuNote" placeholder="e.g. Spoke to Mr Rao, accounts; cheque after certification"></label></div>' +
-    '<div class="help">Receipts you log against this bill close the promise automatically. A new promise replaces earlier ones whose date has passed; later instalments stay.</div>' +
+    '<div class="help" id="fuHelp"></div>' +
     '<div id="fuMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Close</button><button class="primary" id="mSave">Save commitment</button></div>');
+  const isAcct = () => pick && $("#fuBill").value === "@";
   const cur = () => BILLS.filter(x => x.id === (pick ? $("#fuBill").value : billId))[0];
+  const hist = m => m && m.list.length ? '<table><thead><tr><th>Logged</th><th>Promised for</th><th>Amount</th><th>Received</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+      m.list.slice().sort((x, y) => (y.c.loggedOn || "").localeCompare(x.c.loggedOn || "") || (y.c.date || "").localeCompare(x.c.date || "")).map(x => '<tr><td class="hm">' + (x.c.loggedOn ? dmy(x.c.loggedOn) : "") + '<div class="sub">' + esc((x.c.by || "").split("@")[0]) + '</div></td><td class="hm">' + dmy(x.c.date) + '</td><td class="hm">' + fmt(+x.c.amt || 0) + '</td><td class="hm">' + (x.got >= 1 ? fmt(x.got) : "\u2013") + '</td><td class="l">' + cmTag(x.st) + '</td><td class="l sub">' + esc(x.c.note || "") + '</td><td>' + (x.c.status === "open" && x.rem >= 1 ? (m.acct ? '<button class="small" data-act="fudone" data-id="' + esc(x.c.id) + '" title="The money came in but was logged against bills">Mark received</button> ' : "") + '<button class="small" data-act="fucancel" data-id="' + esc(x.c.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
+      : '<div class="sub">No commitments logged ' + (m && m.acct ? "on account for this client" : "on this bill") + " yet.</div>";
   const show = () => {
-    b = cur(); if (!b) { $("#fuHead").textContent = "No open bill for this client."; $("#fuHist").innerHTML = ""; return; }
+    if (isAcct()) {
+      const c = $("#fuClient").value, m = CM["@" + c], cb = clientBal(c);
+      $("#fuHead").innerHTML = "<b>" + esc(c) + "</b> &middot; on account, not tied to a bill &middot; client owes <b>" + fmt(cb) + "</b>" + (m && m.openAmt >= 1 ? " &middot; already promised on account " + fmt(m.openAmt) : "");
+      $("#fuHist").innerHTML = hist(m || { acct: true, list: [] });
+      $("#fuHelp").textContent = "For money promised against the account as a whole, e.g. a GST hold to be released. Receipts logged on account for this client close it; if the money is logged against bills instead, use Mark received. In Money in by week it replaces the due dates of this client's oldest bills, so nothing is counted twice.";
+      $("#fuAmt").value = ""; return;
+    }
+    $("#fuHelp").textContent = "Receipts you log against this bill close the promise automatically. A new promise replaces earlier ones whose date has passed; later instalments stay.";
+    b = cur(); if (!b) { $("#fuHead").textContent = "No open bill for this client. Pick On account to note a promise anyway."; $("#fuHist").innerHTML = ""; $("#fuAmt").value = ""; return; }
     const m = CM[b.id];
     $("#fuHead").innerHTML = "<b>" + esc(b.client) + "</b> &middot; " + esc((b.billno || "-") + (b.seq ? " " + b.seq : "")) + (b.status === "PI" ? " (proforma)" : "") + " &middot; dated " + dmy(b.date) + " &middot; balance <b>" + fmt(b.bal) + "</b>" + (m && m.openAmt >= 1 ? " &middot; already promised " + fmt(Math.min(m.openAmt, b.bal)) : "");
-    $("#fuHist").innerHTML = m && m.list.length ? '<table><thead><tr><th>Logged</th><th>Promised for</th><th>Amount</th><th>Received</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
-      m.list.slice().sort((x, y) => (y.c.loggedOn || "").localeCompare(x.c.loggedOn || "") || (y.c.date || "").localeCompare(x.c.date || "")).map(x => '<tr><td class="hm">' + (x.c.loggedOn ? dmy(x.c.loggedOn) : "") + '<div class="sub">' + esc((x.c.by || "").split("@")[0]) + '</div></td><td class="hm">' + dmy(x.c.date) + '</td><td class="hm">' + fmt(+x.c.amt || 0) + '</td><td class="hm">' + (x.got >= 1 ? fmt(x.got) : "\u2013") + '</td><td class="l">' + cmTag(x.st) + '</td><td class="l sub">' + esc(x.c.note || "") + '</td><td>' + (x.c.status === "open" && x.rem >= 1 ? '<button class="small" data-act="fucancel" data-id="' + esc(x.c.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
-      : '<div class="sub">No commitments logged on this bill yet.</div>';
+    $("#fuHist").innerHTML = hist(m);
     $("#fuAmt").value = Math.round(Math.max(0, b.bal - (m ? m.open.filter(x => x.st !== "broken").reduce((a, x) => a + x.rem, 0) : 0))) || Math.round(b.bal);
   };
   if (pick) {
-    const fill = () => { $("#fuBill").innerHTML = openBills($("#fuClient").value).map(x => '<option value="' + esc(x.id) + '">' + esc((x.billno || "-") + " " + x.seq + " \u00B7 " + dmy(x.date) + " \u00B7 due " + fmt(x.bal)) + (x.status === "PI" ? " (proforma)" : "") + "</option>").join(""); show(); };
+    const fill = () => { const bs = openBills($("#fuClient").value); $("#fuBill").innerHTML = bs.map(x => '<option value="' + esc(x.id) + '">' + esc((x.billno || "-") + " " + x.seq + " \u00B7 " + dmy(x.date) + " \u00B7 due " + fmt(x.bal)) + (x.status === "PI" ? " (proforma)" : "") + "</option>").join("") + '<option value="@">On account (no specific bill)</option>'; if (acct || !bs.length) $("#fuBill").value = "@"; acct = false; show(); };
     $("#fuClient").onchange = fill; $("#fuBill").onchange = show; fill();
   } else show();
-  $("#modal").dataset.fu = billId || "";
+  $("#modal").dataset.fu = billId || (isAcct() ? "@" + $("#fuClient").value : "");
   $("#mCancel").onclick = closeModal;
   $("#mSave").onclick = () => {
-    b = cur(); const amt = parseAmt($("#fuAmt").value), date = $("#fuDate").value;
-    if (!b) { $("#fuMsg").textContent = "Pick a bill."; return; }
+    const amt = parseAmt($("#fuAmt").value), date = $("#fuDate").value, today = isoOf(new Date());
+    if (isAcct()) {
+      const c = $("#fuClient").value, m = CM["@" + c];
+      if (!date || !(amt > 0)) { $("#fuMsg").textContent = "Enter the date and the amount promised."; return; }
+      S.commits.forEach(x => { if (!x.billId && x.client === c && x.status === "open" && (x.date || "") < S.settings.asOn) { const y = (m ? m.list : []).filter(z => z.c === x)[0]; if (!y || y.rem >= 1) { x.status = "replaced"; x.closedOn = today; } } });
+      S.commits.push({ id: uid(), billId: "", client: c, date: date, amt: round2(amt), status: "open", note: $("#fuNote").value.trim(), by: USER ? USER.email : "", loggedOn: today, closedOn: "" });
+      persist(); closeModal(); renderAll(); toast("Commitment on account saved: " + fmt(amt) + " by " + dmy(date)); return;
+    }
+    b = cur();
+    if (!b) { $("#fuMsg").textContent = "Pick a bill, or On account."; return; }
     if (!date || !(amt > 0)) { $("#fuMsg").textContent = "Enter the date and the amount promised."; return; }
-    const today = isoOf(new Date());
     S.commits.forEach(c => { if (c.billId === b.id && c.status === "open" && (c.date || "") < S.settings.asOn) { const x = (CM[b.id] ? CM[b.id].list : []).filter(y => y.c === c)[0]; if (!x || x.rem >= 1) { c.status = "replaced"; c.closedOn = today; } } });
     S.commits.push({ id: uid(), billId: b.id, client: b.client, date: date, amt: round2(amt), status: "open", note: $("#fuNote").value.trim(), by: USER ? USER.email : "", loggedOn: today, closedOn: "" });
     persist(); closeModal(); renderAll(); toast("Commitment saved: " + fmt(amt) + " by " + dmy(date));
   };
 }
-function cancelCommit(id) {
+function cancelCommit(id, done) {
   const c = S.commits.filter(x => x.id === id)[0]; if (!c) return;
-  c.status = "cancelled"; c.closedOn = isoOf(new Date());
-  persist(); renderAll(); openCommit($("#modal").dataset.fu || c.billId); toast("Commitment cancelled");
+  c.status = done ? "done" : "cancelled"; c.closedOn = isoOf(new Date());
+  persist(); renderAll(); openCommit($("#modal").dataset.fu || cmKey(c)); toast(done ? "Marked received" : "Commitment cancelled");
 }
 
 /* ---------- mobilisation advances ----------
@@ -1533,7 +1567,7 @@ function renderFlags(A) {
   Object.keys(tiers).map(k => tiers[k]).sort((a, b) => b.a - a.a).forEach(x => f.push([x.t === "180" ? "high" : "med", x.c + ": " + x.n + " bill" + (x.n === 1 ? "" : "s") + " over " + x.t + " days", fmt(x.a) + " outstanding, oldest " + x.mx + " days since bill date."]));
   const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
   if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
-  Object.keys(CM).forEach(k => { const m = CM[k]; m.open.filter(x => x.st === "broken").forEach(x => f.push(["high", "Promise broken: " + m.b.client, fmt(x.rem) + " promised by " + dmy(x.c.date) + " on bill " + (m.b.billno || "-") + " has not come in. Follow up and log the new date."])); });
+  Object.keys(CM).forEach(k => { const m = CM[k]; m.open.filter(x => x.st === "broken").forEach(x => f.push(["high", "Promise broken: " + m.client, fmt(x.rem) + " promised by " + dmy(x.c.date) + (m.acct ? " on account" : " on bill " + (m.b ? m.b.billno || "-" : "-")) + " has not come in. Follow up and log the new date."])); });
   const pll = plOpen().filter(x => x.target && x.target < S.settings.asOn);
   if (pll.length) f.push(["med", pll.length + " bill" + (pll.length === 1 ? "" : "s") + " in pipeline past the submit-by date", pll.slice(0, 6).map(x => x.client.split(" ")[0] + " " + x.desc + " (" + dmy(x.target) + (x.owner ? ", " + x.owner : "") + ")").join(", ") + (pll.length > 6 ? "\u2026" : "") + ". See the In pipeline tab."]);
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
@@ -1600,12 +1634,12 @@ function renderClientView(A) {
   }).join("");
   h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills, oldest first</h2><label class="sub"><input type="checkbox" data-act="cvhide"' + (CV_HIDE ? " checked" : "") + '> hide settled</label><label class="sub"><input type="checkbox" data-act="cvnotes"' + (ALLNOTES ? " checked" : "") + '> show all notes</label><span class="sub">' + open + " of " + bills.length + ' open</span></div><div class="tblwrap"><table><thead><tr><th class="l">Bill</th><th class="l">Type</th><th>Date</th><th>Age</th><th>Total</th><th>TDS</th><th>Retention</th><th>Adv rec.</th><th>Other</th><th>Received</th><th>Balance</th><th>Running</th><th></th></tr></thead><tbody>' + rowsH +
     '<tr class="tot"><td class="l">Total</td><td></td><td></td><td></td><td class="hm">' + fmt(T.total) + '</td><td class="hm">' + fmt(T.tds) + '</td><td class="hm">' + fmt(T.ret) + '</td><td class="hm">' + fmt(T.adv) + '</td><td class="hm">' + fmt(T.oth) + '</td><td class="hm">' + fmt(T.paid) + '</td><td class="hm">' + fmt(T.bal) + "</td><td></td><td></td></tr></tbody></table></div></div>";
-  const fus = []; Object.keys(CM).forEach(k => { if (CM[k].b && CM[k].b.client === SEL) CM[k].list.forEach(x => fus.push({ b: CM[k].b, x: x })); });
+  const fus = []; Object.keys(CM).forEach(k => { if (CM[k].client === SEL) CM[k].list.forEach(x => fus.push({ b: CM[k].b, x: x })); });
   fus.sort((p, q) => (q.x.c.loggedOn || "").localeCompare(p.x.c.loggedOn || "") || (q.x.c.date || "").localeCompare(p.x.c.date || ""));
   const nbk = fus.filter(f => f.x.st === "broken").length, nkept = fus.filter(f => f.x.st === "received").length;
   h += '<div class="card" style="margin-top:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Payment follow-ups</h2><span class="sub">' + (fus.length ? fus.length + " commitment" + (fus.length === 1 ? "" : "s") + " &middot; " + nkept + " kept &middot; " + nbk + " broken" : "none logged yet") + '</span><button class="small" data-act="newfu">+ Follow up</button></div>' +
     (fus.length ? '<div class="tblwrap"><table><thead><tr><th>Logged</th><th class="l">Bill</th><th>Promised for</th><th>Amount</th><th>Received</th><th class="l">Status</th><th class="l">Note</th></tr></thead><tbody>' +
-      fus.map(f => '<tr><td class="hm">' + (f.x.c.loggedOn ? dmy(f.x.c.loggedOn) : "") + ' <span class="sub">' + esc((f.x.c.by || "").split("@")[0]) + '</span></td><td class="l"><a class="lnk" data-act="fu" data-id="' + esc(f.b.id) + '">' + esc((f.b.billno || "-") + (f.b.seq ? " " + f.b.seq : "")) + '</a></td><td class="hm">' + dmy(f.x.c.date) + '</td><td class="hm">' + fmt(+f.x.c.amt || 0) + '</td><td class="hm">' + (f.x.got >= 1 ? fmt(f.x.got) : "\u2013") + '</td><td class="l">' + cmTag(f.x.st) + '</td><td class="l sub">' + esc(f.x.c.note || "") + "</td></tr>").join("") + "</tbody></table></div>" : "") + "</div>";
+      fus.map(f => '<tr><td class="hm">' + (f.x.c.loggedOn ? dmy(f.x.c.loggedOn) : "") + ' <span class="sub">' + esc((f.x.c.by || "").split("@")[0]) + '</span></td><td class="l"><a class="lnk" data-act="fu" data-id="' + esc(f.b ? f.b.id : "@" + SEL) + '">' + (f.b ? esc((f.b.billno || "-") + (f.b.seq ? " " + f.b.seq : "")) : "On account") + '</a></td><td class="hm">' + dmy(f.x.c.date) + '</td><td class="hm">' + fmt(+f.x.c.amt || 0) + '</td><td class="hm">' + (f.x.got >= 1 ? fmt(f.x.got) : "\u2013") + '</td><td class="l">' + cmTag(f.x.st) + '</td><td class="l sub">' + esc(f.x.c.note || "") + "</td></tr>").join("") + "</tbody></table></div>" : "") + "</div>";
   const rc = rcSort(allReceipts().filter(x => x.client === SEL));
   if (rc.length) { const last = rc.filter(x => x.date)[0];
     h += '<div class="card" style="margin-top:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Receipts, newest first</h2><span class="sub">' + rc.length + " receipt" + (rc.length === 1 ? "" : "s") + " &middot; " + fmt(rc.reduce((a, x) => a + x.amt, 0)) + (last ? " &middot; last on " + dmy(last.date) : "") + '</span><button class="small" data-act="cvrcpt">+ Log receipt</button></div><div class="tblwrap">' + receiptsTable(rc, false) + "</div></div>"; }
@@ -2287,6 +2321,8 @@ function wire() {
     if (act === "openadd") { showTab("add"); return; }
     if (act === "fu") { openCommit(id); return; }
     if (act === "fucancel") { cancelCommit(id); return; }
+    if (act === "fudone") { cancelCommit(id, true); return; }
+    if (act === "rcptc") { openReceipt(null, t.dataset.name); return; }
     if (act === "newpl") { openPipe(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "pledit") { openPipe(id); return; }
     if (act === "plmove") { movePipe(id, t.dataset.to); return; }
