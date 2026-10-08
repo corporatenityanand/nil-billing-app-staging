@@ -90,6 +90,7 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .plcard.late{border-left:3px solid var(--bad)}
 .plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cnt{font-size:11px;color:var(--muted)}
+.bqtbl input{padding:5px 7px;font-size:13px}.bqtbl td{vertical-align:middle}.bqtbl tr.bqnew td,.bqtbl tr.bqedit td{background:var(--bg)}.bqtbl #bqnitem,.bqtbl #bqeitem{min-width:200px}#bqnrate,#bqerate{text-align:right}
 .rwsteps{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}.rwstep{border-radius:99px;font-size:12.5px}.rwstep b{display:inline-block;width:18px}.rwstep.on{border-color:var(--accent);font-weight:650}.rwstep.done{color:var(--cred)}
 .rwtbl input{text-align:right}.rwtbl td.l input{text-align:left;width:100%}
 #modal.wide{width:min(760px,100%)}
@@ -357,7 +358,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     </div>
 
     <div class="card" style="margin-bottom:12px">
-      <div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">BOQ rates <span class="sub">rate per unit before GST, by client and site</span></h2><button id="btnBoqAdd">+ BOQ item</button></div>
+      <div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">BOQ rates <span class="sub">rate per unit before GST, by client and site</span></h2><span class="sub">type in the top row, Enter to add; paste rows from Excel</span></div>
       <div class="tblwrap" id="boqTbl"></div>
     </div>
 
@@ -2587,40 +2588,93 @@ function renderPending() {
 }
 
 /* BOQ register */
+/* BOQ rates: an inline grid. The top row adds an item (Enter saves, client and site stay for the next one, item no. steps up);
+   Edit turns a row into inputs (Enter saves, Esc cancels); pasting rows copied from Excel into the top row adds them all. */
+const BQF = ["client", "site", "code", "item", "unit", "rate", "note"];
+let BQ = { client: "", site: "", code: "", item: "", unit: "rmt", rate: "", note: "" }, BQ_EDIT = null;
+function bqClient(t) { t = String(t || "").trim(); if (!t) return ""; const n = norm(t); return workClients().filter(x => norm(x) === n)[0] || matchClient(t) || t; }
+function bqNextCode(c) { const m = String(c || "").match(/^(.*?)(\d+)$/); return m ? m[1] + (+m[2] + 1) : ""; }
+function bqRead(p) { const v = {}; BQF.forEach(f => { const el = $("#" + p + f); v[f] = el ? el.value : ""; }); return v; }
+function bqCells(p, v, lock) {
+  const inp = (f, ph, w, extra) => '<input type="text" id="' + p + f + '" class="bqin" value="' + esc(v[f] == null ? "" : v[f]) + '" placeholder="' + ph + '" style="width:' + w + '"' + (extra || "") + ">";
+  return '<td class="l">' + inp("client", "Client", "150px", ' list="bqClients"' + (lock ? " disabled" : "")) + '</td><td class="l">' + inp("site", "all sites", "110px") + '</td><td class="l">' + inp("code", "e.g. 2.1", "62px") +
+    '</td><td class="l">' + inp("item", "Description", "100%") + '</td><td class="l">' + inp("unit", "unit", "58px", ' list="qUnits"') + "</td><td>" + inp("rate", "&#8377; / unit", "92px", ' inputmode="decimal"') + '</td><td class="l">' + inp("note", "optional", "110px") + "</td>";
+}
 function renderBoq() {
+  if ($("#bqnitem")) Object.assign(BQ, bqRead("bqn"));   // keep what is typed in the add row across a refresh
+  const ae = document.activeElement, focus = ae && ae.classList && ae.classList.contains("bqin") ? ae.id : null;
   const use = {}; S.work.forEach(w => { const u = use[w.boqId] || (use[w.boqId] = { all: 0, open: 0 }); u.all += +w.qty || 0; if (!w.billId) u.open += +w.qty || 0; });
   const list = S.boq.slice().sort((a, b) => (a.client + "|" + a.site + "|" + a.code + "|" + a.item).localeCompare(b.client + "|" + b.site + "|" + b.code + "|" + b.item));
-  $("#boqTbl").innerHTML = list.length ? '<table><thead><tr><th class="l">Client</th><th class="l">Site</th><th class="l">Item</th><th class="l">Unit</th><th>Rate</th><th>Logged</th><th>Not billed</th><th></th></tr></thead><tbody>' +
-    list.map(q => { const u = use[q.id] || { all: 0, open: 0 };
-      return '<tr><td class="l">' + esc(q.client) + '</td><td class="l">' + esc(q.site || "all sites") + '</td><td class="l">' + esc(boqLabel(q)) + (q.note ? '<div class="sub">' + esc(q.note) + "</div>" : "") + '</td><td class="l">' + esc(q.unit) + '</td><td class="hm">' + rateFmt(q.rate) + '</td><td class="hm">' + (u.all ? qtyFmt(u.all) : "–") + '</td><td class="hm">' + (u.open ? qtyFmt(u.open) : "–") +
-        '</td><td><button class="small" data-act="boqedit" data-id="' + esc(q.id) + '">Edit</button> <button class="small danger" data-act="boqdel" data-id="' + esc(q.id) + '">✕</button></td></tr>'; }).join("") + "</tbody></table>"
-    : '<div class="sub">No BOQ items yet. Add each item of the work order with its unit and rate, for example &ldquo;600 mm dia bored pile, rmt, &#8377;2,450&rdquo;.</div>';
+  if (BQ_EDIT && !boqOf(BQ_EDIT)) BQ_EDIT = null;
+  if (!BQ.client && !$("#bqnitem")) BQ.client = $("#wClient").value || "";
+  $("#boqTbl").innerHTML = '<datalist id="bqClients">' + workClients().map(c => '<option value="' + esc(c) + '">').join("") + '</datalist><datalist id="qUnits">' + UNITS.map(u => '<option value="' + u + '">').join("") + "</datalist>" +
+    '<table class="bqtbl"><thead><tr><th class="l">Client</th><th class="l">Site</th><th class="l">Item no.</th><th class="l">Description</th><th class="l">Unit</th><th>Rate</th><th class="l">Note</th><th>Logged</th><th>Not billed</th><th></th></tr></thead><tbody>' +
+    '<tr class="bqnew">' + bqCells("bqn", BQ, false) + '<td></td><td></td><td><button class="small primary" data-act="bqadd">Add</button></td></tr>' +
+    list.map(q => { const u = use[q.id] || { all: 0, open: 0 }, tail = '<td class="hm">' + (u.all ? qtyFmt(u.all) : "–") + '</td><td class="hm">' + (u.open ? qtyFmt(u.open) : "–") + "</td>";
+      if (q.id === BQ_EDIT) return '<tr class="bqedit" data-id="' + esc(q.id) + '">' + bqCells("bqe", q, u.all > 0) + tail + '<td style="white-space:nowrap"><button class="small primary" data-act="bqsave">Save</button> <button class="small" data-act="bqcancel">Cancel</button></td></tr>';
+      return '<tr><td class="l">' + esc(q.client) + '</td><td class="l">' + esc(q.site || "all sites") + '</td><td class="l">' + esc(q.code) + '</td><td class="l">' + esc(q.item) + '</td><td class="l">' + esc(q.unit) + '</td><td class="hm">' + rateFmt(q.rate) + '</td><td class="l sub">' + esc(q.note) + "</td>" + tail +
+        '<td style="white-space:nowrap"><button class="small" data-act="boqedit" data-id="' + esc(q.id) + '">Edit</button> <button class="small danger" data-act="boqdel" data-id="' + esc(q.id) + '">✕</button></td></tr>'; }).join("") + "</tbody></table>" +
+    '<div id="bqMsg" style="font-size:13px;font-weight:600;color:var(--bad);min-height:4px"></div>' +
+    (list.length ? "" : '<div class="sub">Type each item of the work order in the top row and press Enter, for example &ldquo;600 mm dia bored pile, rmt, &#8377;2,450&rdquo;. Rows copied from Excel (item no., description, unit, rate) can be pasted into it.</div>');
+  if (focus && $("#" + focus)) $("#" + focus).focus();
 }
-function openBoq(id) {
-  const q = id ? boqOf(id) : null, v = q || { client: $("#wClient").value, site: $("#wSite").value.trim(), code: "", item: "", unit: "rmt", rate: "", note: "" };
-  const used = q ? S.work.filter(w => w.boqId === q.id).length : 0;
-  openModal("<h2>" + (q ? "Edit" : "Add") + ' BOQ item</h2><div class="form"><label style="grid-column:1/-1">Client<select id="qClient">' + optsHtml(workClients(), v.client) + "</select></label>" +
-    (q ? "" : '<label style="grid-column:1/-1">Or type a new client<input type="text" id="qNew"></label>') +
-    '<label style="grid-column:1/-1">Site / project<input type="text" id="qSite" value="' + esc(v.site) + '" placeholder="blank = all sites of this client"></label>' +
-    '<label>Item no.<input type="text" id="qCode" value="' + esc(v.code) + '" placeholder="optional, e.g. 2.1"></label><label>Unit<input type="text" id="qUnit" list="qUnits" value="' + esc(v.unit) + '"><datalist id="qUnits">' + UNITS.map(u => '<option value="' + u + '">').join("") + "</datalist></label>" +
-    '<label style="grid-column:1/-1">Description<input type="text" id="qItem" value="' + esc(v.item) + '" placeholder="e.g. 600 mm dia bored cast-in-situ pile"></label>' +
-    '<label>Rate per unit (&#8377;, before GST)<input type="text" inputmode="decimal" id="qRate" value="' + esc(v.rate) + '"></label><label>Note (optional)<input type="text" id="qNote" value="' + esc(v.note) + '"></label></div>' +
-    (used ? '<div class="help">' + used + " work entr" + (used === 1 ? "y uses" : "ies use") + " this item. A new rate changes the value of work not yet billed; proformas already made keep their amounts.</div>" : "") +
-    '<div id="qMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
-  if (q) $("#qClient").disabled = used > 0;
-  $("#mCancel").onclick = closeModal;
-  $("#mSave").onclick = () => {
-    const typed = $("#qNew") ? $("#qNew").value.trim() : "", client = typed ? (matchClient(typed) || typed) : $("#qClient").value, rate = parseAmt($("#qRate").value);
-    const item = $("#qItem").value.trim(), unit = $("#qUnit").value.trim();
-    if (!client) { $("#qMsg").textContent = "Pick a client or type a new one."; return; }
-    if (!item || !unit) { $("#qMsg").textContent = "Enter the description and unit."; return; }
-    if (!(rate > 0)) { $("#qMsg").textContent = "Enter the rate per " + unit + "."; return; }
-    const rec = { id: q ? q.id : uid(), client: client, site: $("#qSite").value.trim(), code: $("#qCode").value.trim(), item: item, unit: unit, rate: round2(rate), note: $("#qNote").value.trim() };
-    if (q) Object.assign(q, rec); else S.boq.push(rec);
-    persist(); closeModal();
-    if (!q) { $("#wClient").innerHTML = optsHtml(workClients(), client); $("#wClient").value = client; if (!$("#wSite").value.trim() || rec.site) $("#wSite").value = rec.site; }
-    renderAll(); if (!q) $("#wItem").value = rec.id; wPrev(); toast("BOQ item saved");
-  };
+function bqCheck(v, id) {
+  const client = bqClient(v.client), rate = parseAmt(v.rate), item = String(v.item).trim(), unit = String(v.unit).trim();
+  if (!client) return "Type the client.";
+  if (!item || !unit) return "Enter the description and unit.";
+  if (!(rate > 0)) return "Enter the rate per " + unit + ".";
+  const rec = { client: client, site: String(v.site).trim(), code: String(v.code).trim(), item: item, unit: unit, rate: round2(rate), note: String(v.note).trim() };
+  if (S.boq.some(q => q.id !== id && q.client === rec.client && norm(q.site) === norm(rec.site) && norm(q.code) === norm(rec.code) && norm(q.item) === norm(rec.item))) return "This item is already in the list for " + rec.client + (rec.site ? ", " + rec.site : "") + ".";
+  return rec;
+}
+function bqAfterAdd(rec, n) {
+  persist();
+  $("#wClient").innerHTML = optsHtml(workClients(), rec.client); $("#wClient").value = rec.client; if (!$("#wSite").value.trim() || rec.site) $("#wSite").value = rec.site;
+  renderAll(); $("#wItem").value = rec.id; wPrev(); toast(n > 1 ? n + " BOQ items added" : "BOQ item added");
+}
+function bqAdd() {
+  const v = bqRead("bqn"), rec = bqCheck(v, null);
+  if (typeof rec === "string") { $("#bqMsg").textContent = rec; return; }
+  rec.id = uid(); S.boq.push(rec);
+  BQ = { client: rec.client, site: rec.site, code: bqNextCode(rec.code), item: "", unit: rec.unit, rate: "", note: "" };
+  $("#bqnitem").value = ""; $("#bqnrate").value = ""; $("#bqnnote").value = ""; $("#bqncode").value = BQ.code; $("#bqnclient").value = rec.client;
+  bqAfterAdd(rec, 1); $("#bqnitem").focus();
+}
+function bqSave() {
+  const q = boqOf(BQ_EDIT); if (!q) { BQ_EDIT = null; renderBoq(); return; }
+  const v = bqRead("bqe"); if ($("#bqeclient").disabled) v.client = q.client;
+  const rec = bqCheck(v, q.id);
+  if (typeof rec === "string") { $("#bqMsg").textContent = rec; return; }
+  Object.assign(q, rec); BQ_EDIT = null; persist(); renderAll(); toast("BOQ item saved");
+}
+function bqPaste(e) {
+  const txt = (e.clipboardData || window.clipboardData).getData("text");
+  if (!/\t/.test(txt) && !/\n\s*\S/.test(txt.trim())) return;   // a single value: let it paste normally
+  e.preventDefault();
+  const base = bqRead("bqn"), client = bqClient(base.client);
+  if (!client) { $("#bqMsg").textContent = "Type the client first, then paste the rows."; return; }
+  let added = [], skipped = 0, last = null;
+  txt.split(/\r?\n/).map(l => l.split("\t").map(c => c.trim())).filter(c => c.some(x => x)).forEach(c => {
+    while (c.length && !c[c.length - 1]) c.pop();
+    // trailing numbers: rate alone, qty + rate, or qty + rate + amount (a priced BOQ)
+    let k = c.length; while (k > 0 && /^[₹\s\d,.\-]*$/.test(c[k - 1])) k--;
+    const nums = c.slice(k), left = c.slice(0, k);
+    if (!nums.length || left.length < 2) { skipped++; return; }   // heading, or no rate
+    const v = { client: client, site: base.site, rate: nums.length === 1 ? nums[0] : nums.length === 2 ? nums[1] : nums[nums.length - 2], note: "", unit: left[left.length - 1], item: left[left.length - 2], code: left.slice(0, left.length - 2).join(" ") };
+    const rec = bqCheck(v, null);
+    if (typeof rec === "string") { skipped++; return; }
+    rec.id = uid(); S.boq.push(rec); added.push(rec); last = rec;
+  });
+  if (!added.length) { $("#bqMsg").textContent = "No rows with a description, unit and rate were found in what was pasted" + (skipped ? " (" + skipped + " skipped)." : "."); return; }
+  BQ = { client: client, site: base.site, code: bqNextCode(last.code), item: "", unit: last.unit, rate: "", note: "" };
+  $("#bqnitem").value = ""; $("#bqnrate").value = ""; $("#bqnnote").value = ""; $("#bqncode").value = BQ.code; $("#bqnunit").value = BQ.unit;
+  bqAfterAdd(added[0], added.length);
+  if (skipped) $("#bqMsg").textContent = skipped + " pasted row" + (skipped === 1 ? " was" : "s were") + " skipped (heading, no rate, or already in the list).";
+}
+function bqKeys(e) {
+  const t = e.target; if (!t.classList || !t.classList.contains("bqin")) return;
+  if (e.key === "Enter") { e.preventDefault(); if (t.closest(".bqnew")) bqAdd(); else bqSave(); }
+  else if (e.key === "Escape" && t.closest(".bqedit")) { BQ_EDIT = null; renderBoq(); }
 }
 function deleteBoq(id) {
   const q = boqOf(id); if (!q) return;
@@ -2944,7 +2998,10 @@ function wire() {
     else if (act === "advedit") openAdvance(id);
     else if (act === "advdel") deleteAdvance(id);
     else if (act === "advmemo") openAdvance(null, SEL, true);
-    else if (act === "boqedit") openBoq(id);
+    else if (act === "boqedit") { BQ_EDIT = id; renderBoq(); const f = $("#bqeitem"); if (f) f.focus(); }
+    else if (act === "bqadd") bqAdd();
+    else if (act === "bqsave") bqSave();
+    else if (act === "bqcancel") { BQ_EDIT = null; renderBoq(); }
     else if (act === "boqdel") deleteBoq(id);
     else if (act === "wedit") openWork(id);
     else if (act === "wdel") deleteWork(id);
@@ -2966,7 +3023,7 @@ function wire() {
   $("#wQty").oninput = () => { $("#wQty").classList.remove("bad"); wPrev(); };
   $("#wQty").onkeydown = e => { if (e.key === "Enter") onWAdd(); };
   $("#btnWAdd").onclick = onWAdd;
-  $("#btnBoqAdd").onclick = () => openBoq(null);
+  $("#boqTbl").addEventListener("keydown", bqKeys); $("#boqTbl").addEventListener("paste", e => { if (e.target.closest && e.target.closest(".bqnew")) bqPaste(e); });
   ["rbClient", "rbSite", "rbFrom", "rbTo"].forEach(id => { $("#" + id).onchange = () => { if (id === "rbClient") $("#rbSite").value = ""; renderRollup(); }; });
   $("#btnRb").onclick = onRb;
   ["wfClient", "wfRig", "wfFrom", "wfTo", "wfState"].forEach(id => { $("#" + id).onchange = renderWorkLog; });
