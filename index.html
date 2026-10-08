@@ -90,6 +90,8 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .plcard.late{border-left:3px solid var(--bad)}
 .plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cnt{font-size:11px;color:var(--muted)}
+.rwsteps{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}.rwstep{border-radius:99px;font-size:12.5px}.rwstep b{display:inline-block;width:18px}.rwstep.on{border-color:var(--accent);font-weight:650}.rwstep.done{color:var(--cred)}
+.rwtbl input{text-align:right}.rwtbl td.l input{text-align:left;width:100%}
 #modal.wide{width:min(760px,100%)}
 .woterms{display:grid;gap:8px 16px;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));font-size:13px}
 .woph{margin:14px 0 6px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.woph button{margin-left:auto}
@@ -233,6 +235,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
   <div id="shelf"><span class="cwrap"><button class="primary" data-act="cmenu" aria-haspopup="true">+ New</button><div class="cmenu up hide" role="menu">
     <button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button>
     <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
+    <button role="menuitem" data-act="rwnew"><b>RA bill, step by step</b><span class="sub">Work order, measurement, documents</span></button>
     <button role="menuitem" data-act="newpl"><b>Bill in pipeline</b><span class="sub">A bill the team is still preparing</span></button>
     <button role="menuitem" data-act="newwo"><b>Work order</b><span class="sub">Contract terms and its checklist</span></button>
     <hr><button role="menuitem" data-act="newrc"><b>Receipt</b><span class="sub">Money received from a client</span></button>
@@ -428,6 +431,16 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <div class="card"><h2>Submitted or dropped, last 30 days</h2><div class="tblwrap" id="plDone"></div></div>
   </section>
 
+  <section id="tab-ra" class="hide">
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0" id="rwHead">New RA bill</h2></div>
+      <div class="rwsteps" id="rwSteps"></div>
+      <div id="rwBody"></div>
+      <div id="rwMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button id="rwBack">&larr; Back</button><button id="rwPrint">Print measurement abstract</button><span style="flex:1"></span><button id="rwCancel" data-act="plopen">Close</button><button class="primary" id="rwNext">Next</button></div>
+    </div>
+  </section>
+
   <section id="tab-tasks" class="hide">
     <div class="card">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tasks</h2><span class="sub" id="tkSum"></span><span style="flex:1"></span>
@@ -499,14 +512,14 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
@@ -516,6 +529,7 @@ function normalize(o) {
   n.wos = Array.isArray(o.wos) ? o.wos : [];
   n.checks = Array.isArray(o.checks) ? o.checks : [];
   n.bdocs = Array.isArray(o.bdocs) ? o.bdocs : [];
+  n.ralines = Array.isArray(o.ralines) ? o.ralines : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -553,7 +567,8 @@ const TABS = {
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
   commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
-  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId"],
+  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId", "seq", "periodFrom", "periodTo"],
+  ra_lines: ["id", "pipeId", "woId", "boqId", "code", "item", "unit", "rate", "prevQty", "qty"],
   work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
   wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   bill_docs: ["id", "pipeId", "woId", "cat", "item", "owner", "due", "status", "link", "blocks", "note", "doneOn", "doneBy"],
@@ -563,11 +578,11 @@ const TABS = {
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs"];   // added after the first Sheets were made: created on first load if missing
-const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId"] };   // columns added later: appended to the header row on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines"];   // added after the first Sheets were made: created on first load if missing
+const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1 };
 const BOOLC = { dateEst: 1, deleted: 1, blocks: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
@@ -676,10 +691,11 @@ async function loadAll() {
   n.boq = raw.boq;
   n.work = raw.work_log;
   n.commits = raw.commitments.map(c => Object.assign(c, { loggedOn: toIso(c.loggedOn), closedOn: toIso(c.closedOn), status: c.status || "open" }));
-  n.pipe = raw.pipeline.map(x => Object.assign(x, { target: toIso(x.target), addedOn: toIso(x.addedOn), updatedOn: toIso(x.updatedOn), stage: PL_ST[x.stage] ? x.stage : "prep", kind: x.kind === "TI" ? "TI" : "PI" }));
+  n.pipe = raw.pipeline.map(x => Object.assign(x, { target: toIso(x.target), addedOn: toIso(x.addedOn), updatedOn: toIso(x.updatedOn), periodFrom: toIso(x.periodFrom), periodTo: toIso(x.periodTo), stage: PL_ST[x.stage] ? x.stage : "prep", kind: x.kind === "TI" ? "TI" : "PI" }));
   n.wos = raw.work_orders.map(w => Object.assign(w, { woDate: toIso(w.woDate), start: toIso(w.start), end: toIso(w.end), kind: w.kind === "LOI" ? "LOI" : "WO", status: w.status === "closed" ? "closed" : "active" }));
   n.checks = raw.wo_checks.map(c => Object.assign(c, { due: toIso(c.due), expires: toIso(c.expires), doneOn: toIso(c.doneOn), phase: WO_PH[c.phase] ? c.phase : "start", status: CK_ST[c.status] ? c.status : "open", dueDay: c.dueDay || "" }));
   n.bdocs = raw.bill_docs.map(d => Object.assign(d, { due: toIso(d.due), doneOn: toIso(d.doneOn), status: CK_ST[d.status] ? d.status : "open" }));
+  n.ralines = raw.ra_lines;
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -706,6 +722,7 @@ function rowsView() {
   S.wos.forEach(p => { v.work_orders[p.id] = pick(p, TABS.work_orders); });
   S.checks.forEach(p => { v.wo_checks[p.id] = pick(p, TABS.wo_checks); });
   S.bdocs.forEach(p => { v.bill_docs[p.id] = pick(p, TABS.bill_docs); });
+  S.ralines.forEach(p => { v.ra_lines[p.id] = pick(p, TABS.ra_lines); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -1062,7 +1079,7 @@ function renderPipeline() {
         (x.note ? '<div class="sub" style="margin-top:3px">' + esc(x.note) + "</div>" : "") +
         '<div class="acts">' + (i > 0 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i - 1] + '" title="Back to ' + PL_ST[PL_OPEN[i - 1]] + '">&larr;</button>' : "") +
         (i < 2 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i + 1] + '">' + PL_ST[PL_OPEN[i + 1]] + " &rarr;</button>" : '<button class="small primary" data-act="plbill" data-id="' + esc(x.id) + '">Make bill</button><button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="sub" title="Already billed elsewhere">Mark submitted</button>') +
-        docBadge(x) + '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
+        docBadge(x) + (raLines(x.id).length ? '<button class="small" data-act="rwedit" data-id="' + esc(x.id) + '">Measurement</button><button class="small" data-act="rwprintid" data-id="' + esc(x.id) + '">Abstract</button>' : "") + '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
   }).join("");
   const lateAll = open.filter(late).sort((a, b) => a.target.localeCompare(b.target));
   $("#plOv").innerHTML = '<div class="toolbar" style="margin-bottom:0"><h2 style="margin:0">Bills being prepared</h2><span class="sub">' + (open.length ? open.length + " in pipeline &middot; ~" + fmt(open.reduce((a, x) => a + (+x.amt || 0), 0)) + " before GST &middot; not in the receivables above" : "nothing in the pipeline") + '</span><span style="flex:1"></span><button class="small" data-act="plopen">Open pipeline</button></div>' +
@@ -1122,11 +1139,15 @@ function billPipe(id, sure) {
   const x = S.pipe.filter(y => y.id === id)[0]; if (!x) return;
   if (!sure && docsMissing(x.id).length) { docsGate(x, "Make the bill", () => billPipe(id, true)); return; }
   PENDING = null; createBill(x.kind); PL = x.id;
+  if (raLines(x.id).length) {   // made in the RA bill wizard: bill the measured base, and the unbilled work of that period with it
+    const ids = S.work.filter(e => !e.billId && e.client === x.client && norm(e.site || "") === norm(x.site || "") && (!x.periodFrom || e.date >= x.periodFrom) && (!x.periodTo || e.date <= x.periodTo)).map(e => e.id);
+    if (ids.length) PENDING = { ids: ids, client: x.client, site: x.site, base: +x.amt, from: x.periodFrom || x.periodTo, to: x.periodTo, remark: raRemark(x) };
+  }
   const known = Array.prototype.some.call($("#aClient").options, o => o.value === x.client);
   if (known) $("#aClient").value = x.client;
   onClientChange();
   if (!known) $("#aNew").value = x.client;
-  $("#aSite").value = x.site || ""; $("#aSeq").value = nextSeq(x.client, x.site || ""); $("#aDate").value = S.settings.asOn;
+  $("#aSite").value = x.site || ""; $("#aSeq").value = x.seq || nextSeq(x.client, x.site || ""); $("#aDate").value = S.settings.asOn;
   if (+x.amt) $("#aBase").value = (+x.amt).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   advDefaults(); renderPending();
   $("#aNo").focus();
@@ -1228,7 +1249,7 @@ function renderWo() {
   const terms = [["Bill when", w.billRule], ["Payment", w.payTerms], ["Retention", (+w.retPct ? w.retPct + "%" : "") + (w.retTerms ? (+w.retPct ? ", " : "") + w.retTerms : "")], ["Defect liability", +w.dlp ? w.dlp + " months" : ""], ["TDS", +w.tdsPct ? w.tdsPct + "%" : ""], ["Security", w.security], ["Advance", w.advance], ["Delay penalty", w.penalty], ["Note", w.note]].filter(x => x[1]);
   const cs = woChecks(w.id);
   const row = c => { const late = ckLate(c); return '<tr><td class="l">' + (c.phase === "bill" ? "" : '<input type="checkbox" data-act="cktick" data-id="' + esc(c.id) + '"' + (c.status === "done" ? " checked" : "") + (c.status === "na" ? " disabled" : "") + ' aria-label="Done">') + '</td><td class="l"' + (c.status === "na" ? ' style="text-decoration:line-through;color:var(--muted)"' : "") + ">" + esc(c.item) + ' <span class="sub">' + esc(c.cat) + "</span>" + (c.blocks ? ' <span class="tag pi" title="An RA bill cannot be submitted without it">required</span>' : "") + (c.note ? '<div class="sub">' + esc(c.note) + "</div>" : "") + '</td><td class="l">' + esc(c.owner || "") + '</td><td class="l">' + (c.phase === "bill" ? '<span class="sub">each bill</span>' : c.status === "done" ? '<span class="tag ok">done ' + (c.doneOn ? dmy(c.doneOn) : "") + "</span>" : c.due ? '<span style="' + (late ? "color:var(--bad);font-weight:600" : "") + '">' + dmy(c.due) + "</span>" : "") + (c.expires ? '<div class="sub"' + (c.expires < addDays(today(), 30) ? ' style="color:var(--bad)"' : "") + ">expires " + dmy(c.expires) + "</div>" : "") + '</td><td class="l">' + linkHtml(c.link) + '</td><td><button class="small" data-act="ckedit" data-id="' + esc(c.id) + '">Edit</button></td></tr>'; };
-  el.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(w.client) + " &middot; " + esc(woLabel(w)) + '</h2><span style="flex:1"></span><button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit terms</button><button class="small" data-act="woclose">Close</button></div>' +
+  el.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(w.client) + " &middot; " + esc(woLabel(w)) + '</h2><span style="flex:1"></span><button class="small primary" data-act="rwnew">New RA bill</button><button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit terms</button><button class="small" data-act="woclose">Close</button></div>' +
     '<div class="woterms">' + terms.map(t => "<div><span class=\"sub\">" + t[0] + "</span><br>" + esc(t[1]) + "</div>").join("") + "</div>" +
     '<div class="sub" style="margin:8px 0">Drive folder: ' + (w.folder ? linkHtml(w.folder).replace("Open file", "open") + " &middot; " : "") + "<code>" + esc(woFolder(w)) + "</code></div>" +
     WO_PHS.map(ph => { const xs = cs.filter(c => c.phase === ph).sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || (a.due || "9").localeCompare(b.due || "9")); return '<h3 class="woph">' + WO_PH[ph] + (ph === "bill" ? ' <span class="sub">copied onto each bill in the pipeline for this contract</span>' : ph === "month" ? ' <span class="sub">ticking one adds next month\'s</span>' : "") + '<button class="small" data-act="ckadd" data-ph="' + ph + '">+ Item</button></h3>' +
@@ -1412,6 +1433,214 @@ function importWo(file) {
     persist(); renderAll(); toast(nw ? "Imported " + nw + " work order" + (nw === 1 ? "" : "s") + " with " + nc + " checklist items" + (skip ? ", " + skip + " already here" : "") : skip ? "All " + skip + " were already here" : "No work orders found in that file");
   };
   rd.readAsText(file);
+}
+
+/* ---------- RA bill wizard ----------
+   Four steps: contract and period, measurement (BOQ items: previous, this bill, cumulative), documents, review.
+   Saving puts the bill in the pipeline (stage Preparing, linked to the work order, with its documents) and writes the
+   measured lines to `ra_lines`. "Make bill" on that entry fills the bill form with the measured base and marks the
+   unbilled work entries of that period billed, so deductions and numbering stay in the one bill form.
+   Previous quantities come from earlier wizard bills on the same work order (not dropped); they can be typed in for
+   bills made before the wizard. */
+let RW = null;
+const RW_STEPS = ["Contract", "Measurement", "Documents", "Review"];
+const raLines = pipeId => S.ralines.filter(l => l.pipeId === pipeId);
+const lineAmt = l => round2((+l.qty || 0) * (+l.rate || 0));
+const rwBase = () => round2(RW.lines.reduce((a, l) => a + lineAmt(l), 0));
+const raEntries = woId => S.pipe.filter(x => x.woId === woId && x.stage !== "drop" && raLines(x.id).length);
+function rwSites(client) { return uniq(S.boq.filter(q => q.client === client).map(q => q.site).concat(S.work.filter(w => w.client === client).map(w => w.site))); }
+function rwSeq(w, site) {
+  let n = +(nextSeq(w.client, site).replace(/\D/g, "")) - 1;
+  raEntries(w.id).forEach(x => { const m = /(\d+)/.exec(x.seq || ""); if (m) n = Math.max(n, +m[1]); });
+  return "RA-" + (n + 1);
+}
+function rwPrev(woId, key, exceptPipe) {   // quantity billed on earlier wizard bills of this work order, per BOQ id or item text
+  let q = 0;
+  raEntries(woId).forEach(x => { if (x.id === exceptPipe) return; raLines(x.id).forEach(l => { if ((l.boqId || l.item) === key) q += +l.qty || 0; }); });
+  return Math.round(q * 1000) / 1000;
+}
+/* open the wizard: new for a work order, or to edit a pipeline entry made by it */
+function openWizard(woId, pipeId) {
+  const x = pipeId ? S.pipe.filter(y => y.id === pipeId)[0] : null;
+  const actives = S.wos.filter(w => w.status !== "closed");
+  const w = woOf(x ? x.woId : woId) || (actives.length === 1 ? actives[0] : null);
+  RW = { step: 0, pipeId: x ? x.id : null, woId: w ? w.id : "", site: "", seq: "", from: "", to: S.settings.asOn, date: S.settings.asOn, kind: "PI", target: addDays(S.settings.asOn, 3), owner: USER ? whoOf(USER.email) : "", lines: null, docs: null, note: "" };
+  if (x) Object.assign(RW, { site: x.site || "", seq: x.seq || "", from: x.periodFrom || "", to: x.periodTo || S.settings.asOn, kind: x.kind, target: x.target || "", owner: x.owner || "", note: x.note || "",
+    lines: raLines(x.id).map(l => Object.assign({}, l)) });
+  if (w && !x) rwWoDefaults(w);
+  showTab("ra"); renderWizard();
+}
+function rwWoDefaults(w) {
+  const sites = rwSites(w.client), m = sites.filter(s => s && w.site && (norm(w.site).indexOf(norm(s)) >= 0 || norm(s).indexOf(norm(w.site)) >= 0))[0];
+  RW.site = m !== undefined ? m : (sites.length === 1 ? sites[0] : (w.site || ""));
+  RW.seq = rwSeq(w, RW.site);
+  const last = raEntries(w.id).map(x => x.periodTo).filter(Boolean).sort().slice(-1)[0];
+  RW.from = last ? addDays(last, 1) : (w.start || "");
+  RW.lines = null; RW.docs = null;
+}
+/* measurement lines: every BOQ item for the client and site, this bill's quantity from unbilled work in the period */
+function rwBuildLines() {
+  const w = woOf(RW.woId); if (!w) return [];
+  const items = boqFor(w.client, RW.site), work = rwWork();
+  const lines = items.map(q => {
+    const qty = work.filter(e => e.boqId === q.id).reduce((a, e) => a + (+e.qty || 0), 0);
+    return { id: uid(), boqId: q.id, code: q.code || "", item: q.item, unit: q.unit || "", rate: +q.rate || 0, prevQty: rwPrev(w.id, q.id, RW.pipeId), qty: Math.round(qty * 1000) / 1000, logged: Math.round(qty * 1000) / 1000 };
+  });
+  const extra = {};   // lines outside the BOQ on earlier bills of this work order carry on with their previous quantity
+  raEntries(w.id).forEach(x => { if (x.id === RW.pipeId) return; raLines(x.id).forEach(l => { if (!l.boqId && !extra[l.item]) extra[l.item] = l; }); });
+  Object.keys(extra).forEach(k => { const l = extra[k]; lines.push({ id: uid(), boqId: "", code: "", item: l.item, unit: l.unit, rate: +l.rate || 0, prevQty: rwPrev(w.id, l.item, RW.pipeId), qty: 0 }); });
+  return lines;
+}
+function rwWork() {
+  const w = woOf(RW.woId); if (!w) return [];
+  return S.work.filter(e => !e.billId && e.client === w.client && norm(e.site || "") === norm(RW.site || "") && (!RW.from || e.date >= RW.from) && (!RW.to || e.date <= RW.to));
+}
+function rwDocsDefault() {
+  const w = woOf(RW.woId), have = RW.pipeId ? plDocs(RW.pipeId) : [];
+  if (have.length) return have.map(d => ({ id: d.id, item: d.item, owner: d.owner, blocks: d.blocks, on: d.status !== "na", status: d.status, keep: true }));
+  return (w ? woChecks(w.id).filter(c => c.phase === "bill") : []).map(c => ({ id: uid(), item: c.item, cat: c.cat, owner: c.owner, blocks: !!c.blocks, on: true, status: "open" }));
+}
+const rwLogNote = l => l.boqId && l.logged !== undefined && Math.abs((+l.qty || 0) - l.logged) > 0.0005 ? "work log says " + qtyFmt(l.logged) : "";
+function rwMsg(t) { $("#rwMsg").textContent = t || ""; }
+function renderWizard() {
+  if (!RW) return;
+  const w = woOf(RW.woId);
+  $("#rwSteps").innerHTML = RW_STEPS.map((s, i) => '<button class="rwstep' + (i === RW.step ? " on" : "") + (i < RW.step ? " done" : "") + '" data-act="rwgo" data-i="' + i + '"' + (i > RW.step ? " disabled" : "") + "><b>" + (i + 1) + "</b> " + s + "</button>").join("");
+  $("#rwHead").textContent = (RW.pipeId ? "Edit RA bill" : "New RA bill") + (w ? " · " + w.client : "");
+  const el = $("#rwBody"); rwMsg("");
+  if (RW.step === 0) {
+    const ws = S.wos.filter(x => x.status !== "closed" || x.id === RW.woId);
+    const sites = w ? rwSites(w.client) : [];
+    el.innerHTML = !ws.length ? '<div class="help">Add the contract first: Work orders tab, + Work order (or Import). The wizard takes the bill documents and terms from it.</div>' :
+      '<div class="form">' +
+      '<label style="grid-column:1/-1">Work order<select id="rwWo"><option value="">Pick a work order</option>' + ws.map(x => '<option value="' + esc(x.id) + '"' + (x.id === RW.woId ? " selected" : "") + ">" + esc(x.client + " · " + woLabel(x)) + "</option>").join("") + "</select></label>" +
+      (w ? '<label>BOQ and work log site<select id="rwSite">' + optsHtml([RW.site].concat(sites, [""]).filter((s, i, a) => a.indexOf(s) === i), RW.site, s => s || "(no site)") + "</select></label>" +
+        '<label>RA no.<input type="text" id="rwSeq" value="' + esc(RW.seq) + '"></label>' +
+        '<label>Work from<input type="date" id="rwFrom" value="' + esc(RW.from) + '"></label><label>Work up to<input type="date" id="rwTo" value="' + esc(RW.to) + '"></label>' +
+        '<label>Bill as<select id="rwKind"><option value="PI"' + (RW.kind !== "TI" ? " selected" : "") + '>Proforma</option><option value="TI"' + (RW.kind === "TI" ? " selected" : "") + ">Tax invoice</option></select></label>" +
+        '<label>Submit by<input type="date" id="rwTarget" value="' + esc(RW.target) + '"></label>' +
+        '<label>Who is making it<input type="text" id="rwOwner" list="rwOwners" value="' + esc(RW.owner) + '"><datalist id="rwOwners">' + knownOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist></label>" +
+        '<label style="grid-column:1/-1">Note<input type="text" id="rwNote" value="' + esc(RW.note) + '"></label>' : "") + "</div>" +
+      (w ? '<div class="woterms" style="margin-top:12px">' + [["Bill when", w.billRule], ["Payment", w.payTerms], ["Retention", +w.retPct ? w.retPct + "%" : ""], ["TDS", +w.tdsPct ? w.tdsPct + "%" : ""], ["Previous RA bills here", raEntries(w.id).filter(x => x.id !== RW.pipeId).map(x => x.seq + (x.periodTo ? " to " + dmy(x.periodTo) : "")).join(", ") || "none yet"]].filter(t => t[1]).map(t => '<div><span class="sub">' + t[0] + "</span><br>" + esc(t[1]) + "</div>").join("") + "</div>" : "");
+    if ($("#rwWo")) $("#rwWo").onchange = e => { rwRead0(); RW.woId = e.target.value; const n = woOf(RW.woId); if (n) rwWoDefaults(n); renderWizard(); };
+    if ($("#rwSite")) $("#rwSite").onchange = e => { rwRead0(); RW.site = e.target.value; RW.seq = rwSeq(w, RW.site); RW.lines = null; renderWizard(); };
+  } else if (RW.step === 1) {
+    if (!RW.lines) RW.lines = rwBuildLines();
+    const work = rwWork(), logged = work.length;
+    el.innerHTML = '<div class="help">Quantities for this bill, as measured jointly with the client. They start from the work logged ' + (RW.from ? dmy(RW.from) : "") + " to " + dmy(RW.to) + " (" + logged + " entr" + (logged === 1 ? "y" : "ies") + ", not yet billed). Previous quantities come from earlier RA bills made here; type them in for bills made before.</div>" +
+      (RW.lines.length ? "" : '<div class="help" style="color:var(--bad)">No BOQ rates for ' + esc(w.client) + (RW.site ? " at " + esc(RW.site) : "") + '. Add them on the Work done tab (BOQ rates), or add lines here.</div>') +
+      '<div class="tblwrap"><table class="cktbl rwtbl"><thead><tr><th class="l">Item</th><th class="l">Unit</th><th>Rate</th><th>Previous qty</th><th>This bill qty</th><th>Up to date qty</th><th>This bill amount</th><th></th></tr></thead><tbody>' +
+      RW.lines.map((l, i) => '<tr data-i="' + i + '"><td class="l">' + (l.boqId ? esc((l.code ? l.code + " · " : "") + l.item) : '<input type="text" class="rwItem" value="' + esc(l.item) + '" placeholder="description">') + '<div class="sub rwLog">' + rwLogNote(l) + "</div>" + '</td><td class="l">' + (l.boqId ? esc(l.unit) : '<input type="text" class="rwUnit" value="' + esc(l.unit) + '" style="width:60px">') + "</td><td>" + (l.boqId ? rateFmt(l.rate) : '<input type="text" inputmode="decimal" class="rwRate" value="' + esc(l.rate || "") + '" style="width:90px">') + '</td><td><input type="text" inputmode="decimal" class="rwPrev" value="' + esc(l.prevQty || 0) + '" style="width:90px"></td><td><input type="text" inputmode="decimal" class="rwQty" value="' + esc(l.qty || 0) + '" style="width:90px"></td><td class="hm rwCum">' + qtyFmt((+l.prevQty || 0) + (+l.qty || 0)) + '</td><td class="hm rwAmt">' + fmt(lineAmt(l)) + "</td><td>" + (l.boqId ? "" : '<button class="small" data-act="rwdel" data-i="' + i + '">Remove</button>') + "</td></tr>").join("") +
+      '<tr class="tot"><td class="l" colspan="6">Base amount of this bill, before GST</td><td class="hm" id="rwTot">' + fmt(rwBase()) + "</td><td></td></tr></tbody></table></div>" +
+      '<div style="margin-top:8px"><button class="small" data-act="rwaddline">+ Line not in the BOQ</button></div>';
+    $$("#rwBody tr[data-i] input").forEach(inp => { inp.oninput = () => { rwRead1(); const tr = inp.closest("tr"), l = RW.lines[+tr.dataset.i]; $(".rwCum", tr).textContent = qtyFmt((+l.prevQty || 0) + (+l.qty || 0)); $(".rwAmt", tr).textContent = fmt(lineAmt(l)); $(".rwLog", tr).textContent = rwLogNote(l); $("#rwTot").textContent = fmt(rwBase()); }; });
+  } else if (RW.step === 2) {
+    if (!RW.docs) RW.docs = rwDocsDefault();
+    el.innerHTML = '<div class="help">Papers that go with this bill, from the work order. Untick what this bill does not need; set who brings each one. They are tracked on the bill in the pipeline and in My tasks until done.' + (w ? " Save them in <code>" + esc(woFolder(w)) + " / 03 RA bills / " + esc(RW.seq) + "</code>." : "") + "</div>" +
+      (RW.docs.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th></th><th class="l">Document</th><th class="l">Who brings it</th></tr></thead><tbody>' + RW.docs.map((d, i) => '<tr data-i="' + i + '"><td><input type="checkbox" class="rwOn"' + (d.on ? " checked" : "") + (d.keep && d.status === "done" ? " disabled" : "") + ' aria-label="Needed"></td><td class="l">' + esc(d.item) + (d.blocks ? ' <span class="tag pi">required</span>' : "") + (d.keep && d.status === "done" ? ' <span class="tag ok">done</span>' : "") + '</td><td class="l"><input type="text" class="rwDOwner" list="rwOwners2" value="' + esc(d.owner || "") + '" style="width:140px"></td></tr>').join("") + '</tbody></table></div><datalist id="rwOwners2">' + knownOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist>"
+        : '<div class="help">This work order lists no RA bill documents. Add them under Every RA bill on the Work orders tab, or add one here.</div>') +
+      '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Add a document for this bill<input type="text" id="rwDNew" placeholder="e.g. Rolling margin certificate"></label></div>';
+  } else {
+    const base = rwBase(), gst = round2(base * 0.18), tds = round2(base * (+w.tdsPct || 0) / 100), ret = round2(base * (+w.retPct || 0) / 100);
+    const ao = advOpen(w.client, RW.site, RW.date), adv = ao ? Math.min(round2(base * ao.pct / 100), ao.left) : 0;
+    const docs = RW.docs || [], on = docs.filter(d => d.on);
+    el.innerHTML = '<div class="woterms"><div><span class="sub">Contract</span><br>' + esc(w.client + " · " + woLabel(w)) + '</div><div><span class="sub">Bill</span><br>' + esc(RW.seq) + " &middot; " + (RW.kind === "TI" ? "tax invoice" : "proforma") + '</div><div><span class="sub">Work period</span><br>' + (RW.from ? dmy(RW.from) : "") + " to " + dmy(RW.to) + '</div><div><span class="sub">Submit by</span><br>' + (RW.target ? dmy(RW.target) : "-") + (RW.owner ? ", " + esc(RW.owner) : "") + "</div></div>" +
+      '<div class="preview">' + [["Base", base], ["GST 18%", gst], ["Bill total", base + gst], ["TDS " + (+w.tdsPct || 0) + "%", tds], ["Retention " + (+w.retPct || 0) + "%", ret], ["Advance recovery", adv], ["Expected net", base + gst - tds - ret - adv]].map(x => "<div>" + x[0] + "<b>" + fmt(x[1]) + "</b></div>").join("") + "</div>" +
+      '<div class="sub" style="margin-top:6px">' + RW.lines.filter(l => +l.qty).length + " measured item" + (RW.lines.filter(l => +l.qty).length === 1 ? "" : "s") + ", " + on.length + " document" + (on.length === 1 ? "" : "s") + " to collect (" + on.filter(d => d.blocks).length + " required). Deductions here are an estimate from the work order; the bill form sets them when you make the bill.</div>";
+  }
+  $("#rwNext").classList.remove("hide");
+  $("#rwBack").classList.toggle("hide", RW.step === 0);
+  $("#rwNext").textContent = RW.step === 3 ? (RW.pipeId ? "Save changes" : "Save to pipeline") : "Next";
+  $("#rwPrint").classList.toggle("hide", RW.step < 1 || !w);
+}
+function rwRead0() {
+  if (!$("#rwSeq")) return;
+  Object.assign(RW, { seq: $("#rwSeq").value.trim(), from: $("#rwFrom").value, to: $("#rwTo").value, kind: $("#rwKind").value, target: $("#rwTarget").value, owner: $("#rwOwner").value.trim(), note: $("#rwNote").value.trim() });
+}
+function rwRead1() {
+  $$("#rwBody tr[data-i]").forEach(tr => {
+    const l = RW.lines[+tr.dataset.i]; if (!l) return;
+    l.prevQty = Math.round(parseAmt($(".rwPrev", tr).value) * 1000) / 1000; l.qty = Math.round(parseAmt($(".rwQty", tr).value) * 1000) / 1000;
+    if (!l.boqId) { l.item = $(".rwItem", tr).value.trim(); l.unit = $(".rwUnit", tr).value.trim(); l.rate = parseAmt($(".rwRate", tr).value); }
+  });
+}
+function rwRead2() {
+  $$("#rwBody tr[data-i]").forEach(tr => { const d = RW.docs[+tr.dataset.i]; if (!d) return; d.on = $(".rwOn", tr).checked; d.owner = $(".rwDOwner", tr).value.trim(); });
+  const nv = $("#rwDNew") && $("#rwDNew").value.trim();
+  if (nv) RW.docs.push({ id: uid(), item: nv, owner: "", blocks: false, on: true, status: "open" });
+}
+function rwNext(back) {
+  const w = woOf(RW.woId);
+  if (RW.step === 0) {
+    const was = RW.from + "|" + RW.to + "|" + RW.site;
+    rwRead0();
+    if (!RW.pipeId && was !== RW.from + "|" + RW.to + "|" + RW.site) RW.lines = null;   // new period: measure again from the work log
+    if (!back) {
+      if (!w) { rwMsg("Pick the work order this bill is under."); return; }
+      if (!RW.seq) { rwMsg("Give the RA number, e.g. RA-3."); return; }
+      if (!RW.to || (RW.from && RW.from > RW.to)) { rwMsg("Check the work period: the end date is needed and must be after the start."); return; }
+      const dup = raEntries(w.id).filter(x => x.id !== RW.pipeId && norm(x.seq || "") === norm(RW.seq))[0];
+      if (dup) { rwMsg(RW.seq + " is already in the pipeline for this work order (" + (dup.desc || "") + "). Use the next number."); return; }
+    }
+  } else if (RW.step === 1) {
+    rwRead1();
+    if (!back) {
+      const bad = RW.lines.filter(l => !l.boqId && (+l.qty) && (!l.item || !(+l.rate)));
+      if (bad.length) { rwMsg("Lines not in the BOQ need a description and a rate."); return; }
+      if (!(rwBase() > 0)) { rwMsg("Enter at least one quantity for this bill."); return; }
+    }
+  } else if (RW.step === 2) rwRead2();
+  if (!back && RW.step === 3) return rwSave();
+  RW.step = Math.max(0, Math.min(3, RW.step + (back ? -1 : 1)));
+  renderWizard(); window.scrollTo(0, 0);
+}
+function rwSave() {
+  const w = woOf(RW.woId), base = rwBase(), today = isoOf(new Date());
+  const desc = RW.seq + ", " + (RW.from ? dmy(RW.from) + " to " : "up to ") + dmy(RW.to);
+  const rec = { client: w.client, site: RW.site, desc: desc, kind: RW.kind, amt: base, owner: RW.owner, target: RW.target, note: RW.note, woId: w.id, seq: RW.seq, periodFrom: RW.from, periodTo: RW.to };
+  let x = RW.pipeId ? S.pipe.filter(y => y.id === RW.pipeId)[0] : null;
+  if (x) { Object.assign(x, rec); x.updatedOn = today; }
+  else { x = Object.assign({ id: uid(), stage: "prep", billId: "", addedBy: USER ? USER.email : "", addedOn: today, updatedOn: today }, rec); S.pipe.push(x); }
+  S.ralines = S.ralines.filter(l => l.pipeId !== x.id).concat(RW.lines.filter(l => +l.qty || +l.prevQty).map(l => ({ id: l.id || uid(), pipeId: x.id, woId: w.id, boqId: l.boqId || "", code: l.code || "", item: l.item, unit: l.unit || "", rate: +l.rate || 0, prevQty: +l.prevQty || 0, qty: +l.qty || 0 })));
+  (RW.docs || []).forEach(d => {
+    const have = S.bdocs.filter(y => y.id === d.id)[0];
+    if (have) { have.owner = d.owner; if (!d.on && have.status === "open") have.status = "na"; else if (d.on && have.status === "na") have.status = "open"; have.due = have.due || RW.target; return; }
+    if (d.on) S.bdocs.push({ id: d.id, pipeId: x.id, woId: w.id, cat: d.cat || "", item: d.item, owner: d.owner || "", due: RW.target || "", status: "open", link: "", blocks: !!d.blocks, note: "", doneOn: "", doneBy: "" });
+  });
+  const id = x.id, edited = !!RW.pipeId;
+  RW = { done: id };
+  persist(); renderAll(); showRwDone(id, edited);
+}
+function showRwDone(id, edited) {
+  const x = S.pipe.filter(y => y.id === id)[0]; if (!x) return;
+  $("#rwSteps").innerHTML = ""; $("#rwHead").textContent = x.seq + " saved";
+  $("#rwBody").innerHTML = '<div class="help">' + esc(x.client) + " &middot; " + esc(x.desc) + " is " + (edited ? "updated" : "in the pipeline under Preparing") + ", base " + fmt(+x.amt) + ". Next: print the measurement abstract for the client's engineer to sign, collect the documents, then Make bill from the pipeline.</div>" +
+    '<div class="toolbar"><button class="primary" data-act="rwprintid" data-id="' + esc(id) + '">Print measurement abstract</button><button data-act="pldocs" data-id="' + esc(id) + '">Documents</button><button data-act="plopen">Go to pipeline</button><button data-act="rwnew">Another RA bill</button></div>';
+  $("#rwBack").classList.add("hide"); $("#rwNext").classList.add("hide"); $("#rwPrint").classList.add("hide"); rwMsg("");
+  toast(edited ? "RA bill updated" : "RA bill saved to the pipeline");
+}
+/* printable abstract of measurement: what the client's engineer signs and what goes in the bill folder */
+function printAbstract(pipeId) {
+  let x, w, lines;
+  if (pipeId) { x = S.pipe.filter(y => y.id === pipeId)[0]; if (!x) return; w = woOf(x.woId); lines = raLines(x.id); }
+  else { if (RW.step === 1) rwRead1(); w = woOf(RW.woId); x = { seq: RW.seq, periodFrom: RW.from, periodTo: RW.to, site: RW.site, client: w.client }; lines = RW.lines || []; }
+  if (!w) return;
+  const n2 = v => (+v || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 }), m2 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let tp = 0, tt = 0;
+  const rows = lines.filter(l => +l.qty || +l.prevQty).map((l, i) => { const p = round2((+l.prevQty || 0) * (+l.rate || 0)), t = lineAmt(l); tp += p; tt += t;
+    return "<tr><td>" + (i + 1) + "</td><td class=l>" + esc((l.code ? l.code + " " : "") + l.item) + "</td><td>" + esc(l.unit) + "</td><td>" + m2(l.rate) + "</td><td>" + n2(l.prevQty) + "</td><td>" + n2(l.qty) + "</td><td>" + n2((+l.prevQty || 0) + (+l.qty || 0)) + "</td><td>" + m2(p) + "</td><td>" + m2(t) + "</td><td>" + m2(p + t) + "</td></tr>"; }).join("");
+  const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc(x.seq + " abstract " + w.client) + "</title><style>body{font:12px/1.4 Arial,sans-serif;margin:24px;color:#000}h1{font-size:16px;margin:0}h2{font-size:13px;margin:4px 0 12px;font-weight:normal}table{border-collapse:collapse;width:100%}th,td{border:1px solid #444;padding:4px 6px;text-align:right;vertical-align:top}th{background:#eee}td.l,th.l{text-align:left}.meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 24px;margin:10px 0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:60px}.sig div{border-top:1px solid #000;padding-top:4px}tfoot td{font-weight:bold}@media print{body{margin:10mm}}</style></head><body>" +
+    "<h1>Nityanand Infrastructure Ltd.</h1><h2>Abstract of measurement &middot; " + esc(x.seq) + "</h2><div class=meta><div><b>Client:</b> " + esc(w.client) + "</div><div><b>" + (w.kind === "LOI" ? "LOI" : "Work order") + ":</b> " + esc(w.woNo || "-") + (w.woDate ? " dated " + dmy(w.woDate) : "") + "</div><div><b>Site:</b> " + esc(w.site || x.site || "") + "</div><div><b>Work period:</b> " + (x.periodFrom ? dmy(x.periodFrom) + " to " : "up to ") + dmy(x.periodTo) + "</div></div>" +
+    "<table><thead><tr><th>Sr</th><th class=l>Item</th><th>Unit</th><th>Rate (Rs)</th><th>Previous qty</th><th>This bill qty</th><th>Up to date qty</th><th>Previous amount</th><th>This bill amount</th><th>Up to date amount</th></tr></thead><tbody>" + rows + "</tbody><tfoot><tr><td></td><td class=l colspan=6>Total before GST</td><td>" + m2(tp) + "</td><td>" + m2(tt) + "</td><td>" + m2(tp + tt) + "</td></tr></tfoot></table>" +
+    "<p>Quantities measured jointly at site. GST extra as applicable.</p><div class=sig><div>For Nityanand Infrastructure Ltd.<br>Name, signature and date</div><div>For " + esc(w.client) + " (Engineer-in-Charge)<br>Name, signature and date</div></div></body></html>";
+  const win = window.open("", "_blank");
+  if (!win) { toast("Allow pop-ups for this page to print the abstract"); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
+}
+function raRemark(x) {
+  return x.seq + (x.periodTo ? ", work " + (x.periodFrom ? dmy(x.periodFrom) + " to " : "up to ") + dmy(x.periodTo) : "") + ": " +
+    raLines(x.id).filter(l => +l.qty).map(l => l.item + " " + qtyFmt(l.qty) + " " + (l.unit || "") + " @ " + rateFmt(l.rate) + " = " + fmt(lineAmt(l))).join("; ") + ".";
 }
 
 /* follow-up dialog: the bill's promise history and a form for the next one */
@@ -2164,6 +2393,7 @@ function onAdd() {
     }
     const dropped = PENDING && !linked;
     const pl = PL ? S.pipe.filter(y => y.id === PL && y.client === client)[0] : null;
+    if (!remark && pl && raLines(pl.id).length) remark = raRemark(pl);
     if (pl) { pl.billId = id; plTouch(pl, "sub"); }
     PENDING = null; PL = null; renderPending();
     addPi({ id: id, client, src: $("#aSrc").value, status: kind, billno: no, type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
@@ -2622,7 +2852,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "tasks", "client", "bills", "pipeline", "wo", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "tasks", "client", "bills", "pipeline", "wo", "ra", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
@@ -2685,6 +2915,12 @@ function wire() {
     if (act === "tkdone") { tickCheck(id, true); return; }
     if (act === "tkdoc") { tickDoc(id); return; }
     if (act === "pldocs") { openDocs(id); return; }
+    if (act === "rwnew") { openWizard(!$("#tab-wo").classList.contains("hide") ? WO_SEL : null); return; }
+    if (act === "rwedit") { openWizard(null, id); return; }
+    if (act === "rwgo") { if (RW && +t.dataset.i < RW.step) { if (RW.step === 0) rwRead0(); else if (RW.step === 1) rwRead1(); else if (RW.step === 2) rwRead2(); RW.step = +t.dataset.i; renderWizard(); } return; }
+    if (act === "rwaddline") { rwRead1(); RW.lines.push({ id: uid(), boqId: "", code: "", item: "", unit: "", rate: 0, prevQty: 0, qty: 0 }); renderWizard(); return; }
+    if (act === "rwdel") { rwRead1(); RW.lines.splice(+t.dataset.i, 1); renderWizard(); return; }
+    if (act === "rwprintid") { printAbstract(id); return; }
     if (act === "plcancel") { PL = null; renderPending(); return; }
     if (act === "newfu") { openCommit(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "cvdbill") openDirectBill(SEL);
@@ -2737,6 +2973,7 @@ function wire() {
   $("#btnWfReset").onclick = () => { $("#wfClient").value = "all"; $("#wfRig").value = "all"; $("#wfFrom").value = ""; $("#wfTo").value = ""; $("#wfState").value = ""; renderWorkLog(); };
   $("#btnCsvWork").onclick = exportWork;
   $("#plOwner").onchange = renderPipeline;
+  $("#rwNext").onclick = () => rwNext(false); $("#rwBack").onclick = () => rwNext(true); $("#rwPrint").onclick = () => printAbstract(null);
   $("#tkOwner").onchange = e => { TK_OWNER = e.target.value; renderTasks(); };
   $("#woFile").onchange = e => { const f = e.target.files[0]; if (f) importWo(f); e.target.value = ""; };
 }
