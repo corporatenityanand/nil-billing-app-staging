@@ -82,6 +82,14 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .tag.new{color:var(--inv);border-color:var(--inv)}
 .tag.cm,.tag.ok{color:var(--cred);border-color:var(--cred)}
 .tag.bad{color:var(--bad);border-color:var(--bad)}
+.plboard{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:900px){.plboard{grid-template-columns:minmax(0,1fr)}}
+.plcol{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0}
+.plcol h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;gap:8px}
+.plcard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px}
+.plcard.late{border-left:3px solid var(--bad)}
+.plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.cnt{font-size:11px;color:var(--muted)}
 .crow{display:grid;grid-template-columns:minmax(100px,230px) minmax(0,1fr) 110px;gap:10px;align-items:center;padding:4px 0}
 .crow .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbar{display:flex;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden}
@@ -214,6 +222,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
   <div id="shelf"><span class="cwrap"><button class="primary" data-act="cmenu" aria-haspopup="true">+ New</button><div class="cmenu up hide" role="menu">
     <button role="menuitem" data-act="create" data-kind="PI"><b>Proforma</b><span class="sub">Not a GST document, not yet due</span></button>
     <button role="menuitem" data-act="create" data-kind="TI"><b>Tax invoice</b><span class="sub">Next number in the company's series</span></button>
+    <button role="menuitem" data-act="newpl"><b>Bill in pipeline</b><span class="sub">A bill the team is still preparing</span></button>
     <hr><button role="menuitem" data-act="newrc"><b>Receipt</b><span class="sub">Money received from a client</span></button>
     <button role="menuitem" data-act="newrc" data-mode="D"><b>Direct receipt</b><span class="sub">Received directly, marked Direct</span></button>
     <button role="menuitem" data-act="newfu"><b>Payment follow-up</b><span class="sub">Note a client's promise to pay</span></button>
@@ -224,6 +233,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="overview" class="on">Overview</button>
     <button data-tab="client">By client</button>
     <button data-tab="bills">All bills</button>
+    <button data-tab="pipeline">In pipeline <span class="cnt" id="plCnt"></span></button>
     <button data-tab="receipts">Receipts</button>
     <button data-tab="work">Work done</button>
     <button data-tab="forecast">Collections forecast</button>
@@ -392,6 +402,17 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     </div>
   </section>
 
+  <section id="tab-pipeline" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Bills in pipeline</h2><span class="sub" id="plSum"></span><span style="flex:1"></span>
+        <label class="sub">Owner <select id="plOwner"><option value="">Everyone</option></select></label>
+        <button class="primary small" data-act="newpl">+ Bill in pipeline</button></div>
+      <div class="help">Bills being made and not yet sent to the client. Move each one along as it progresses; "Make bill" opens the proforma or tax invoice form filled in, and saving it marks the entry submitted.</div>
+      <div class="plboard" id="plBoard"></div>
+    </div>
+    <div class="card"><h2>Submitted or dropped, last 30 days</h2><div class="tblwrap" id="plDone"></div></div>
+  </section>
+
   <section id="tab-forecast" class="hide">
     <div class="card" style="margin-bottom:12px">
       <h2>Money in by week</h2>
@@ -443,19 +464,20 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
   n.work = Array.isArray(o.work) ? o.work : [];
   n.commits = Array.isArray(o.commits) ? o.commits : [];
+  n.pipe = Array.isArray(o.pipe) ? o.pipe : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -493,14 +515,15 @@ const TABS = {
   boq: ["id", "client", "site", "code", "item", "unit", "rate", "note"],
   work_log: ["id", "date", "client", "site", "rig", "boqId", "qty", "note", "billId"],
   commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
+  pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
   meta: ["key", "value"],
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments"];   // added after the first Sheets were made: created on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline"];   // added after the first Sheets were made: created on first load if missing
 const AUTO_COLS = { overrides: ["date", "base", "total"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
 const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1 };
@@ -612,6 +635,7 @@ async function loadAll() {
   n.boq = raw.boq;
   n.work = raw.work_log;
   n.commits = raw.commitments.map(c => Object.assign(c, { loggedOn: toIso(c.loggedOn), closedOn: toIso(c.closedOn), status: c.status || "open" }));
+  n.pipe = raw.pipeline.map(x => Object.assign(x, { target: toIso(x.target), addedOn: toIso(x.addedOn), updatedOn: toIso(x.updatedOn), stage: PL_ST[x.stage] ? x.stage : "prep", kind: x.kind === "TI" ? "TI" : "PI" }));
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -634,6 +658,7 @@ function rowsView() {
   S.boq.forEach(p => { v.boq[p.id] = pick(p, TABS.boq); });
   S.work.forEach(p => { v.work_log[p.id] = pick(p, TABS.work_log); });
   S.commits.forEach(p => { v.commitments[p.id] = pick(p, TABS.commitments); });
+  S.pipe.forEach(p => { v.pipeline[p.id] = pick(p, TABS.pipeline); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -947,6 +972,87 @@ function renderInflow() {
   $("#cfPromises").innerHTML = pr.length ? '<table><thead><tr><th>Promised for</th><th class="l">Client</th><th class="l">Bill</th><th>Expected</th><th class="l">Status</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
     pr.map(r => '<tr><td class="hm">' + dmy(r.date) + '</td><td class="l"><a class="lnk" data-act="openclient" data-name="' + esc(r.b.client) + '">' + esc(r.b.client) + '</a></td><td class="l">' + esc((r.b.billno || "-") + (r.b.seq ? " " + r.b.seq : "")) + (r.b.status === "PI" ? ' <span class="tag pi">PROFORMA</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td class="l">' + cmTag(r.x.st) + (r.x.got >= 1 ? ' <span class="sub">' + fmt(r.x.got) + " in</span>" : "") + '</td><td class="l sub">' + esc(r.x.c.note || "") + '</td><td><button class="small" data-act="rcpt" data-id="' + esc(r.b.id) + '">Receipt</button> <button class="small" data-act="fu" data-id="' + esc(r.b.id) + '">Follow up</button></td></tr>').join("") + "</tbody></table>"
     : '<div class="sub">No open promises. Use Follow up on a bill, or + New &gt; Payment follow-up, to note what a client committed to pay.</div>';
+}
+
+/* ---------- bills in pipeline ----------
+   A rough list of bills being prepared (pipeline tab). Stages move left to right; "Make bill" fills the bill form and
+   saving it marks the entry submitted with the new bill's id. Submitted or dropped entries stay in the Sheet as history. */
+const PL_ST = { prep: "Preparing", check: "Checking / approval", ready: "Ready to submit", sub: "Submitted", drop: "Dropped" };
+const PL_OPEN = ["prep", "check", "ready"];
+let PL = null;   // pipeline entry the bill form was filled from
+const plOpen = () => S.pipe.filter(x => PL_OPEN.indexOf(x.stage) >= 0);
+const whoOf = e => String(e || "").split("@")[0];
+function plOwners() { return S.pipe.map(x => x.owner).concat(USER ? [whoOf(USER.email)] : []).filter((x, i, a) => x && a.indexOf(x) === i).sort(); }
+function renderPipeline() {
+  const open = plOpen(), asOn = S.settings.asOn, late = x => x.target && x.target < asOn;
+  const osel = $("#plOwner"), ocur = osel.value;
+  osel.innerHTML = '<option value="">Everyone</option>' + plOwners().map(o => '<option value="' + esc(o) + '">' + esc(o) + "</option>").join("");
+  if (plOwners().indexOf(ocur) >= 0) osel.value = ocur;
+  const mine = open.filter(x => !osel.value || x.owner === osel.value), nl = open.filter(late).length;
+  $("#plCnt").textContent = open.length ? "(" + open.length + ")" : "";
+  $("#plSum").innerHTML = open.length ? open.length + " bill" + (open.length === 1 ? "" : "s") + " &middot; ~" + fmt(open.reduce((a, x) => a + (+x.amt || 0), 0)) + " before GST" + (nl ? ' &middot; <span style="color:var(--bad)">' + nl + " past target date</span>" : "") : "nothing in the pipeline";
+  $("#plBoard").innerHTML = PL_OPEN.map((st, i) => {
+    const xs = mine.filter(x => x.stage === st).sort((a, b) => (a.target || "9").localeCompare(b.target || "9"));
+    return '<div class="plcol"><h3><span>' + PL_ST[st] + '</span><span class="sub">' + xs.length + (xs.length ? " &middot; " + cmp(xs.reduce((a, x) => a + (+x.amt || 0), 0)) : "") + "</span></h3>" +
+      (xs.map(x => '<div class="plcard' + (late(x) ? " late" : "") + '"><div class="t">' + esc(x.client) + '</div><div>' + esc(x.desc || "") + (x.site ? ' <span class="sub">&middot; ' + esc(x.site) + "</span>" : "") + "</div>" +
+        '<div class="sub">' + (x.kind === "TI" ? "Tax invoice" : "Proforma") + (+x.amt ? " &middot; ~" + fmt(+x.amt) : "") + (x.owner ? " &middot; " + esc(x.owner) : "") + (x.target ? ' &middot; <span style="' + (late(x) ? "color:var(--bad);font-weight:600" : "") + '">submit by ' + dmy(x.target) + "</span>" : "") + "</div>" +
+        (x.note ? '<div class="sub" style="margin-top:3px">' + esc(x.note) + "</div>" : "") +
+        '<div class="acts">' + (i > 0 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i - 1] + '" title="Back to ' + PL_ST[PL_OPEN[i - 1]] + '">&larr;</button>' : "") +
+        (i < 2 ? '<button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="' + PL_OPEN[i + 1] + '">' + PL_ST[PL_OPEN[i + 1]] + " &rarr;</button>" : '<button class="small primary" data-act="plbill" data-id="' + esc(x.id) + '">Make bill</button><button class="small" data-act="plmove" data-id="' + esc(x.id) + '" data-to="sub" title="Already billed elsewhere">Mark submitted</button>') +
+        '<button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></div></div>').join("") || '<div class="sub">None</div>') + "</div>";
+  }).join("");
+  const cut = isoOf(new Date(toD(asOn).getTime() - 30 * 864e5));
+  const done = S.pipe.filter(x => PL_OPEN.indexOf(x.stage) < 0 && (x.updatedOn || "") >= cut).sort((a, b) => (b.updatedOn || "").localeCompare(a.updatedOn || ""));
+  $("#plDone").innerHTML = done.length ? '<table><thead><tr><th>On</th><th class="l">Client</th><th class="l">Bill</th><th class="l">Status</th><th class="l">Owner</th><th></th></tr></thead><tbody>' +
+    done.map(x => { const b = x.billId ? BILLS.filter(y => y.id === x.billId)[0] : null; return '<tr><td class="hm">' + dmy(x.updatedOn) + '</td><td class="l">' + esc(x.client) + '</td><td class="l">' + esc(x.desc || "") + (b ? ' <span class="sub">&middot; ' + (b.status === "PI" ? "proforma " : "") + esc(b.billno || "") + " " + fmt(b.total) + "</span>" : "") + '</td><td class="l"><span class="tag ' + (x.stage === "sub" ? "ok" : "est") + '">' + PL_ST[x.stage] + '</span></td><td class="l">' + esc(x.owner || "") + '</td><td><button class="small" data-act="pledit" data-id="' + esc(x.id) + '">Edit</button></td></tr>'; }).join("") + "</tbody></table>"
+    : '<div class="sub">Nothing submitted from the pipeline in the last 30 days.</div>';
+}
+function plTouch(x, stage) { x.stage = stage; x.updatedOn = isoOf(new Date()); }
+function movePipe(id, to) {
+  const x = S.pipe.filter(y => y.id === id)[0]; if (!x || !PL_ST[to]) return;
+  plTouch(x, to); persist(); renderAll(); toast(x.client + ": " + PL_ST[to]);
+}
+function openPipe(id, clientArg) {
+  const x = id ? S.pipe.filter(y => y.id === id)[0] : null, names = clientNames();
+  const v = x || { client: clientArg && names.indexOf(clientArg) >= 0 ? clientArg : names[0], site: "", desc: "", kind: "PI", amt: "", stage: "prep", owner: USER ? whoOf(USER.email) : "", target: "", note: "" };
+  const known = names.indexOf(v.client) >= 0, sites = BILLS.filter(b => b.client === v.client).map(b => b.site).filter((s, i, a) => s && a.indexOf(s) === i);
+  openModal("<h2>" + (x ? "Edit bill in pipeline" : "Bill in pipeline") + '</h2><div class="form">' +
+    '<label style="grid-column:1/-1">Client<select id="plClient">' + optsHtml(names, known ? v.client : names[0]) + '</select></label><label style="grid-column:1/-1">Or type a new client<input type="text" id="plNew" value="' + (known ? "" : esc(v.client)) + '"></label>' +
+    '<label style="grid-column:1/-1">What is being billed<input type="text" id="plDesc" value="' + esc(v.desc) + '" placeholder="e.g. RA-6, September piling"></label>' +
+    '<label>Site / project<input type="text" id="plSite" list="plSites" value="' + esc(v.site) + '"><datalist id="plSites">' + sites.map(s => '<option value="' + esc(s) + '">').join("") + '</datalist></label>' +
+    '<label>Bill as<select id="plKind"><option value="PI"' + (v.kind !== "TI" ? " selected" : "") + '>Proforma</option><option value="TI"' + (v.kind === "TI" ? " selected" : "") + ">Tax invoice</option></select></label>" +
+    '<label>Approx. amount (&#8377;, before GST)<input type="text" inputmode="decimal" id="plAmt" value="' + esc(v.amt) + '" placeholder="rough figure is fine"></label>' +
+    '<label>Stage<select id="plStage">' + Object.keys(PL_ST).map(k => '<option value="' + k + '"' + (k === v.stage ? " selected" : "") + ">" + PL_ST[k] + "</option>").join("") + "</select></label>" +
+    '<label>Who is making it<input type="text" id="plWho" list="plWhos" value="' + esc(v.owner) + '"><datalist id="plWhos">' + plOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist></label>" +
+    '<label>Submit by<input type="date" id="plTarget" value="' + esc(v.target) + '"></label>' +
+    '<label style="grid-column:1/-1">Note<input type="text" id="plNote" value="' + esc(v.note) + '" placeholder="e.g. waiting for measurement sheet from site"></label></div>' +
+    (x && x.addedOn ? '<div class="help">Added ' + dmy(x.addedOn) + (x.addedBy ? " by " + esc(whoOf(x.addedBy)) : "") + (x.updatedOn ? ", last moved " + dmy(x.updatedOn) : "") + ".</div>" : "") +
+    '<div id="plMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (x ? '<button id="plDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#mCancel").onclick = closeModal;
+  if (x) $("#plDel").onclick = () => { closeModal(); confirmModal("Delete this pipeline entry?", esc(x.client) + " &middot; " + esc(x.desc || "") + ". Use Dropped instead to keep it in the history.", "Delete", () => { S.pipe = S.pipe.filter(y => y !== x); persist(); renderAll(); toast("Pipeline entry deleted"); }); };
+  $("#mSave").onclick = () => {
+    const typed = $("#plNew").value.trim(), client = typed ? (matchClient(typed) || typed) : $("#plClient").value, desc = $("#plDesc").value.trim();
+    if (!client) { $("#plMsg").textContent = "Pick a client or type a new one."; return; }
+    if (!desc) { $("#plMsg").textContent = "Say what is being billed, e.g. RA-6 or the month."; $("#plDesc").focus(); return; }
+    const today = isoOf(new Date()), stage = $("#plStage").value;
+    const rec = { client: client, site: $("#plSite").value.trim(), desc: desc, kind: $("#plKind").value, amt: parseAmt($("#plAmt").value) ? round2(parseAmt($("#plAmt").value)) : "", owner: $("#plWho").value.trim(), target: $("#plTarget").value, note: $("#plNote").value.trim() };
+    if (x) { if (stage !== x.stage) plTouch(x, stage); Object.assign(x, rec); }
+    else S.pipe.push(Object.assign({ id: uid(), stage: stage, billId: "", addedBy: USER ? USER.email : "", addedOn: today, updatedOn: today }, rec));
+    persist(); closeModal(); renderAll(); toast(x ? "Pipeline entry saved" : "Added to the pipeline: " + client);
+  };
+}
+/* fill the bill form from a pipeline entry; onAdd links the new bill back to it */
+function billPipe(id) {
+  const x = S.pipe.filter(y => y.id === id)[0]; if (!x) return;
+  PENDING = null; createBill(x.kind); PL = x.id;
+  const known = Array.prototype.some.call($("#aClient").options, o => o.value === x.client);
+  if (known) $("#aClient").value = x.client;
+  onClientChange();
+  if (!known) $("#aNew").value = x.client;
+  $("#aSite").value = x.site || ""; $("#aSeq").value = nextSeq(x.client, x.site || ""); $("#aDate").value = S.settings.asOn;
+  if (+x.amt) $("#aBase").value = (+x.amt).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  advDefaults(); renderPending();
+  $("#aNo").focus();
 }
 
 /* follow-up dialog: the bill's promise history and a form for the next one */
@@ -1428,6 +1534,8 @@ function renderFlags(A) {
   const pis = BILLS.filter(b => b.status === "PI" && b.bal >= 1 && b.days > 30);
   if (pis.length) f.push(["med", pis.length + " proformas older than 30 days", "Worth ~" + fmt(pis.reduce((a, b) => a + b.bal, 0)) + " expected net. Convert to tax invoices so they become collectable: " + pis.slice(0, 6).map(b => b.client.split(" ")[0] + " " + (b.billno || "")).join(", ") + (pis.length > 6 ? "\u2026" : "") + "."]);
   Object.keys(CM).forEach(k => { const m = CM[k]; m.open.filter(x => x.st === "broken").forEach(x => f.push(["high", "Promise broken: " + m.b.client, fmt(x.rem) + " promised by " + dmy(x.c.date) + " on bill " + (m.b.billno || "-") + " has not come in. Follow up and log the new date."])); });
+  const pll = plOpen().filter(x => x.target && x.target < S.settings.asOn);
+  if (pll.length) f.push(["med", pll.length + " bill" + (pll.length === 1 ? "" : "s") + " in pipeline past the submit-by date", pll.slice(0, 6).map(x => x.client.split(" ")[0] + " " + x.desc + " (" + dmy(x.target) + (x.owner ? ", " + x.owner : "") + ")").join(", ") + (pll.length > 6 ? "\u2026" : "") + ". See the In pipeline tab."]);
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
   const unb = {};
   S.work.forEach(w => { if (w.billId) return; const k = w.client + "|" + (w.site || ""), x = unb[k] || (unb[k] = { c: w.client, s: w.site, amt: 0, first: w.date }); x.amt += wVal(w); if (w.date < x.first) x.first = w.date; });
@@ -1555,7 +1663,7 @@ function renderAll() {
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
   renderPay();
-  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderFlags(A);
+  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderPipeline(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
 }
@@ -1635,6 +1743,7 @@ function updatePreview() {
 }
 /* + Create menu (top bar and Add tab): opens the bill form as a proforma or a tax invoice */
 function createBill(kind) {
+  PL = null; renderPending();
   $("#aKind").value = kind === "TI" ? "TI" : "PI";
   showTab("add"); updatePreview();
   $("#aClient").focus();
@@ -1673,13 +1782,15 @@ function onAdd() {
       remark = PENDING.remark;
     }
     const dropped = PENDING && !linked;
-    PENDING = null; renderPending();
+    const pl = PL ? S.pipe.filter(y => y.id === PL && y.client === client)[0] : null;
+    if (pl) { pl.billId = id; plTouch(pl, "sub"); }
+    PENDING = null; PL = null; renderPending();
     addPi({ id: id, client, src: $("#aSrc").value, status: kind, billno: no, type: $("#aType").value.trim(), seq: $("#aSeq").value.trim(), site: $("#aSite").value.trim(), date: date,
       base: round2(v.base), total: round2(v.total), ret: round2(v.ret), adv: round2(v.adv), oth: round2(v.oth), tds: round2(v.tds), remark: remark });
     $("#aNo").value = ""; $("#aSeq").value = ""; $("#aBase").value = ""; $("#aNew").value = "";
     persist(); renderAll(); advDefaults(); toast(kind === "TI" ? "Tax invoice " + no + " added" : "Proforma added");
     setMsg("Added " + fmt(v.total) + " " + kname + (no ? " " + no : "") + " for " + client + (($("#aDate").value) ? "" : " (dated " + dmy(date) + ")") + "." +
-      (linked ? " " + linked + " work entr" + (linked === 1 ? "y" : "ies") + " marked billed on it." : dropped ? " The client was changed, so no work entries were marked billed." : "") + " See it under By client or All bills.", true);
+      (linked ? " " + linked + " work entr" + (linked === 1 ? "y" : "ies") + " marked billed on it." : dropped ? " The client was changed, so no work entries were marked billed." : "") + (pl ? " Pipeline entry \u201C" + pl.desc + "\u201D marked submitted." : "") + " See it under By client or All bills.", true);
   } catch (e) {
     setMsg("Something went wrong: " + (e && e.message ? e.message : e), false);
   }
@@ -1843,6 +1954,7 @@ function onRb() {
   if (!(base > 0)) { toast("Nothing to bill"); return; }
   const client = $("#rbClient").value, site = $("#rbSite").value, dates = rows.map(w => w.date).sort(), from = dates[0], to = dates[dates.length - 1];
   const remark = "Work done " + dmy(from) + " to " + dmy(to) + ": " + gs.filter(x => x.q).map(x => boqLabel(x.q) + " " + qtyFmt(x.qty) + " " + (x.q.unit || "") + " @ " + rateFmt(x.q.rate) + " = " + fmt(x.amt)).join("; ") + ".";
+  PL = null;
   PENDING = { ids: rows.map(w => w.id), client: client, site: site, base: base, from: from, to: to, remark: remark };
   showTab("add");
   const known = Array.prototype.some.call($("#aClient").options, o => o.value === client);
@@ -1855,7 +1967,8 @@ function onRb() {
   $("#aNo").focus();
 }
 function renderPending() {
-  const el = $("#aWork");
+  const el = $("#aWork"), pl = PL ? S.pipe.filter(y => y.id === PL)[0] : null;
+  if (!PENDING && pl) { el.innerHTML = "<span>Filled in from the pipeline: <b>" + esc(pl.client) + "</b> &middot; " + esc(pl.desc) + (+pl.amt ? ", rough base " + fmt(+pl.amt) : "") + ". Adding this bill marks the entry submitted. Check the amount, bill no. and deductions first.</span><button class=\"small\" data-act=\"plcancel\">Not from the pipeline</button>"; el.classList.remove("hide"); return; }
   if (!PENDING) { el.classList.add("hide"); el.innerHTML = ""; return; }
   el.innerHTML = "<span>Filled in from work done: <b>" + PENDING.ids.length + " entr" + (PENDING.ids.length === 1 ? "y" : "ies") + "</b>, " + dmy(PENDING.from) + " to " + dmy(PENDING.to) + ", base <b>" + fmt(PENDING.base) +
     "</b>. Adding this bill marks them billed. Check the bill no., bill type and deductions first.</span><button class=\"small\" data-act=\"wcancel\">Not from work done</button>";
@@ -2128,7 +2241,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "client", "bills", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "client", "bills", "pipeline", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
@@ -2174,6 +2287,11 @@ function wire() {
     if (act === "openadd") { showTab("add"); return; }
     if (act === "fu") { openCommit(id); return; }
     if (act === "fucancel") { cancelCommit(id); return; }
+    if (act === "newpl") { openPipe(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
+    if (act === "pledit") { openPipe(id); return; }
+    if (act === "plmove") { movePipe(id, t.dataset.to); return; }
+    if (act === "plbill") { billPipe(id); return; }
+    if (act === "plcancel") { PL = null; renderPending(); return; }
     if (act === "newfu") { openCommit(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "cvdbill") openDirectBill(SEL);
     else if (act === "note") { EXP[id] = !EXP[id]; renderAll(); }
@@ -2224,6 +2342,7 @@ function wire() {
   ["wfClient", "wfRig", "wfFrom", "wfTo", "wfState"].forEach(id => { $("#" + id).onchange = renderWorkLog; });
   $("#btnWfReset").onclick = () => { $("#wfClient").value = "all"; $("#wfRig").value = "all"; $("#wfFrom").value = ""; $("#wfTo").value = ""; $("#wfState").value = ""; renderWorkLog(); };
   $("#btnCsvWork").onclick = exportWork;
+  $("#plOwner").onchange = renderPipeline;
 }
 
 function init() {
