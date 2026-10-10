@@ -225,6 +225,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       <div class="bt"><div class="bname">Nityanand Infrastructure</div><div class="bapp">Receivables &middot; NIL + NMFPPL</div></div>
     </div>
     <div class="appbar-r">
+      <a class="hbtn hide" id="lnkPay" href="payables.html" style="text-decoration:none" title="Open the payables page">Payables</a>
       <span class="sync" id="syncpill" title="Every change is saved to the Google Sheet"><i></i><span id="savestatus">loading…</span></span>
       <button id="btnUndo" class="hbtn" disabled title="Undo the last change (kept until you refresh the page)">&#8630; Undo</button>
       <button id="btnRefresh" class="hbtn" title="Load the latest data from the Google Sheet">&#8635; Refresh</button>
@@ -3217,6 +3218,7 @@ function init() {
     $("#envbar").classList.remove("hide");
     document.title = "[" + name + "] " + document.title;
   }
+  if (CFG.payablesSheetId) $("#lnkPay").classList.remove("hide");
   buildRates();
   wire();
   $("#btnSignIn").onclick = signIn;
