@@ -514,14 +514,14 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
@@ -538,6 +538,7 @@ function normalize(o) {
   n.overrides = o.overrides && typeof o.overrides === "object" ? o.overrides : {};
   n.deleted = o.deleted && typeof o.deleted === "object" ? o.deleted : {};
   n.payAdj = o.payAdj && typeof o.payAdj === "object" ? o.payAdj : {};
+  n.billEdits = o.billEdits && typeof o.billEdits === "object" ? o.billEdits : {};   // edits to original bills, written to the bills tab
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
 }
@@ -712,7 +713,7 @@ async function loadAll() {
 function rowsView() {
   const v = {}; EDITABLE.forEach(t => { v[t] = {}; });
   const pick = (o, cols) => { const r = {}; cols.forEach(c => { r[c] = o[c] == null ? "" : o[c]; }); return r; };
-  DATA.bills.forEach(b => { const r = pick(b, BILL_COLS); r.deleted = !!S.deleted[b.id]; r.payAdj = S.payAdj[b.id] == null ? "" : S.payAdj[b.id]; v.bills[b.id] = r; });
+  DATA.bills.forEach(b => { const r = pick(Object.assign({}, b, S.billEdits[b.id] || {}), BILL_COLS); r.deleted = !!S.deleted[b.id]; r.payAdj = S.payAdj[b.id] == null ? "" : S.payAdj[b.id]; v.bills[b.id] = r; });
   S.pis.forEach(p => { v.proformas[p.id] = pick(p, BILL_COLS); });
   S.dbills.forEach(p => { v.direct_bills[p.id] = pick(p, TABS.direct_bills); });
   S.receipts.forEach(p => { v.receipts[p.id] = pick(p, TABS.receipts); });
@@ -1037,7 +1038,7 @@ const noteRow = (b, span) => (b.remark && (ALLNOTES || EXP[b.id])) ? '<tr class=
 function computeBills() {
   const asOn = toD(S.settings.asOn);
   const list = [];
-  DATA.bills.forEach(b => { if (!S.deleted[b.id]) list.push(Object.assign({ added: false }, b)); });
+  DATA.bills.forEach(b => { if (!S.deleted[b.id]) list.push(Object.assign({ added: false }, b, S.billEdits[b.id] || {})); });
   S.pis.forEach(p => list.push(Object.assign({ pay: 0, remark: "", added: true, manual: true, status: "PI" }, p)));
   if (showD()) S.dbills.forEach(p => list.push({ id: p.id, client: p.client, src: "NIL", status: "TI", billno: "", type: "Direct", seq: "", site: "", date: p.date, base: p.amt, total: p.amt, ret: 0, adv: 0, oth: 0, tds: 0, pay: 0, held: 0, stage: "", dateEst: false, remark: p.note || "", added: true, direct: true, manual: true }));
   list.forEach(b => {
@@ -2940,20 +2941,71 @@ function deleteReceipt(rid, reopen) {
 function openEdit(id) {
   const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
   const rcs = vr().filter(r => r.billId === id);
+  const o = S.overrides[id];
+  const num = v => Math.round((+v || 0) * 100) / 100;
+  // stored deductions: the override's when the bill was marked invoiced, else the bill's own (0 on a proforma = estimated)
+  const src = o && o.manual ? o : b;   // b already shows the override's no., date and amounts
+  const fld = (lab, html, wide) => "<label" + (wide ? ' style="grid-column:1/-1"' : "") + ">" + lab + html + "</label>";
   let h = "<h2>Edit bill</h2>" + '<div class="sub" style="margin-bottom:8px">' + esc(b.client) + " &middot; " + esc(b.billno || "-") + " " + esc(b.seq) + " &middot; " + dmy(b.date) + " &middot; total " + fmt(b.total) + " &middot; balance <b>" + fmt(b.bal) + "</b>" +
     (b.piDate ? "<br>Tax invoice made from proforma " + esc(b.piNo || "-") + " dated " + dmy(b.piDate) + ' <button class="small" id="eUnconv">Back to proforma</button>' : "") + "</div>";
-  if (!b.added) h += '<div class="form"><label style="grid-column:1/-1">Received per billing ledger (\u20B9)<input type="number" id="eLedger" step="any" value="' + (Math.round(b.pay * 100) / 100) + '"></label></div>' +
-    '<div class="help">Set to 0 to remove the ledger receipts from this bill.' + (b.payEdited ? " Originally " + fmt(b.payOrig) + "." : "") + " The note on the bill still lists the original receipts.</div>";
+  if (b.direct) {
+    h += '<div class="form">' + fld("Date", '<input type="date" id="eDate" value="' + esc(b.date) + '">') + fld("Amount (₹)", '<input type="text" inputmode="decimal" id="eTotal" value="' + num(b.total) + '">') +
+      fld("Note", '<input type="text" id="eRemark" value="' + esc(b.remark) + '">', true) + "</div>";
+  } else {
+    h += '<div class="form">' +
+      fld("Client", '<input type="text" id="eClient" list="eClients" value="' + esc(b.client) + '"><datalist id="eClients">' + clientNames().map(n => '<option value="' + esc(n) + '">').join("") + "</datalist>", true) +
+      fld(b.status === "PI" ? "Proforma no." : "Bill no.", '<input type="text" id="eNo" value="' + esc(b.billno) + '">') + fld("Seq", '<input type="text" id="eSeq" value="' + esc(b.seq) + '" placeholder="RA6">') +
+      fld("Bill type", '<input type="text" id="eType" value="' + esc(b.type) + '">') + fld("Site / project", '<input type="text" id="eSite" value="' + esc(b.site) + '">') +
+      fld("Bill date", '<input type="date" id="eDate" value="' + esc(b.date) + '">') + fld("Billed from", '<select id="eSrc"><option' + (b.src === "NIL" ? " selected" : "") + '>NIL</option><option' + (b.src === "NMFPPL" ? " selected" : "") + ">NMFPPL</option></select>") +
+      fld("Base amount (₹)", '<input type="text" inputmode="decimal" id="eBase" value="' + num(b.base) + '">') + fld("Total incl. GST (₹)", '<input type="text" inputmode="decimal" id="eTotal" value="' + num(b.total) + '">') +
+      fld("TDS (₹)", '<input type="text" inputmode="decimal" id="eTds" value="' + num(src.tds) + '">') + fld("Retention (₹)", '<input type="text" inputmode="decimal" id="eRet" value="' + num(src.ret) + '">') +
+      fld("Adv recovery (₹)", '<input type="text" inputmode="decimal" id="eAdv" value="' + num(src.adv) + '">') + fld("Other debits (₹)", '<input type="text" inputmode="decimal" id="eOth" value="' + num(src.oth) + '">') +
+      (b.added ? "" : fld("Received per billing ledger (₹)", '<input type="text" inputmode="decimal" id="eLedger" value="' + num(b.pay) + '">', true)) +
+      fld("Note", '<input type="text" id="eRemark" value="' + esc(b.remark) + '">', true) + "</div>" +
+      '<div class="help">Changing the base keeps the same GST rate on the total; adjust the total if it differs.' +
+      (b.est ? " The deductions are 0, so this proforma shows estimated deductions; enter the real ones to replace the estimate." : "") +
+      (!b.added ? " Set ledger receipts to 0 to remove them from this bill." + (b.payEdited ? " Originally " + fmt(b.payOrig) + "." : "") : "") + " Every change is kept in the audit tab with the old value.</div>";
+  }
+  h += '<div id="eMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div>';
   h += '<h2 style="font-size:13px;margin-top:10px">Receipts logged in this tool</h2>' + (rcs.length ? '<table><tbody>' + rcs.map(r => "<tr><td>" + dmy(r.date) + (r.mode === "D" ? ' <span class="tag">direct</span>' : "") + '</td><td class="hm">' + fmt(r.amt) + '</td><td><button class="small danger" data-act="medelrc" data-id="' + esc(r.id) + '">Delete</button></td></tr>').join("") + "</tbody></table>" : '<div class="sub">None.</div>');
-  h += '<div style="margin-top:14px;display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap"><button class="danger" id="eDel">Delete invoice</button><span style="display:flex;gap:8px"><button id="eClose">Close</button>' + (b.added ? "" : '<button class="primary" id="eSave">Save</button>') + "</span></div>";
+  h += '<div style="margin-top:14px;display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap"><button class="danger" id="eDel">Delete invoice</button><span style="display:flex;gap:8px"><button id="eClose">Cancel</button><button class="primary" id="eSave">Save</button></span></div>';
   openModal(h);
+  if ($("#eBase")) $("#eBase").oninput = () => { const ratio = b.base ? b.total / b.base : 1.18, nb = parseAmt($("#eBase").value); if (nb > 0) $("#eTotal").value = num(nb * ratio); };
   $("#eClose").onclick = closeModal;
   $("#eDel").onclick = () => { closeModal(); deleteBill(id); };
   if (b.piDate) $("#eUnconv").onclick = () => { closeModal(); unconvert(id); };
-  if (!b.added) $("#eSave").onclick = () => {
-    const v = parseFloat($("#eLedger").value); if (isNaN(v) || v < 0) { toast("Enter a valid amount"); return; }
-    if (Math.abs(v - b.payOrig) < 0.005) delete S.payAdj[id]; else S.payAdj[id] = Math.round(v * 100) / 100;
-    persist(); closeModal(); renderAll(); toast("Saved");
+  $("#eSave").onclick = () => {
+    const err = t => { $("#eMsg").textContent = t; };
+    const total = parseAmt($("#eTotal").value), date = $("#eDate").value;
+    if (!date) return err("Enter the bill date.");
+    if (!(total > 0)) return err("Enter the amount.");
+    if (b.direct) {
+      const d = S.dbills.filter(x => x.id === id)[0]; if (!d) return;
+      Object.assign(d, { date: date, amt: round2(total), note: $("#eRemark").value.trim() });
+    } else {
+      const base = parseAmt($("#eBase").value), client = $("#eClient").value.trim();
+      if (!client) return err("Enter the client.");
+      if (!(base > 0)) return err("Enter the base amount.");
+      if (total < base - 0.5) return err("The total should not be less than the base amount.");
+      const ledger = b.added ? 0 : parseAmt($("#eLedger").value);
+      if (ledger < 0) return err("Ledger receipts cannot be negative.");
+      const ded = { tds: round2(parseAmt($("#eTds").value)), ret: round2(parseAmt($("#eRet").value)), adv: round2(parseAmt($("#eAdv").value)), oth: round2(parseAmt($("#eOth").value)) };
+      const rec = { client: matchClient(client) || client, billno: $("#eNo").value.trim(), seq: $("#eSeq").value.trim(), type: $("#eType").value.trim(), site: $("#eSite").value.trim(), date: date, src: $("#eSrc").value,
+        base: round2(base), total: round2(total), remark: $("#eRemark").value.trim() };
+      if (o) {   // made a tax invoice from a proforma: the invoice's own no., date, amounts and deductions live on its overrides row
+        Object.assign(o, ded, { billno: rec.billno, date: rec.date, base: rec.base, total: rec.total, manual: true });
+        ["billno", "date", "base", "total"].forEach(k => { delete rec[k]; });
+      } else Object.assign(rec, ded);
+      if (b.added) { const p = S.pis.filter(x => x.id === id)[0]; if (!p) return; Object.assign(p, rec); }
+      else {
+        const orig = DATA.bills.filter(x => x.id === id)[0], ch = {};
+        Object.keys(rec).forEach(k => { const a = orig[k], v = rec[k]; if (typeof v === "number" ? Math.abs((+a || 0) - v) >= 0.005 : !same(a, v)) ch[k] = v; });
+        if (Object.keys(ch).length) S.billEdits[id] = ch; else delete S.billEdits[id];
+        if (Math.abs(ledger - b.payOrig) < 0.005) delete S.payAdj[id]; else S.payAdj[id] = round2(ledger);
+      }
+      S.receipts.forEach(r => { if (r.billId === id) r.client = rec.client; });
+    }
+    persist(); closeModal(); renderAll(); toast("Bill saved");
   };
   $("#modal").dataset.bill = id;
 }
