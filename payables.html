@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Payables · NIL</title>
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#ffffff; --surface2:#f0eee8; --text:#1d1d1b; --muted:#6b6a64; --line:#dedbd2;
+  --inv:#1f5fbf; --pi:#d98a00; --cred:#1e8a5a; --ret:#7a4fb8; --bad:#c23b2e; --accent:#1d1d1b;
+  --b0:#8fb6ea; --b1:#5f94dc; --b2:#3a73c9; --b3:#2a55a0; --b4:#1b3a73;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161614; --surface:#1f1f1c; --surface2:#2a2a26; --text:#ecebe5; --muted:#a09f96; --line:#3a3a35;
+    --inv:#6aa3ff; --pi:#f0b429; --cred:#4cc38a; --ret:#b38cf0; --bad:#ff7a6b; --accent:#ecebe5;
+    --b0:#3c5f94; --b1:#4a78bd; --b2:#5b8fd9; --b3:#7aa7ec; --b4:#a3c4f5;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161614; --surface:#1f1f1c; --surface2:#2a2a26; --text:#ecebe5; --muted:#a09f96; --line:#3a3a35;
+  --inv:#6aa3ff; --pi:#f0b429; --cred:#4cc38a; --ret:#b38cf0; --bad:#ff7a6b; --accent:#ecebe5;
+  --b0:#3c5f94; --b1:#4a78bd; --b2:#5b8fd9; --b3:#7aa7ec; --b4:#a3c4f5;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1280px;width:100%;margin:0 auto;padding:16px 16px 96px}
+body{overflow-x:hidden}
+h1{font-size:20px;margin:0}
+h2{font-size:15px;margin:0 0 10px}
+.sub{color:var(--muted);font-size:12.5px}
+input,select,textarea,button{font:inherit;color:var(--text)}
+input[type=text],input[type=number],input[type=date],select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 8px;max-width:100%}
+input[type=number]{width:90px}
+textarea{width:100%;min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+button{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer}
+button:hover{background:var(--surface2)}
+button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+button.small{padding:2px 8px;font-size:12px}
+button.danger{color:var(--bad)}
+.cwrap{position:relative;display:inline-block}
+.cmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;width:250px;max-width:80vw}
+.cmenu button{display:block;width:100%;text-align:left;border:none;background:none;padding:8px 10px;color:var(--text)}
+.cmenu button:hover,.cmenu button:focus{background:var(--surface2)}
+.cmenu .sub{display:block;font-size:12px;font-weight:400}
+.cmenu.up{top:auto;bottom:calc(100% + 6px)}
+.cmenu hr{border:none;border-top:1px solid var(--line);margin:4px 0}
+#shelf{position:fixed;right:16px;bottom:16px;z-index:40}
+#shelf>.cwrap>button{padding:10px 18px;border-radius:99px;box-shadow:0 6px 18px rgba(0,0,0,.22);font-weight:600}
+nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;padding-top:4px}
+nav button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;padding:9px 12px;color:var(--muted)}
+nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:16px}
+.card{min-width:0;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .val{font-size:26px;font-weight:650;margin:2px 0}
+.kpi .note{font-size:12px;color:var(--muted)}
+.kpi.big{border-width:2px;border-color:var(--accent)}
+.stackbar{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--surface2)}
+.stackbar div{height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12.5px}
+.legend span i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.hatch{background-image:repeating-linear-gradient(45deg,transparent 0 5px,rgba(255,255,255,.55) 5px 8px)}
+.twocol{grid-template-columns:minmax(0,1fr);}
+@media(min-width:980px){.twocol{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.tblwrap{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--surface)}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+td.wrapc{white-space:normal;min-width:240px;max-width:420px;text-align:left;font-size:12.5px;color:var(--muted)}
+tr.tot td{font-weight:650;border-top:2px solid var(--line)}
+.neg{color:var(--cred)}
+.pos-bad{color:var(--bad)}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.tag.pi{color:var(--pi);border-color:var(--pi)}
+.tag.est{color:var(--muted);border-style:dashed}
+.tag.new{color:var(--inv);border-color:var(--inv)}
+.tag.cm,.tag.ok{color:var(--cred);border-color:var(--cred)}
+.tag.bad{color:var(--bad);border-color:var(--bad)}
+.plboard{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:900px){.plboard{grid-template-columns:minmax(0,1fr)}}
+.plcol{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0}
+.plcol h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;gap:8px}
+.plcard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px}
+.plcard.late{border-left:3px solid var(--bad)}
+.plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.cnt{font-size:11px;color:var(--muted)}
+.bqtbl input{padding:5px 7px;font-size:13px}.bqtbl td{vertical-align:middle}.bqtbl tr.bqnew td,.bqtbl tr.bqedit td{background:var(--bg)}.bqtbl #bqnitem,.bqtbl #bqeitem{min-width:200px}#bqnrate,#bqerate{text-align:right}
+.rwsteps{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}.rwstep{border-radius:99px;font-size:12.5px}.rwstep b{display:inline-block;width:18px}.rwstep.on{border-color:var(--accent);font-weight:650}.rwstep.done{color:var(--cred)}
+.rwtbl input{text-align:right}.rwtbl td.l input{text-align:left;width:100%}
+#modal.wide{width:min(760px,100%)}
+.woterms{display:grid;gap:8px 16px;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));font-size:13px}
+.woph{margin:14px 0 6px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.woph button{margin-left:auto}
+.cktbl td{vertical-align:top}.cktbl.fix{table-layout:fixed;width:100%;min-width:560px}.cktbl.fix td{overflow-wrap:anywhere}.cktbl td.l{text-align:left}
+tr.sel td{background:var(--surface2)}
+.tplpick{display:flex;flex-direction:column;gap:4px;font-size:13px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px}.tplpick b{margin-top:6px}
+label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--surface)}
+.plov{display:grid;gap:10px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0}
+@media(max-width:640px){.plov{grid-template-columns:minmax(0,1fr)}}
+.plov>a{display:block;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;color:inherit;text-decoration:none}
+.plov b{display:block;font-size:18px}
+.crow{display:grid;grid-template-columns:minmax(100px,230px) minmax(0,1fr) 110px;gap:10px;align-items:center;padding:4px 0}
+.crow .nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cbar{display:flex;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.cbar div{height:100%}
+.crow .amt{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.form label .chk{display:flex;gap:6px;align-items:center;white-space:nowrap}
+.form label .chk input{width:auto;flex:none;margin:0}
+.form input,.form select{width:100%}
+.preview{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:9px;font-size:13px}
+.preview b{display:block;font-size:16px}
+.flag{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.flag:last-child{border-bottom:none}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}
+.dot.high{background:var(--bad)}.dot.med{background:var(--pi)}.dot.low{background:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.toast.show{opacity:1}
+#modalbg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
+#modalbg.show{display:flex}
+#modal{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);max-height:90vh;overflow:auto}
+#modal .form{grid-template-columns:1fr 1fr}
+.hide{display:none!important}
+.dr{cursor:pointer}
+.card.dr:hover{border-color:var(--accent)}
+td.dr:hover{outline:1px solid var(--accent);outline-offset:-1px}
+.stackbar>div.dr:hover{filter:brightness(1.18)}
+.legend span.dr:hover{text-decoration:underline}
+.crow.dr:hover{background:var(--surface2);border-radius:6px}
+.bad{border-color:var(--bad)!important;outline:2px solid var(--bad)}
+.cv{display:grid;grid-template-columns:290px minmax(0,1fr);gap:12px;align-items:start}
+.cv>*,.grid>*,.twocol>*{min-width:0}
+@media(max-width:900px){.cv{grid-template-columns:minmax(0,1fr)}}
+.citem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;width:100%;text-align:left;border:1px solid transparent;border-radius:9px;padding:8px 9px;margin-bottom:3px;background:none}
+.citem:hover{background:var(--surface2)}
+.citem.on{background:var(--surface2);border-color:var(--accent)}
+.citem .cn{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.citem .cvv{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.citem .cbar{grid-column:1/-1;height:6px}
+.wf{display:grid;grid-template-columns:minmax(110px,150px) minmax(0,1fr) 120px;gap:8px;align-items:center;padding:3px 0;font-size:13px}
+.wf .bar{height:14px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.wf .bar div{height:100%}
+.wf .a{text-align:right;font-variant-numeric:tabular-nums}
+tr.settled td{opacity:.5}
+td.notecell{white-space:normal;text-align:left;font-size:12.5px;color:var(--muted);background:var(--surface2);padding:6px 12px;border-bottom:1px solid var(--line)}
+a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
+.hm{font-variant-numeric:tabular-nums}
+.status{font-size:12px;color:var(--muted)}
+.help{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+.gatecard{max-width:440px;margin:12vh auto 0;padding:24px}
+.gatemsg{margin-top:12px;font-size:13px;font-weight:600;min-height:1.4em;overflow-wrap:anywhere}
+.banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--bad) 12%,var(--surface));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+#savestatus{overflow-wrap:anywhere}
+.appbar{--brand:#14304d;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--brand);color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:6px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{position:relative;flex:none;width:44px;height:44px;border-radius:10px;background:#fff;display:grid;place-items:center;overflow:hidden}
+.logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:3px;background:#fff}
+.logo .mono{font-weight:800;font-size:17px;letter-spacing:.02em;color:#14304d}
+.bt{min-width:0}
+.bname{font-weight:700;font-size:17px;line-height:1.2;letter-spacing:.01em}
+.bapp{font-size:12.5px;color:rgba(255,255,255,.72)}
+.appbar-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:8px;padding:6px 11px;font-size:13px}
+.hbtn:hover{background:rgba(255,255,255,.16)}
+.hbtn:disabled{opacity:.5;cursor:default}
+.hbtn.user{display:inline-flex;align-items:center;gap:8px;padding:4px 10px 4px 4px}
+.avatar{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;color:#14304d;font-weight:700;font-size:13px}
+.uemail{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.umenu-h{padding:8px 10px;overflow-wrap:anywhere}.umenu-h b{display:block;font-size:13px}
+.sync{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}
+.sync i{width:8px;height:8px;border-radius:50%;background:#9aa4ad;flex:none}
+.sync.ok i{background:#4cc38a}.sync.busy i{background:#f0b429}.sync.err{background:#c23b2e;color:#fff}.sync.err i{background:#fff}
+.viewbar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px;color:var(--muted);padding:2px 2px 12px}
+.viewbar label{display:inline-flex;align-items:center;gap:6px}
+.viewbar input[type=date],.viewbar input[type=number]{padding:4px 6px}
+.viewbar input[type=number]{width:70px}
+.vbinfo{margin-left:auto}
+@media (max-width:640px){.uemail,.vbinfo{display:none}.bname{font-size:15px}.appbar-r{width:100%;justify-content:flex-end}}
+.trend{position:relative}
+.trend svg{display:block;width:100%;height:auto;overflow:visible}
+.trend .tk{font-size:11px;fill:var(--muted)}
+.trend .el{font-size:12px;fill:var(--text);font-weight:600}
+.trend .grid{stroke:var(--line);stroke-width:1}
+.trend .hit{fill:transparent;cursor:default}
+.trend .hit.on{fill:color-mix(in srgb,var(--text) 6%,transparent)}
+.trend .ttl{font-size:12.5px;font-weight:600;margin:12px 0 2px}
+.ttip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);min-width:170px;z-index:5;display:none}
+.ttip .r{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.ttip .r span:first-child{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.ttip i{display:inline-block;width:12px;height:2px;border-radius:1px}
+.ttip b{font-variant-numeric:tabular-nums}
+.trendtbl{display:none;margin-top:8px}.trendtbl.show{display:block}
+.paystrip{display:block;width:100%;height:30px;overflow:visible}
+.paystrip .pdot{cursor:default}
+.paystrip .pdot:hover{stroke:var(--text)!important}
+.payax{display:block;width:100%;height:18px;overflow:visible}
+.payax .tk{font-size:11px;fill:var(--muted);text-transform:none;letter-spacing:0;font-weight:400}
+.paytbl td{vertical-align:middle}
+.envbar{position:sticky;top:0;z-index:50;padding:6px 16px;text-align:center;font-size:13px;font-weight:700;letter-spacing:.04em;color:#1d1d1b;background:repeating-linear-gradient(135deg,#f5b400 0 14px,#ffd45c 14px 28px);border-bottom:2px solid #1d1d1b;overflow-wrap:anywhere}
+/* ---------- payables ---------- */
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);white-space:nowrap}
+.pill.dg{background:color-mix(in srgb,var(--pi) 18%,var(--surface));color:var(--text)}
+.pill.adv{background:color-mix(in srgb,var(--ret) 18%,var(--surface));color:var(--text)}
+.pill.dup{background:color-mix(in srgb,var(--bad) 16%,var(--surface));color:var(--bad)}
+.pill.auto{background:color-mix(in srgb,var(--inv) 12%,var(--surface));color:var(--text)}
+.cltbl td{vertical-align:top}
+.cltbl td.l input[type=text]{width:100%;min-width:180px}
+.cltbl select{max-width:190px}
+.cltbl .nar{font-size:12px;color:var(--muted);white-space:normal;max-width:360px}
+td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-width:200px;max-width:380px}
+.imprev{margin-top:10px}
+.bars .crow{grid-template-columns:minmax(120px,240px) minmax(0,1fr) 120px}
+.chk1{width:auto}
+.selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;background:var(--surface2);border-radius:9px;font-size:13px}
+.alias{display:inline-flex;align-items:center;gap:4px;margin:2px 4px 2px 0}
+.alias button{padding:0 6px;font-size:11px;line-height:16px}
+</style>
+</head>
+<body>
+<div class="envbar hide" id="envbar" role="note"></div>
+<div class="wrap gate" id="gate">
+  <div class="card gatecard">
+    <div class="brand" style="margin-bottom:16px"><span class="logo" style="background:#14304d"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" style="color:#fff">NI</span></span>
+      <div class="bt"><h1>Nityanand Infrastructure</h1><div class="sub">Payables</div></div></div>
+    <p class="help">Sign in with the Google account that has access to the payables sheet. Data loads from Google Sheets after you sign in.</p>
+    <button class="primary" id="btnSignIn">Sign in with Google</button>
+    <div id="gateMsg" class="gatemsg" role="status"></div>
+  </div>
+</div>
+<div class="wrap hide" id="app">
+<div class="banner hide" id="banner" role="alert"><span id="bannerMsg"></span><button class="small primary" id="bannerBtn"></button></div>
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" aria-hidden="true">NI</span></span>
+      <div class="bt"><div class="bname">Nityanand Infrastructure</div><div class="bapp">Payables</div></div>
+    </div>
+    <div class="appbar-r">
+      <a class="hbtn" href="index.html" style="text-decoration:none" title="Open the receivables app">Receivables</a>
+      <span class="sync" id="syncpill" title="Every change is saved to the Google Sheet"><i></i><span id="savestatus">loading…</span></span>
+      <button id="btnUndo" class="hbtn" disabled title="Undo the last change (kept until you refresh the page)">&#8630; Undo</button>
+      <button id="btnRefresh" class="hbtn" title="Load the latest data from the Google Sheet">&#8635; Refresh</button>
+      <span class="cwrap"><button class="hbtn user" data-act="cmenu" aria-haspopup="true" title="Account"><span class="avatar" id="uAvatar">?</span><span class="uemail" id="uEmail"></span> &#9662;</button><div class="cmenu hide" role="menu">
+        <div class="umenu-h"><span class="sub">Signed in as</span><b id="uEmail2"></b></div><hr><button role="menuitem" id="btnSignOut"><b>Sign out</b></button>
+      </div></span>
+    </div>
+  </header>
+  <div id="shelf"><button class="primary" data-act="newpay">+ Log payment</button></div>
+
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
+    <button data-tab="payments">Payments</button>
+    <button data-tab="vendors">Vendors</button>
+    <button data-tab="projects">Projects</button>
+    <button data-tab="import">Import</button>
+  </nav>
+
+  <div class="viewbar" role="group" aria-label="Period">
+    <label>Period <select id="period"></select></label>
+    <span class="sub vbinfo" id="vbinfo"></span>
+  </div>
+
+  <section id="tab-overview">
+    <div class="grid kpis" id="kpis"></div>
+    <div class="grid twocol" style="margin-bottom:12px">
+      <div class="card"><h2>Paid by category <span class="sub">DG set and transfers between own accounts left out</span></h2><div class="bars" id="catBars"></div></div>
+      <div class="card"><h2>Paid by project</h2><div class="bars" id="projBars"></div></div>
+    </div>
+    <div class="grid twocol" style="margin-bottom:12px">
+      <div class="card"><h2>Top vendors</h2><div class="tblwrap" id="topVend"></div></div>
+      <div class="card"><h2>By month</h2><div class="tblwrap" id="byMonth"></div></div>
+    </div>
+  </section>
+
+  <section id="tab-classify" class="hide">
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Payees to classify</h2><span class="sub" id="clSum"></span><span style="flex:1"></span>
+        <label class="sub">Show <select id="clMin"><option value="20000">payees paid &#8377;20,000 or more</option><option value="0">every payee</option></select></label>
+        <input type="text" id="clSearch" placeholder="Search payee or note"></div>
+      <div class="help">Each row is one name as the bank wrote it. Pick or type the vendor, its usual category and project, and Save: every payment to that name, past and future, follows. Typing a vendor that already exists adds this spelling to it. Mark DG set to leave the payee out of piling payables.</div>
+      <div class="tblwrap" id="clTbl"></div>
+    </div>
+  </section>
+
+  <section id="tab-payments" class="hide">
+    <div class="toolbar">
+      <select id="pSource"></select>
+      <select id="pCat"></select>
+      <select id="pProj"></select>
+      <select id="pFlag"><option value="">All payments</option><option value="noproj">Without a project</option><option value="dup">Possible duplicates</option><option value="adv">Advances</option><option value="open">Not classified yet</option><option value="excl">DG set and own transfers</option></select>
+      <input type="text" id="pSearch" placeholder="Search payee, note, reference">
+      <button id="pReset" class="small">Reset filters</button>
+      <button id="pCsv">Export CSV</button>
+    </div>
+    <div class="sub" id="pSum" style="margin:-2px 0 8px"></div>
+    <div class="selbar hide" id="pSel"><span id="pSelN"></span><label>Set project <select id="pSelProj"></select></label><button class="small primary" id="pSelGo">Apply</button><button class="small" id="pSelClear">Clear selection</button></div>
+    <div class="card"><div class="tblwrap" id="pTbl"></div></div>
+  </section>
+
+  <section id="tab-vendors" class="hide">
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Vendors</h2><span class="sub" id="vSum"></span><span style="flex:1"></span>
+        <input type="text" id="vSearch" placeholder="Search vendor or spelling">
+        <button class="primary small" data-act="newvendor">+ Vendor</button></div>
+      <div class="tblwrap" id="vTbl"></div>
+    </div>
+  </section>
+
+  <section id="tab-projects" class="hide">
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Projects</h2><span class="sub" id="prSum"></span><span style="flex:1"></span>
+        <label class="small btnlike" title="The Projects import sheet (.xlsx)">Import sheet<input type="file" id="prFile" accept=".xlsx,.xls,.csv" hidden></label>
+        <button class="primary small" data-act="newproj">+ Project</button></div>
+      <div class="help">Bank words are words that show up in bank narrations or UPI notes for a site (for example WADALA). A payment whose narration has one is put on that project unless someone sets another.</div>
+      <div class="tblwrap" id="prTbl"></div>
+    </div>
+  </section>
+
+  <section id="tab-import" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <h2>Bank statements</h2>
+      <div class="help">Upload statements as the bank gives them: Kotak as CSV, HDFC as XLS. Lines already imported are skipped, so overlapping periods are fine. Sweeps to fixed deposits and transfers between NIL's own accounts are recognised and kept out of payables.</div>
+      <label class="btnlike">Choose statement files<input type="file" id="bkFile" accept=".csv,.xls,.xlsx" multiple hidden></label>
+      <div class="imprev" id="bkPrev"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <h2>Imported so far</h2>
+      <div class="tblwrap" id="bkDone"></div>
+    </div>
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="form">
+        <label>Other payment sources (comma separated)<input type="text" id="setSources" placeholder="e.g. Vignesh personal, MD personal"></label>
+        <label>Duplicate check: days apart<input type="number" id="setDupDays" min="0" max="30"></label>
+        <label>Duplicate check: from amount (&#8377;)<input type="number" id="setDupMin" min="0" step="1000"></label>
+      </div>
+      <div class="sub" style="margin-top:6px">Direct and Site float are always available as sources.</div>
+    </div>
+  </section>
+</div>
+
+<div id="modalbg"><div id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<datalist id="vendorList"></datalist>
+
+<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+(function(){
+"use strict";
+/* ---------- helpers ---------- */
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.prototype.slice.call((el || document).querySelectorAll(s));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => { n = Math.round(n || 0); return (n < 0 ? "-" : "") + "₹" + Math.abs(n).toLocaleString("en-IN"); };
+const cmp = n => { const a = Math.abs(n), s = n < 0 ? "-" : "";
+  if (a >= 1e7) return s + "₹" + (a / 1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return s + "₹" + (a / 1e5).toFixed(2) + " L";
+  return fmt(n); };
+const toD = iso => new Date(iso + "T00:00:00");
+const isoOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const dmy = iso => { if (!iso) return ""; const p = iso.split("-"); return p[2] + "/" + p[1] + "/" + p[0].slice(2); };
+const round2 = n => Math.round(n * 100) / 100;
+const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const uniq = a => a.filter((x, i) => x && a.indexOf(x) === i);
+const today = () => isoOf(new Date());
+const daysBetween = (a, b) => Math.round((toD(b) - toD(a)) / 864e5);
+let toastT = null;
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2400); }
+function openModal(html, wide) { $("#modal").className = wide ? "wide" : ""; $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
+function closeModal() { $("#modalbg").classList.remove("show"); }
+
+/* ---------- categories ---------- */
+// "out": not a payable (money moving between NIL's own accounts, or the DG set partner's business)
+const CATS = [
+  ["sub", "Subcontract"], ["mat", "Material"], ["hire", "Equipment hire"], ["fuel", "Diesel and fuel"], ["trans", "Transport"],
+  ["labour", "Labour contractor"], ["wages", "Salary and wages"], ["rcs", "Manpower agency (RCS)"], ["repair", "Repairs and spares"],
+  ["cons", "Consultant and professional"], ["rent", "Rent and utilities"], ["ins", "Insurance"], ["comm", "Commission"],
+  ["family", "Directors and family"], ["loan", "Loan and EMI"], ["tax", "TDS and income tax"], ["gst", "GST"], ["stat", "PF and ESIC"],
+  ["card", "Credit card bill"], ["bank", "Bank charges"], ["float", "Site float top-up"], ["site", "Site expenses"], ["other", "Other"],
+  ["dg", "DG set (left out)"], ["internal", "Own accounts and FD (left out)"]
+];
+const CAT = {}; CATS.forEach(c => { CAT[c[0]] = c[1]; });
+const OUT = { dg: 1, internal: 1 };
+const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.map(c => '<option value="' + c[0] + '"' + (c[0] === sel ? " selected" : "") + ">" + esc(c[1]) + "</option>").join("");
+
+/* ---------- state ---------- */
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], settings: { sources: "", dupDays: 3, dupMin: 10000 } });
+let S = NEW_STATE();
+let saveTimer = null, HIST = [], LAST = null;
+function normalize(o) {
+  if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
+  const n = NEW_STATE(); if (!o) return n;
+  ["vendors", "projects", "lines", "pays"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  n.settings = Object.assign(n.settings, o.settings || {});
+  return n;
+}
+const snap = () => JSON.stringify(S);
+function updateUndo() { const b = $("#btnUndo"); if (!b) return; b.disabled = !HIST.length; b.textContent = "↶ Undo" + (HIST.length ? " (" + HIST.length + ")" : ""); }
+function persist() {
+  const cur = snap();
+  if (LAST !== null && LAST !== cur) { HIST.push(LAST); if (HIST.length > 10) HIST.shift(); }
+  LAST = cur; updateUndo(); save(); compute();
+}
+function undo() {
+  if (!HIST.length) { toast("Nothing to undo"); return; }
+  const prev = HIST.pop(); S = normalize(JSON.parse(prev)); LAST = prev;
+  updateUndo(); save(); compute(); renderAll(); toast("Last change undone");
+}
+
+/* ---------- Google sign-in + Sheets storage (same scheme as the receivables app; schema: docs/PAYABLES.md) ---------- */
+const CFG = Object.assign({ clientId: "", payablesSheetId: "", allowedEmails: [], env: "" }, window.RCR_CONFIG || {});
+const SHEET_ID = CFG.payablesSheetId;
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets/";
+const TABS = {
+  vendors: ["id", "name", "aliases", "unit", "cat", "project", "pan", "gstin", "tdsPct", "phone", "note", "addedBy", "addedOn"],
+  projects: ["id", "name", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
+  bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
+  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
+  settings: ["key", "value"],
+  audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
+};
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1 };
+const BOOLC = { adv: 1, dupOk: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1 };
+
+let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
+const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
+const grantedBefore = () => { try { return localStorage.getItem(GRANT_KEY) === "1"; } catch (e) { return false; } };
+const setGranted = v => { try { if (v) localStorage.setItem(GRANT_KEY, "1"); else localStorage.removeItem(GRANT_KEY); } catch (e) {} };
+let HDR = {}, SHEET_IDS = {}, GRID_COLS = {}, BASE = null, LOADED_AT = 0;
+let DIRTY = false, SAVING = false, EDITS = 0, SAVE_ERR = "";
+
+const isoFromSerial = v => new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5).toISOString().slice(0, 10);
+function toIso(v) {
+  if (typeof v === "number") return isoFromSerial(v);
+  const s = String(v == null ? "" : v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if (m) { let y = +m[3]; if (y < 100) y += 2000; return y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); }
+  return s;
+}
+const toBool = v => v === true || /^(true|yes|y|1)$/i.test(String(v == null ? "" : v).trim());
+function toNum(v, blank) {
+  if (v === "" || v == null) return blank;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[₹,\s]/g, ""));
+  return isNaN(n) ? blank : n;
+}
+function cellIn(col, v) {
+  if (NUMC[col]) return toNum(v, 0);
+  if (BOOLC[col]) return toBool(v);
+  if (DATEC[col]) return toIso(v);
+  return v == null ? "" : String(v);
+}
+const cellOut = v => (v == null ? "" : (typeof v === "number" || typeof v === "boolean") ? v : String(v));
+const same = (a, b) => String(cellOut(a)) === String(cellOut(b));
+const colL = i => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const qt = t => "'" + t.replace(/'/g, "''") + "'";
+
+function authErr() { const e = new Error("Your Google sign-in has expired."); e.auth = true; return e; }
+async function api(method, path, body) {
+  if (!TOKEN || Date.now() > TOKEN_EXP) { TOKEN = null; throw authErr(); }
+  const r = await fetch(SHEETS_API + encodeURIComponent(SHEET_ID) + path, {
+    method: method, headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined
+  });
+  if (r.status === 401) { TOKEN = null; throw authErr(); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = (j.error && j.error.message) || ("HTTP " + r.status);
+    const e = new Error(r.status === 403 || r.status === 404 ? "This Google account cannot open the payables sheet. Ask the sheet owner to share it with you. (" + m + ")" : "Google Sheets error: " + m);
+    e.status = r.status; throw e;
+  }
+  return j;
+}
+
+/* every tab is created with its headers if missing and columns are found by header name, so a blank Sheet is enough to start */
+async function loadAll() {
+  const meta = await api("GET", "?fields=sheets.properties(sheetId,title,gridProperties(columnCount))");
+  SHEET_IDS = {}; GRID_COLS = {};
+  (meta.sheets || []).forEach(s => { SHEET_IDS[s.properties.title] = s.properties.sheetId; GRID_COLS[s.properties.title] = (s.properties.gridProperties || {}).columnCount || 0; });
+  const tabs = Object.keys(TABS);
+  const toMake = tabs.filter(t => !(t in SHEET_IDS));
+  if (toMake.length) {
+    const r0 = await api("POST", ":batchUpdate", { requests: toMake.map(t => ({ addSheet: { properties: { title: t, gridProperties: { columnCount: Math.max(26, TABS[t].length) } } } })) });
+    (r0.replies || []).forEach((x, i) => { SHEET_IDS[toMake[i]] = x.addSheet.properties.sheetId; GRID_COLS[toMake[i]] = Math.max(26, TABS[toMake[i]].length); });
+    await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: toMake.map(t => ({ range: qt(t) + "!A1", values: [TABS[t]] })) });
+  }
+  const r = await api("GET", "/values:batchGet?" + tabs.map(t => "ranges=" + encodeURIComponent(qt(t) + "!1:1")).join("&") + "&" +
+    tabs.filter(t => t !== "audit").map(t => "ranges=" + encodeURIComponent(qt(t))).join("&") + "&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER");
+  const vrs = r.valueRanges || [];
+  const colAdds = [], widen = [];
+  tabs.forEach((t, i) => {
+    HDR[t] = ((vrs[i] && vrs[i].values && vrs[i].values[0]) || []).map(h => String(h).trim());
+    const miss = TABS[t].filter(c => HDR[t].indexOf(c) < 0);
+    if (!miss.length) return;
+    const at = HDR[t].length;
+    if (GRID_COLS[t] && at + miss.length > GRID_COLS[t]) widen.push({ appendDimension: { sheetId: SHEET_IDS[t], dimension: "COLUMNS", length: at + miss.length - GRID_COLS[t] } });
+    colAdds.push({ range: qt(t) + "!" + colL(at) + "1", values: [miss] });
+    HDR[t] = HDR[t].concat(miss);
+  });
+  if (widen.length) await api("POST", ":batchUpdate", { requests: widen });
+  if (colAdds.length) await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: colAdds });
+  const raw = {};
+  tabs.filter(t => t !== "audit").forEach((t, i) => {
+    const rows = ((vrs[tabs.length + i] && vrs[tabs.length + i].values) || []).slice(1);
+    const kcol = HDR[t].indexOf(TABS[t][0]);
+    raw[t] = rows.filter(row => row[kcol] !== undefined && String(row[kcol]).trim() !== "").map(row => {
+      const o = {}; TABS[t].forEach(c => { o[c] = cellIn(c, row[HDR[t].indexOf(c)]); }); return o;
+    });
+  });
+  const n = NEW_STATE();
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments;
+  raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
+  S = normalize(n);
+  BASE = rowsView();
+  LOADED_AT = Date.now();
+}
+function rowsView() {
+  const v = {};
+  const pick = (o, cols) => { const r = {}; cols.forEach(c => { r[c] = o[c] == null ? "" : o[c]; }); return r; };
+  Object.keys(SKEY).forEach(t => { v[t] = {}; S[SKEY[t]].forEach(o => { v[t][o.id] = pick(o, TABS[t]); }); });
+  v.settings = {}; Object.keys(S.settings).forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
+  return JSON.parse(JSON.stringify(v));
+}
+function diffViews(a, b) {
+  const ops = [];
+  EDITABLE.forEach(t => {
+    const A = a[t] || {}, B = b[t] || {};
+    Object.keys(B).forEach(k => {
+      if (!(k in A)) ops.push({ tab: t, kind: "add", key: k, before: null, after: B[k] });
+      else { const cols = TABS[t].filter(c => !same(A[k][c], B[k][c])); if (cols.length) ops.push({ tab: t, kind: "update", key: k, cols: cols, before: A[k], after: B[k] }); }
+    });
+    Object.keys(A).forEach(k => { if (!(k in B)) ops.push({ tab: t, kind: "delete", key: k, before: A[k], after: null }); });
+  });
+  return ops;
+}
+/* row numbers are read fresh before every write, so rows other people added or removed in the meantime are respected */
+async function writeOps(ops) {
+  const tabs = uniq(ops.map(o => o.tab));
+  const r = await api("GET", "/values:batchGet?" + tabs.map(t => "ranges=" + encodeURIComponent(qt(t) + "!" + colL(HDR[t].indexOf(TABS[t][0])) + ":" + colL(HDR[t].indexOf(TABS[t][0])))).join("&") + "&valueRenderOption=UNFORMATTED_VALUE");
+  const pos = {};
+  tabs.forEach((t, i) => {
+    const m = {}; ((r.valueRanges[i] && r.valueRanges[i].values) || []).forEach((row, j) => { const k = row[0] == null ? "" : String(row[0]).trim(); if (j > 0 && k !== "" && !(k in m)) m[k] = j + 1; });
+    pos[t] = m;
+  });
+  const data = [], dels = [], adds = {};
+  ops.forEach(o => {
+    const row = pos[o.tab][o.key];
+    if (o.kind === "delete") { if (row) dels.push({ tab: o.tab, row: row }); return; }
+    if (o.kind === "update" && row) { o.cols.forEach(c => data.push({ range: qt(o.tab) + "!" + colL(HDR[o.tab].indexOf(c)) + row, values: [[cellOut(o.after[c])]] })); return; }
+    if (o.kind === "add" && row) { TABS[o.tab].forEach(c => data.push({ range: qt(o.tab) + "!" + colL(HDR[o.tab].indexOf(c)) + row, values: [[cellOut(o.after[c])]] })); return; }
+    const line = HDR[o.tab].map(h => (TABS[o.tab].indexOf(h) >= 0 ? cellOut(o.after[h]) : ""));
+    (adds[o.tab] || (adds[o.tab] = [])).push(line);
+  });
+  for (let i = 0; i < data.length; i += 5000) await api("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: data.slice(i, i + 5000) });
+  if (dels.length) {
+    dels.sort((x, y) => y.row - x.row);
+    await api("POST", ":batchUpdate", { requests: dels.map(d => ({ deleteDimension: { range: { sheetId: SHEET_IDS[d.tab], dimension: "ROWS", startIndex: d.row - 1, endIndex: d.row } } })) });
+  }
+  for (const t of Object.keys(adds)) for (let i = 0; i < adds[t].length; i += 2000)
+    await api("POST", "/values/" + encodeURIComponent(qt(t) + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: adds[t].slice(i, i + 2000) });
+}
+/* one audit row per change; a bulk change (a statement import, a payee classified across hundreds of lines) is summarised in one row per tab */
+async function writeAudit(ops) {
+  const ts = new Date().toISOString(), A = TABS.audit, recs = [];
+  const by = {}; ops.forEach(o => { (by[o.tab + "|" + o.kind] || (by[o.tab + "|" + o.kind] = [])).push(o); });
+  Object.keys(by).forEach(k => {
+    const g = by[k];
+    if (g.length > 10) recs.push({ timestamp: ts, user_email: USER.email, action: g[0].kind + " x" + g.length, entity: g[0].tab, entity_id: g[0].key + " … " + g[g.length - 1].key, before_json: "", after_json: JSON.stringify(g[0].after || {}).slice(0, 500) });
+    else g.forEach(o => recs.push({ timestamp: ts, user_email: USER.email, action: o.kind, entity: o.tab, entity_id: o.key, before_json: o.before ? JSON.stringify(o.before) : "", after_json: o.after ? JSON.stringify(o.after) : "" }));
+  });
+  await api("POST", "/values/" + encodeURIComponent(qt("audit") + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: recs.map(rec => HDR.audit.map(h => (A.indexOf(h) >= 0 ? rec[h] : ""))) });
+}
+function save() {
+  if (!USER) return;
+  DIRTY = true; EDITS++; setStatus();
+  clearTimeout(saveTimer); saveTimer = setTimeout(flush, 400);
+}
+async function flush() {
+  if (SAVING) { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); return; }
+  if (!DIRTY || !USER) return;
+  SAVING = true; SAVE_ERR = ""; setStatus();
+  const n = EDITS, target = rowsView();
+  try {
+    const ops = diffViews(BASE, target);
+    if (ops.length) {
+      await writeOps(ops);
+      BASE = target;
+      try { await writeAudit(ops); } catch (e) { if (e.auth) throw e; toast("Saved, but the audit log could not be written"); }
+    }
+    BASE = target;
+    if (EDITS === n) DIRTY = false;
+    hideBanner();
+  } catch (e) {
+    SAVE_ERR = e.auth ? "sign in again to save" : (e.message || String(e));
+    if (e.auth) showBanner("Your Google sign-in has expired. Your last changes are not saved yet.", "Sign in again", reauth);
+    else showBanner("Could not save to Google Sheets: " + SAVE_ERR, "Retry", () => { hideBanner(); flush(); });
+  } finally {
+    SAVING = false; setStatus();
+    if (DIRTY && !SAVE_ERR) { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
+  }
+}
+function setStatus() {
+  const el = $("#savestatus"); if (!el) return;
+  el.textContent = SAVING ? "saving…" : SAVE_ERR ? "NOT SAVED (" + SAVE_ERR + ")" : DIRTY ? "unsaved changes…" : "saved to Google Sheets";
+  $("#syncpill").className = "sync " + (SAVE_ERR ? "err" : SAVING || DIRTY ? "busy" : "ok");
+  const em = USER ? USER.email : "";
+  $("#uEmail").textContent = em; $("#uEmail2").textContent = em; $("#uAvatar").textContent = em ? em[0].toUpperCase() : "?";
+}
+function showBanner(msg, btn, fn) { $("#bannerMsg").textContent = msg; const b = $("#bannerBtn"); b.textContent = btn; b.onclick = fn; $("#banner").classList.remove("hide"); }
+function hideBanner() { $("#banner").classList.add("hide"); }
+function waitGis() {
+  return new Promise((res, rej) => {
+    let n = 0;
+    (function tick() {
+      if (window.google && google.accounts && google.accounts.oauth2) return res();
+      if (++n > 150) return rej(new Error("Google sign-in did not load. Check your internet connection and reload the page."));
+      setTimeout(tick, 100);
+    })();
+  });
+}
+function requestToken(prompt) {
+  return new Promise((res, rej) => {
+    if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CFG.clientId, scope: "openid email " + SHEETS_SCOPE, callback: () => {}, error_callback: e => { if (onTokenError) onTokenError(e); }
+    });
+    onTokenError = e => rej(new Error(e && e.type === "popup_closed" ? "The Google sign-in window was closed." : e && e.type === "popup_failed_to_open" ? "The browser blocked the Google sign-in window. Allow pop-ups for this site and try again." : "Google sign-in failed."));
+    tokenClient.callback = r => {
+      if (!r || r.error) { rej(new Error("Google sign-in failed: " + ((r && (r.error_description || r.error)) || "unknown error"))); return; }
+      if (!google.accounts.oauth2.hasGrantedAllScopes(r, SHEETS_SCOPE)) {
+        setGranted(false);
+        rej(new Error("Google did not give access to the sheet: the box “See, edit, create and delete all your Google Sheets spreadsheets” was not ticked. Click Sign in with Google again and tick that box on Google's permission screen, then Continue."));
+        return;
+      }
+      setGranted(true);
+      TOKEN = r.access_token; TOKEN_EXP = Date.now() + (Math.max(120, +r.expires_in || 3600) - 60) * 1000; res();
+    };
+    if (!grantedBefore()) prompt = "consent";
+    tokenClient.requestAccessToken(USER ? { prompt: prompt, login_hint: USER.email } : { prompt: prompt });
+  });
+}
+const allowed = email => (CFG.allowedEmails || []).map(x => String(x).trim().toLowerCase()).indexOf(email) >= 0;
+function gateMsg(t, bad) { const el = $("#gateMsg"); el.textContent = t || ""; el.style.color = bad ? "var(--bad)" : ""; }
+async function signIn() {
+  const btn = $("#btnSignIn"); btn.disabled = true;
+  try {
+    gateMsg("Waiting for Google sign-in…");
+    await waitGis();
+    await requestToken("");
+    const u = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + TOKEN } }).then(r => r.json());
+    const email = String(u.email || "").toLowerCase();
+    if (!email || !allowed(email)) {
+      try { google.accounts.oauth2.revoke(TOKEN, () => {}); } catch (e) {}
+      TOKEN = null; tokenClient = null;
+      gateMsg((email || "This account") + " is not on the list of people allowed to use this tool. Ask the owner to add you.", true); return;
+    }
+    USER = { email: email };
+    gateMsg("Loading payables from Google Sheets…");
+    await loadAll();
+    enterApp();
+  } catch (e) {
+    USER = null; gateMsg(e.message || String(e), true);
+  } finally { btn.disabled = false; }
+}
+async function reauth() {
+  try { await requestToken(""); hideBanner(); SAVE_ERR = ""; if (DIRTY) flush(); else setStatus(); }
+  catch (e) { showBanner(e.message || String(e), "Sign in again", reauth); }
+}
+function signOut() {
+  if (DIRTY && !confirm("Some changes are not saved yet. Sign out anyway?")) return;
+  try { if (TOKEN) google.accounts.oauth2.revoke(TOKEN, () => {}); } catch (e) {}
+  DIRTY = false; USER = null; TOKEN = null; location.reload();
+}
+async function refresh(quiet) {
+  if (!USER || DIRTY || SAVING) { if (!quiet) toast("Saving your changes first; try again in a moment"); return; }
+  try {
+    await loadAll();
+    HIST = []; LAST = snap(); updateUndo(); compute(); renderAll();
+    if (!quiet) toast("Up to date with the sheet");
+  } catch (e) {
+    if (e.auth) showBanner("Your Google sign-in has expired.", "Sign in again", reauth);
+    else if (!quiet) toast(e.message || String(e));
+  }
+}
+function enterApp() {
+  HIST = []; LAST = snap(); updateUndo();
+  $("#gate").classList.add("hide"); $("#app").classList.remove("hide");
+  compute(); fillPeriods(); renderAll(); setStatus();
+}
+
+/* ---------- reading bank narrations ---------- */
+// payee as the bank wrote it, pulled out of the narration; norm() of it is the key vendors' spellings are matched on
+function payeeOf(n) {
+  const s = String(n || "").replace(/\s+/g, " ").trim(), u = s.toUpperCase();
+  let m;
+  if ((m = s.match(/^UPI\/([^\/]+)\//i))) return m[1].trim();
+  if ((m = u.match(/^(?:NEFT|RTGS|IMPS) (?:DR|CR)-\w+-([^-]+)-/))) return m[1].trim();
+  if ((m = u.match(/^IMPS-\d+-([^-]+)-/))) return m[1].trim();
+  if ((m = u.match(/^\d+-TPT-.*-([^-]+)$/))) return m[1].trim();
+  if ((m = u.match(/^CLG TO (.+?)(?: [A-Z]+ BANK.*| IDFC.*)?$/))) return m[1].trim();
+  if ((m = u.match(/^CHQ PAID-CTS \w+-\w+-(.+)$/))) return m[1].trim();
+  if ((m = u.match(/^(.+?) - CHQ PAID/))) return m[1].trim();
+  if ((m = u.match(/^MB: SENT (?:NEFT|RTGS|IMPS)\/ ?([^\/]+)\//))) return m[1].trim();
+  if ((m = u.match(/^MB: SENT TO (.+?)(?: - .*)?$/))) return m[1].trim();
+  if ((m = u.match(/^SENTIMPS\d+\/[^\/]+\/(.+)$/))) return m[1].trim();
+  if ((m = u.match(/^[A-Z0-9]{8,}\/(?:BILLDK|RAZP|PAYU|SBIEPY|CCA|BIL)?([A-Z][A-Z0-9 ]+)$/))) return m[1].trim();
+  if ((m = u.match(/^(?:YESF|HDFCR|HDFCN|SBIN|ICIC|UTIB|BARB|KKBK|IBKL|CNRB|PUNB)\w*\d\w* (.+)$/))) return m[1].trim();
+  return s.replace(/\b[A-Z]*\d[\w\/-]*/gi, " ").replace(/\s+/g, " ").trim() || s;
+}
+const STOP = { MS: 1, M: 1, S: 1, PVT: 1, PRIVATE: 1, LTD: 1, LIMITED: 1, LLP: 1, CO: 1, COMPANY: 1, THE: 1, AND: 1, MR: 1, MRS: 1 };
+const norm = s => String(s || "").toUpperCase().replace(/[^A-Z ]/g, " ").split(/\s+/).filter(w => w && !STOP[w]).join(" ");
+const upiNote = n => { const m = String(n || "").match(/^UPI\/[^\/]*\/[^\/]*\/(.*)$/i), t = m ? m[1].trim() : ""; return /^(UPI|NA|COLLECT|PAY BY WHATSAPP|PAIDVIAKOTAKAPP|SENT USING PAYT\w*|PAYMENT ON CRED|MOPSUPITXN|UPIINTENT)$/i.test(t) ? "" : t; };
+// lines the bank text alone settles, before any vendor is set
+function autoCat(l) {
+  const u = String(l.narration || "").toUpperCase();
+  if (/SWEEP|\bFD BOOKED|\bFD CLOSURE|\bFD PREMAT|TERM DEPOSIT/.test(u)) return "internal";
+  if (/NITYANAND INFRA|NITYANAND I\b|BANK KOTAK|KMBL AC NITYANAND/.test(u) && !/MOBILE|FUEL|FULE/.test(u)) return "internal";
+  if (/\bCBDT\b|INCOME TAX/.test(u)) return "tax";
+  if (/ETAX GSTN|\bGSTN\b|^GST\b|CBIC/.test(u)) return "gst";
+  if (/\bEPFO\b|\bESIC\b|PROVIDENT FUND/.test(u)) return "stat";
+  if (/^EMI\b|^NACH\b|^ACH\b|NACH-|INS DEBIT A/.test(u)) return "loan";
+  if (/CRED ?CLUB|KOTAKCARDS|CREDIT CA(RD)?\b|RAZPCREDCLUB|PAYMENT ON CRED/.test(u)) return "card";
+  if (/\bCHGS\b|\bCHARGES? (INCL|FOR)|SMS ALERT|ANNUAL FEE/.test(u)) return "bank";
+  return "";
+}
+let ALIAS = {}, VBY = {}, PBY = {}, WORDS = [];
+function buildIndex() {
+  ALIAS = {}; VBY = {}; PBY = {}; WORDS = [];
+  S.vendors.forEach(v => { VBY[v.id] = v; aliasesOf(v).concat([v.name]).forEach(a => { const k = norm(a); if (k && !ALIAS[k]) ALIAS[k] = v.id; }); });
+  S.projects.forEach(p => { PBY[p.id] = p; String(p.words || "").split(/[,;]/).map(w => w.trim().toUpperCase()).filter(w => w.length >= 3).forEach(w => WORDS.push([new RegExp("\\b" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"), p.id])); });
+}
+const aliasesOf = v => String(v.aliases || "").split("|").map(a => a.trim()).filter(Boolean);
+const wordsProject = text => { const u = String(text || "").toUpperCase(); for (const w of WORDS) if (w[0].test(u)) return w[1]; return ""; };
+
+/* ---------- the payment register: bank debits + payments logged here ---------- */
+let ROWS = [], OPEN = [];
+const acctLabel = a => a || "";
+function compute() {
+  buildIndex();
+  const rows = [];
+  S.lines.forEach(l => {
+    if (!(l.debit > 0)) return;
+    const key = norm(payeeOf(l.narration));
+    const v = VBY[l.vendorId] || VBY[ALIAS[key]] || null;
+    const auto = autoCat(l);
+    const cat = l.cat || (v && v.cat) || auto || "";
+    rows.push({ id: l.id, kind: "bank", rec: l, date: l.date, source: acctLabel(l.acct), payee: payeeOf(l.narration), key: key, v: v,
+      cat: v && v.unit === "DG" ? "dg" : cat, auto: !l.cat && !v && !!auto, project: l.project || wordsProject(l.narration) || (v && v.project) || "",
+      amt: l.debit, adv: !!l.adv, note: l.note || upiNote(l.narration), narration: l.narration, ref: l.ref, dupOk: !!l.dupOk });
+  });
+  S.pays.forEach(p => {
+    const v = VBY[p.vendorId] || VBY[ALIAS[norm(p.payee)]] || null;
+    rows.push({ id: p.id, kind: "pay", rec: p, date: p.date, source: p.source, payee: v ? v.name : p.payee, key: norm(v ? v.name : p.payee), v: v,
+      cat: v && v.unit === "DG" ? "dg" : (p.cat || (v && v.cat) || ""), auto: false, project: p.project || (v && v.project) || "",
+      amt: p.amt, adv: !!p.adv, note: p.note, narration: "", ref: p.ref, dupOk: !!p.dupOk });
+  });
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.amt - a.amt));
+  // possible duplicates: same vendor (or same bank spelling) and amount within a few days
+  const win = +S.settings.dupDays || 0, min = +S.settings.dupMin || 0, g = {};
+  rows.forEach(r => { r.dup = null; if (OUT[r.cat] || ["tax", "gst", "stat", "loan"].indexOf(r.cat) >= 0 || r.amt < min) return; const k = (r.v ? r.v.id : r.key) + "|" + r.amt; (g[k] || (g[k] = [])).push(r); });
+  Object.keys(g).forEach(k => {
+    const a = g[k]; if (a.length < 2) return;
+    a.sort((x, y) => (x.date < y.date ? -1 : 1));
+    for (let i = 1; i < a.length; i++) if (daysBetween(a[i - 1].date, a[i].date) <= win && !a[i].dupOk && !a[i - 1].dupOk) { a[i].dup = a[i - 1]; if (!a[i - 1].dup) a[i - 1].dup = a[i]; }   // one of a pair checked clears the pair
+  });
+  ROWS = rows;
+  OPEN = rows.filter(r => r.kind === "bank" && !r.cat);
+}
+const NOPROJ = { tax: 1, gst: 1, stat: 1, loan: 1, card: 1, bank: 1, family: 1 };   // company-level payments: no project expected
+const needsProject = r => !!r.cat && !r.project && !NOPROJ[r.cat] && !OUT[r.cat];
+const inPeriod = r => { const p = PERIOD; return !p || (r.date >= p[0] && r.date <= p[1]); };
+let PERIOD = null;
+function fyOf(iso) { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); return m >= 4 ? y : y - 1; }
+function fillPeriods() {
+  const sel = $("#period"), cur = sel.value, ds = ROWS.map(r => r.date).filter(Boolean).sort();
+  const fys = uniq((ds.length ? [fyOf(ds[0])] : []).concat(ds.length ? [fyOf(ds[ds.length - 1])] : []).concat([fyOf(today())]));
+  const lo = Math.min.apply(null, fys), hi = Math.max.apply(null, fys), opts = [];
+  for (let y = hi; y >= lo; y--) opts.push([y + "-04-01|" + (y + 1) + "-03-31", "FY " + y + "-" + String(y + 1).slice(2)]);
+  opts.push(["", "All dates"]);
+  sel.innerHTML = opts.map(o => '<option value="' + o[0] + '">' + o[1] + "</option>").join("");
+  sel.value = opts.some(o => o[0] === cur) ? cur : opts[0][0];
+  PERIOD = sel.value ? sel.value.split("|") : null;
+}
+const vName = r => r.v ? r.v.name : r.payee;
+const projName = id => (PBY[id] ? PBY[id].name || id : id);
+const projOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.projects.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))).map(p => '<option value="' + esc(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.id + " · " + (p.name || "")) + "</option>").join("");
+const srcList = () => uniq(S.lines.map(l => l.acct).concat(["Direct", "Site float"]).concat(String(S.settings.sources || "").split(",").map(s => s.trim())));
+
+/* ---------- render ---------- */
+function renderAll() {
+  $("#clCnt").textContent = OPEN.length ? "(" + uniq(OPEN.map(r => r.key)).length + ")" : "";
+  $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
+  const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
+  $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
+  renderOverview(); renderClassify(); renderPayments(); renderVendors(); renderProjects(); renderImport();
+}
+function bars(el, items, total, click) {
+  const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
+  $(el).innerHTML = items.length ? items.map(x => '<div class="crow' + (click ? " dr" : "") + '"' + (click ? ' data-act="' + click + '" data-id="' + esc(x[2] || "") + '"' : "") + '><span class="nm" title="' + esc(x[0]) + '">' + esc(x[0]) + '</span><div class="cbar"><div style="width:' + (x[1] / max * 100).toFixed(1) + '%;background:var(--inv)"></div></div><span class="amt">' + cmp(x[1]) + "</span></div>").join("") : '<div class="sub">Nothing in this period.</div>';
+}
+function renderOverview() {
+  const rs = ROWS.filter(inPeriod), pay = rs.filter(r => !OUT[r.cat]);
+  const sum = a => a.reduce((s, r) => s + r.amt, 0);
+  const open = pay.filter(r => !r.cat), noP = pay.filter(needsProject);
+  const dups = pay.filter(r => r.dup), adv = pay.filter(r => r.adv);
+  const k = (lbl, val, note, act, big) => '<div class="card kpi' + (big ? " big" : "") + (act ? " dr" : "") + '"' + (act ? ' data-act="kpi" data-id="' + act + '"' : "") + '><div class="lbl">' + lbl + '</div><div class="val">' + val + '</div><div class="note">' + note + "</div></div>";
+  $("#kpis").innerHTML = [
+    k("Paid out", cmp(sum(pay)), pay.length.toLocaleString("en-IN") + " payments, DG set and own transfers left out", "", true),
+    k("Not classified", cmp(sum(open)), uniq(open.map(r => r.key)).length + " payee names to sort", "classify"),
+    k("No project", cmp(sum(noP)), noP.length.toLocaleString("en-IN") + " payments to tag", "noproj"),
+    k("Possible duplicates", dups.length.toLocaleString("en-IN"), "same payee and amount within " + S.settings.dupDays + " days", "dup"),
+    k("Advances given", cmp(sum(adv)), adv.length + " payments marked advance", "adv")
+  ].join("");
+  const by = (a, f) => { const m = {}; a.forEach(r => { const x = f(r); m[x] = (m[x] || 0) + r.amt; }); return Object.keys(m).map(x => [x, m[x]]).sort((p, q) => q[1] - p[1]); };
+  bars("#catBars", by(pay.filter(r => r.cat), r => r.cat).map(x => [CAT[x[0]] || x[0], x[1], x[0]]), 0, "catdr");
+  bars("#projBars", by(pay.filter(r => r.cat), r => r.project || "").slice(0, 15).map(x => [x[0] ? projName(x[0]) : "No project", x[1], x[0] || "-"]), 0, "projdr");
+  const tv = by(pay.filter(r => r.v), r => r.v.id).slice(0, 15);
+  $("#topVend").innerHTML = tv.length ? '<table><thead><tr><th>Vendor</th><th>Category</th><th>Paid</th></tr></thead><tbody>' + tv.map(x => '<tr class="dr" data-act="vedit" data-id="' + esc(x[0]) + '"><td>' + esc(VBY[x[0]].name) + '</td><td class="l">' + esc(CAT[VBY[x[0]].cat] || "") + "</td><td>" + fmt(x[1]) + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Classify payees to see vendors here.</div>';
+  const bm = by(pay, r => r.date.slice(0, 7)).sort((p, q) => (p[0] < q[0] ? 1 : -1));
+  $("#byMonth").innerHTML = bm.length ? '<table><thead><tr><th>Month</th><th>Paid out</th><th>Not classified</th></tr></thead><tbody>' + bm.map(x => "<tr><td>" + x[0] + "</td><td>" + fmt(x[1]) + "</td><td>" + fmt(sum(open.filter(r => r.date.slice(0, 7) === x[0]))) + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Import a bank statement to start.</div>';
+}
+
+let CL_SHOW = 60;
+function renderClassify() {
+  const min = +$("#clMin").value || 0, q = $("#clSearch").value.trim().toUpperCase();
+  const g = {}; OPEN.forEach(r => { const x = g[r.key] || (g[r.key] = { key: r.key, payee: r.payee, n: 0, amt: 0, first: r.date, last: r.date, notes: [], proj: {} }); x.n++; x.amt += r.amt; if (r.date < x.first) x.first = r.date; if (r.date > x.last) x.last = r.date; if (r.note && x.notes.length < 4 && x.notes.indexOf(r.note) < 0) x.notes.push(r.note); if (r.project) x.proj[r.project] = (x.proj[r.project] || 0) + 1; });
+  let list = Object.keys(g).map(k => g[k]).sort((a, b) => b.amt - a.amt);
+  const all = list.length, allAmt = list.reduce((s, x) => s + x.amt, 0);
+  list = list.filter(x => x.amt >= min && (!q || x.payee.toUpperCase().indexOf(q) >= 0 || x.notes.join(" ").toUpperCase().indexOf(q) >= 0));
+  $("#clSum").textContent = all ? all + " names, " + cmp(allAmt) + (list.length < all ? " · showing " + list.length : "") : "";
+  if (!all) { $("#clTbl").innerHTML = '<div class="sub">' + (S.lines.length ? "Every bank payment has a vendor or category." : "Import a bank statement first (Import tab).") + "</div>"; return; }
+  const shown = list.slice(0, CL_SHOW);
+  $("#clTbl").innerHTML = '<table class="cltbl"><thead><tr><th>Name in the bank</th><th>Payments</th><th>Vendor</th><th class="l">Category</th><th class="l">Project</th><th></th></tr></thead><tbody>' + shown.map(x => {
+    const pj = Object.keys(x.proj).sort((a, b) => x.proj[b] - x.proj[a])[0] || "";
+    return '<tr data-key="' + esc(x.key) + '"><td class="l"><b>' + esc(x.payee) + '</b><div class="nar">' + esc(x.notes.join(" · ")) + "</div></td>" +
+      "<td>" + fmt(x.amt) + '<div class="sub">' + x.n + " · " + dmy(x.first) + (x.first !== x.last ? " to " + dmy(x.last) : "") + "</div></td>" +
+      '<td class="l"><input type="text" class="clV" list="vendorList" value="' + esc(titleCase(x.payee)) + '"></td>' +
+      '<td class="l"><select class="clC">' + catOpts("", "Pick…") + "</select></td>" +
+      '<td class="l"><select class="clP">' + projOpts(pj, "Varies / not set") + "</select></td>" +
+      '<td class="l"><button class="small primary" data-act="clsave">Save</button> <button class="small" data-act="cldg" title="The DG set partner\'s payee: left out of payables">DG set</button></td></tr>';
+  }).join("") + "</tbody></table>" + (list.length > CL_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="clmore">Show ' + Math.min(60, list.length - CL_SHOW) + " more</button></div>" : "");
+}
+const titleCase = s => String(s || "").toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()).replace(/\b(Ltd|Pvt|Llp)\b/g, w => w.toUpperCase());
+function vendorByName(name) { const k = norm(name); return S.vendors.filter(v => norm(v.name) === k)[0] || VBY[ALIAS[k]] || null; }
+function ensureVendor(name, alias, patch) {
+  let v = vendorByName(name);
+  if (!v) { v = { id: uid(), name: String(name).trim(), aliases: "", unit: "", cat: "", project: "", pan: "", gstin: "", tdsPct: 0, phone: "", note: "", addedBy: USER ? USER.email : "", addedOn: today() }; S.vendors.push(v); }
+  if (alias && norm(alias) !== norm(v.name) && aliasesOf(v).map(norm).indexOf(norm(alias)) < 0) v.aliases = aliasesOf(v).concat([alias]).join(" | ");
+  Object.keys(patch || {}).forEach(k => { if (patch[k] !== undefined && patch[k] !== "") v[k] = patch[k]; });
+  return v;
+}
+function clSave(tr, dg) {
+  const key = tr.dataset.key, r0 = OPEN.filter(r => r.key === key)[0]; if (!r0) return;
+  const name = $(".clV", tr).value.trim(), cat = dg ? "dg" : $(".clC", tr).value, proj = $(".clP", tr).value;
+  if (!name) { $(".clV", tr).classList.add("bad"); return; }
+  if (!cat) { $(".clC", tr).classList.add("bad"); toast("Pick a category, or DG set"); return; }
+  const v = ensureVendor(name, r0.payee, { cat: dg ? "" : cat, project: proj, unit: dg ? "DG" : undefined });
+  if (!v.cat && !dg) v.cat = cat;
+  persist(); renderAll();
+  toast(r0.payee + (dg ? " marked DG set" : " → " + v.name));
+}
+
+let P_SHOW = 200, P_SEL = {};
+function payFilter() {
+  const src = $("#pSource").value, cat = $("#pCat").value, pj = $("#pProj").value, fl = $("#pFlag").value, q = $("#pSearch").value.trim().toUpperCase();
+  return ROWS.filter(inPeriod).filter(r => {
+    if (fl === "excl") { if (!OUT[r.cat]) return false; } else if (OUT[r.cat]) return false;
+    if (src && r.source !== src) return false;
+    if (cat && r.cat !== cat) return false;
+    if (pj && (pj === "-" ? r.project : r.project !== pj)) return false;
+    if (fl === "noproj" && !needsProject(r)) return false;
+    if (fl === "dup" && !r.dup) return false;
+    if (fl === "adv" && !r.adv) return false;
+    if (fl === "open" && r.cat) return false;
+    if (q && (vName(r) + " " + r.payee + " " + r.note + " " + r.narration + " " + r.ref).toUpperCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function renderPayments() {
+  const keep = (id, html) => { const el = $(id), v = el.value; el.innerHTML = html; el.value = v; if (el.value !== v) el.value = ""; };
+  keep("#pSource", '<option value="">Every source</option>' + srcList().map(s => '<option>' + esc(s) + "</option>").join(""));
+  keep("#pCat", catOpts("", "Every category"));
+  keep("#pProj", '<option value="">Every project</option><option value="-">No project</option>' + projOpts(""));
+  $("#pSelProj").innerHTML = projOpts("", "No project");
+  const rs = payFilter(), tot = rs.reduce((s, r) => s + r.amt, 0);
+  $("#pSum").textContent = rs.length.toLocaleString("en-IN") + " payments · " + fmt(tot) + (rs.length > P_SHOW ? " · showing the latest " + P_SHOW : "");
+  const sel = Object.keys(P_SEL).filter(k => P_SEL[k]);
+  $("#pSel").classList.toggle("hide", !sel.length); $("#pSelN").textContent = sel.length + " selected";
+  $("#pTbl").innerHTML = rs.length ? '<table><thead><tr><th><input type="checkbox" class="chk1" data-act="pselall" title="Select all shown"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Paid to</th><th class="l">Category</th><th class="l">Project</th><th>Amount</th><th class="l">Note</th><th></th></tr></thead><tbody>' + rs.slice(0, P_SHOW).map(r =>
+    '<tr><td><input type="checkbox" class="chk1" data-act="psel" data-id="' + esc(r.id) + '"' + (P_SEL[r.id] ? " checked" : "") + "></td>" +
+    '<td class="l">' + dmy(r.date) + '</td><td class="l">' + esc(r.source) + "</td>" +
+    '<td class="l">' + esc(vName(r)) + (r.v && norm(r.v.name) !== r.key && r.kind === "bank" ? ' <span class="sub" title="as the bank wrote it">(' + esc(r.payee) + ")</span>" : "") + "</td>" +
+    '<td class="l">' + (r.cat ? esc(CAT[r.cat] || r.cat) + (r.auto ? ' <span class="pill auto" title="Set from the bank text">auto</span>' : "") : '<span class="pill">to classify</span>') + (r.adv ? ' <span class="pill adv">advance</span>' : "") + (r.dup ? ' <span class="pill dup" title="Same payee and amount on ' + dmy(r.dup.date) + '">duplicate?</span>' : "") + "</td>" +
+    '<td class="l">' + (r.project ? esc(r.project) : '<span class="sub">-</span>') + "</td>" +
+    "<td>" + fmt(r.amt) + '</td><td class="nar">' + esc(r.note) + "</td>" +
+    '<td><button class="small" data-act="pedit" data-id="' + esc(r.id) + '">Edit</button></td></tr>').join("") + "</tbody></table>" +
+    (rs.length > P_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="pmore">Show 200 more</button></div>' : "") : '<div class="sub">No payments match.</div>';
+}
+function exportCsv(name, head, rows) {
+  const q = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const blob = new Blob(["﻿" + [head].concat(rows).map(r => r.map(q).join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function payCsv() {
+  exportCsv("payables_" + today() + ".csv", ["Date", "Source", "Vendor", "Name in bank", "Category", "Project", "Amount", "Advance", "Reference", "Note", "Narration"],
+    payFilter().map(r => [r.date, r.source, vName(r), r.payee, CAT[r.cat] || "", r.project, r.amt, r.adv ? "yes" : "", r.ref, r.note, r.narration]));
+}
+
+/* one payment: a bank line (vendor, category, project, advance, note) or a payment logged here (all fields) */
+function openPay(id) {
+  const r = ROWS.filter(x => x.id === id)[0];
+  const isNew = !r, bank = r && r.kind === "bank", rec = r ? r.rec : { date: today(), source: "Direct", amt: 0 };
+  const vname = r ? (r.v ? r.v.name : bank ? "" : rec.payee) : "";
+  openModal('<h2>' + (isNew ? "Log a payment" : bank ? "Bank payment" : "Payment logged here") + "</h2>" +
+    (bank ? '<div class="help">' + esc(acctLabel(rec.acct)) + " · " + dmy(rec.date) + " · <b>" + fmt(rec.debit) + "</b><br>" + esc(rec.narration) + (rec.ref ? " · " + esc(rec.ref) : "") + "</div>" : "") +
+    '<div class="form">' +
+    (bank ? "" : '<label>Date<input type="date" id="mDate" value="' + esc(rec.date) + '"></label><label>Paid from<select id="mSrc">' + srcList().map(s => "<option" + (s === rec.source ? " selected" : "") + ">" + esc(s) + "</option>").join("") + '</select></label><label>Amount (&#8377;)<input type="text" inputmode="decimal" id="mAmt" value="' + (rec.amt || "") + '"></label><label>Reference<input type="text" id="mRef" value="' + esc(rec.ref || "") + '"></label>') +
+    '<label>Vendor<input type="text" id="mVendor" list="vendorList" value="' + esc(vname) + '" placeholder="' + esc(bank && !r.v ? titleCase(r.payee) : "") + '"></label>' +
+    '<label>Category<select id="mCat">' + catOpts(rec.cat || "", r && r.v && r.v.cat ? "Vendor\'s usual (" + (CAT[r.v.cat] || "") + ")" : r && r.auto ? "From the bank text (" + CAT[r.cat] + ")" : "Pick…") + "</select></label>" +
+    '<label>Project<select id="mProj">' + projOpts(rec.project || "", r && !rec.project && r.project ? "Usual (" + r.project + ")" : "No project") + "</select></label>" +
+    '<label><span class="chk"><input type="checkbox" id="mAdv"' + (rec.adv ? " checked" : "") + "> Advance (to recover from the vendor's bills)</span></label>" +
+    (r && (r.dup || rec.dupOk) ? '<label><span class="chk"><input type="checkbox" id="mDupOk"' + (rec.dupOk ? " checked" : "") + "> Checked: not a duplicate</span></label>" : "") +
+    '<label style="grid-column:1/-1">Note<input type="text" id="mNote" value="' + esc(bank ? rec.note || "" : rec.note || "") + '" placeholder="bill no., what it was for"></label></div>' +
+    (r && r.dup ? '<div class="banner" style="margin-top:10px">Same payee and amount on ' + dmy(r.dup.date) + " (" + esc(r.dup.source) + ").</div>" : "") +
+    '<div id="mMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' + (r && !bank ? '<button class="danger" data-act="pdel" data-id="' + esc(id) + '">Delete</button>' : "") + '<span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").dataset.id = id || "";
+  $("#mSave").onclick = () => savePay(id);
+}
+function savePay(id, sure) {
+  const r = ROWS.filter(x => x.id === id)[0], bank = r && r.kind === "bank";
+  const vname = $("#mVendor").value.trim(), cat = $("#mCat").value, proj = $("#mProj").value;
+  if (bank) {
+    // a vendor typed for a name with no vendor yet takes that spelling (every payment to it follows); for a name that
+    // already has a vendor, a different one is set on this payment only
+    const l = r.rec, cur = ALIAS[r.key] || "";
+    let v = vname ? vendorByName(vname) : null;
+    if (vname) v = ensureVendor(v ? v.name : vname, cur ? "" : r.payee, {});
+    l.vendorId = v && cur && v.id !== cur ? v.id : "";
+    if (v && !v.cat && cat) v.cat = cat;
+    l.cat = cat && (!v || cat !== v.cat) ? cat : ""; l.project = proj; l.adv = $("#mAdv").checked; l.note = $("#mNote").value.trim();
+    if ($("#mDupOk")) l.dupOk = $("#mDupOk").checked;
+  } else {
+    const amt = toNum($("#mAmt").value, 0), date = $("#mDate").value;
+    if (!(amt > 0)) { $("#mAmt").classList.add("bad"); return; }
+    if (!vname) { $("#mVendor").classList.add("bad"); return; }
+    if (!date) { $("#mDate").classList.add("bad"); return; }
+    const known = vendorByName(vname), k = norm(known ? known.name : vname);
+    if (!sure) {   // the guard: same vendor and amount within the duplicate window, anywhere (bank or logged)
+      const hit = ROWS.filter(x => x.id !== id && x.amt === amt && ((known && x.v && x.v.id === known.id) || x.key === k) && Math.abs(daysBetween(x.date, date)) <= (+S.settings.dupDays || 0))[0];
+      if (hit) { $("#mMsg").innerHTML = "Looks like a duplicate: " + esc(vName(hit)) + " was paid " + fmt(hit.amt) + " on " + dmy(hit.date) + " (" + esc(hit.source) + '). <button class="small" id="mSure">Save anyway</button>'; $("#mSure").onclick = () => savePay(id, true); return; }
+    }
+    const v = ensureVendor(known ? known.name : vname, "", {});
+    const p = r ? r.rec : { id: uid(), by: USER ? USER.email : "", on: today() };
+    Object.assign(p, { date: date, source: $("#mSrc").value, vendorId: v.id, payee: v.name, amt: amt, cat: cat, project: proj, adv: $("#mAdv").checked, ref: $("#mRef").value.trim(), note: $("#mNote").value.trim(), dupOk: sure ? true : $("#mDupOk") ? $("#mDupOk").checked : !!p.dupOk });
+    if (!v.cat && cat) v.cat = cat;
+    if (!r) S.pays.push(p);
+  }
+  closeModal(); persist(); renderAll(); toast("Saved");
+}
+function delPay(id) {
+  if (!confirm("Delete this payment?")) return;
+  S.pays = S.pays.filter(p => p.id !== id); closeModal(); persist(); renderAll(); toast("Payment deleted");
+}
+
+function renderVendors() {
+  const q = $("#vSearch").value.trim().toUpperCase(), rs = ROWS.filter(inPeriod), m = {};
+  ROWS.forEach(r => { if (!r.v) return; const x = m[r.v.id] || (m[r.v.id] = { n: 0, paid: 0, adv: 0, last: "" }); if (r.date > x.last) x.last = r.date; });
+  rs.forEach(r => { if (!r.v) return; const x = m[r.v.id]; x.n++; x.paid += r.amt; if (r.adv) x.adv += r.amt; });
+  const list = S.vendors.filter(v => !q || (v.name + " " + v.aliases).toUpperCase().indexOf(q) >= 0).sort((a, b) => ((m[b.id] || {}).paid || 0) - ((m[a.id] || {}).paid || 0) || a.name.localeCompare(b.name));
+  $("#vSum").textContent = S.vendors.length + " vendors";
+  $("#vTbl").innerHTML = list.length ? '<table><thead><tr><th>Vendor</th><th class="l">Usual category</th><th class="l">Usual project</th><th>Payments</th><th>Paid</th><th>Advances</th><th class="l">Last paid</th></tr></thead><tbody>' + list.map(v => { const x = m[v.id] || { n: 0, paid: 0, adv: 0, last: "" };
+    return '<tr class="dr" data-act="vedit" data-id="' + esc(v.id) + '"><td>' + esc(v.name) + (v.unit === "DG" ? ' <span class="pill dg">DG set</span>' : "") + (aliasesOf(v).length ? ' <span class="sub">+' + aliasesOf(v).length + " spelling" + (aliasesOf(v).length > 1 ? "s" : "") + "</span>" : "") + '</td><td class="l">' + esc(CAT[v.cat] || "") + '</td><td class="l">' + esc(v.project || "") + "</td><td>" + x.n + "</td><td>" + fmt(x.paid) + "</td><td>" + (x.adv ? fmt(x.adv) : "") + '</td><td class="l">' + dmy(x.last) + "</td></tr>"; }).join("") + "</tbody></table>" : '<div class="sub">' + (S.vendors.length ? "No vendor matches." : "Vendors appear here as payees are classified, or add one.") + "</div>";
+}
+function openVendor(id) {
+  const v = VBY[id] || { id: "", name: "", aliases: "", unit: "", cat: "", project: "", pan: "", gstin: "", tdsPct: 0, phone: "", note: "" };
+  const pays = ROWS.filter(r => r.v && r.v.id === v.id), tot = pays.reduce((s, r) => s + r.amt, 0);
+  openModal("<h2>" + (v.id ? esc(v.name) : "New vendor") + "</h2>" +
+    '<div class="form"><label>Name<input type="text" id="vName" value="' + esc(v.name) + '"></label>' +
+    '<label>Business<select id="vUnit"><option value="">Piling (NIL)</option><option value="DG"' + (v.unit === "DG" ? " selected" : "") + ">DG set partner (left out)</option></select></label>" +
+    '<label>Usual category<select id="vCat">' + catOpts(v.cat, "None") + "</select></label>" +
+    '<label>Usual project<select id="vProj">' + projOpts(v.project, "Varies") + "</select></label>" +
+    '<label>PAN<input type="text" id="vPan" value="' + esc(v.pan) + '"></label><label>GSTIN<input type="text" id="vGst" value="' + esc(v.gstin) + '"></label>' +
+    '<label>TDS %<input type="number" step="0.1" id="vTds" value="' + (v.tdsPct || "") + '"></label><label>Phone<input type="text" id="vPhone" value="' + esc(v.phone) + '"></label>' +
+    '<label style="grid-column:1/-1">Note<input type="text" id="vNote" value="' + esc(v.note) + '"></label></div>' +
+    (v.id ? '<div style="margin-top:10px;font-size:13px"><b>Spellings in the bank</b><div id="vAliases">' + (aliasesOf(v).map((a, i) => '<span class="alias pill">' + esc(a) + ' <button data-act="valdel" data-i="' + i + '" title="Remove">&times;</button></span>').join("") || '<span class="sub">only its name</span>') + "</div></div>" +
+      '<div style="margin-top:10px"><b style="font-size:13px">Payments</b> <span class="sub">' + pays.length + " · " + fmt(tot) + '</span><div class="tblwrap" style="max-height:240px;overflow:auto"><table><tbody>' + pays.slice(0, 50).map(r => '<tr><td class="l">' + dmy(r.date) + '</td><td class="l">' + esc(r.source) + "</td><td>" + fmt(r.amt) + '</td><td class="l">' + esc(r.project) + (r.adv ? ' <span class="pill adv">advance</span>' : "") + "</td></tr>").join("") + "</tbody></table></div></div>" : "") +
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' + (v.id && !pays.length ? '<button class="danger" data-act="vdel" data-id="' + esc(v.id) + '">Delete</button>' : "") + '<span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>', true);
+  $("#modal").dataset.id = v.id;
+  $("#mSave").onclick = () => {
+    const name = $("#vName").value.trim(); if (!name) { $("#vName").classList.add("bad"); return; }
+    const other = vendorByName(name);
+    if (other && other.id !== v.id) { toast("Another vendor already has that name or spelling"); $("#vName").classList.add("bad"); return; }
+    const t = v.id ? VBY[v.id] : ensureVendor(name, "", {});
+    Object.assign(t, { name: name, unit: $("#vUnit").value, cat: $("#vCat").value, project: $("#vProj").value, pan: $("#vPan").value.trim().toUpperCase(), gstin: $("#vGst").value.trim().toUpperCase(), tdsPct: toNum($("#vTds").value, 0), phone: $("#vPhone").value.trim(), note: $("#vNote").value.trim() });
+    closeModal(); persist(); renderAll(); toast("Vendor saved");
+  };
+}
+
+function renderProjects() {
+  const m = {}; ROWS.filter(inPeriod).forEach(r => { if (r.project && !OUT[r.cat]) m[r.project] = (m[r.project] || 0) + r.amt; });
+  const list = S.projects.slice().sort((a, b) => (a.status === "Completed") - (b.status === "Completed") || String(a.id).localeCompare(String(b.id)));
+  $("#prSum").textContent = S.projects.length + " projects";
+  $("#prTbl").innerHTML = list.length ? '<table><thead><tr><th>Code</th><th class="l">Name</th><th class="l">Client</th><th class="l">Business</th><th class="l">Dates</th><th class="l">Status</th><th class="l">Bank words</th><th>Paid</th></tr></thead><tbody>' + list.map(p =>
+    '<tr class="dr" data-act="predit" data-id="' + esc(p.id) + '"><td>' + esc(p.id) + '</td><td class="l">' + esc(p.name) + '</td><td class="l">' + esc(p.client) + '</td><td class="l">' + esc(p.unit) + '</td><td class="l">' + dmy(p.start) + (p.end ? " to " + dmy(p.end) : "") + '</td><td class="l">' + esc(p.status) + '</td><td class="l">' + esc(p.words) + "</td><td>" + (m[p.id] ? fmt(m[p.id]) : "") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">No projects yet. Import the Projects sheet or add one.</div>';
+}
+function openProject(id) {
+  const p = PBY[id] || { id: "", name: "", client: "", site: "", unit: "Piling", woNo: "", start: "", end: "", status: "Active", incharge: "", words: "", note: "" };
+  const opt = (a, sel) => a.map(x => "<option" + (x === sel ? " selected" : "") + ">" + x + "</option>").join("");
+  openModal("<h2>" + (p.id ? esc(p.id) : "New project") + '</h2><div class="form">' +
+    '<label>Code<input type="text" id="jId" value="' + esc(p.id) + '"' + (p.id ? " disabled" : "") + ' placeholder="e.g. REN-WAD"></label>' +
+    '<label>Name<input type="text" id="jName" value="' + esc(p.name) + '"></label><label>Client<input type="text" id="jClient" value="' + esc(p.client) + '"></label>' +
+    '<label>Site / location<input type="text" id="jSite" value="' + esc(p.site) + '"></label><label>Business<select id="jUnit">' + opt(["Piling", "DG set", "Head office"], p.unit) + "</select></label>" +
+    '<label>Work order no.<input type="text" id="jWo" value="' + esc(p.woNo) + '"></label><label>Start<input type="date" id="jStart" value="' + esc(p.start) + '"></label><label>End<input type="date" id="jEnd" value="' + esc(p.end) + '"></label>' +
+    '<label>Status<select id="jStatus">' + opt(["Active", "Completed", "On hold"], p.status) + '</select></label><label>Site in-charge<input type="text" id="jInc" value="' + esc(p.incharge) + '"></label>' +
+    '<label style="grid-column:1/-1">Bank words (comma separated)<input type="text" id="jWords" value="' + esc(p.words) + '" placeholder="WADALA, BYCULLA"></label>' +
+    '<label style="grid-column:1/-1">Note<input type="text" id="jNote" value="' + esc(p.note) + '"></label></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px"><span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>', true);
+  $("#mSave").onclick = () => {
+    const code = (p.id || $("#jId").value).trim().toUpperCase();
+    if (!code) { $("#jId").classList.add("bad"); return; }
+    if (!p.id && PBY[code]) { toast("That code is already used"); $("#jId").classList.add("bad"); return; }
+    const t = PBY[code] || (S.projects.push({ id: code }), S.projects[S.projects.length - 1]);
+    Object.assign(t, { name: $("#jName").value.trim(), client: $("#jClient").value.trim(), site: $("#jSite").value.trim(), unit: $("#jUnit").value, woNo: $("#jWo").value.trim(), start: $("#jStart").value, end: $("#jEnd").value, status: $("#jStatus").value, incharge: $("#jInc").value.trim(), words: $("#jWords").value.trim().toUpperCase(), note: $("#jNote").value.trim() });
+    closeModal(); persist(); renderAll(); toast("Project saved");
+  };
+}
+
+/* ---------- files: bank statements and the Projects sheet ---------- */
+let XLSX_P = null;
+function loadXlsx() {   // SheetJS, only when an Excel file is opened
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!XLSX_P) XLSX_P = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = () => res(window.XLSX); s.onerror = () => { XLSX_P = null; rej(new Error("Could not load the Excel reader. Check the internet connection and try again.")); }; document.head.appendChild(s); });
+  return XLSX_P;
+}
+function parseCsv(t) {
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+async function fileRows(f) {
+  if (/\.csv$/i.test(f.name) || /^text\//.test(f.type)) return parseCsv((await f.text()).replace(/^﻿/, ""));
+  const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), { type: "array" });
+  return X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[wb.SheetNames.indexOf("Projects") >= 0 ? wb.SheetNames.indexOf("Projects") : 0]], { header: 1, raw: false, defval: "" });
+}
+function hash(s) {   // two 32-bit FNV-1a passes: a stable id for a bank line, so re-importing a statement adds nothing twice
+  let a = 0x811c9dc5, b = 0x1b873593;
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); a = Math.imul(a ^ c, 16777619) >>> 0; b = Math.imul(b ^ c, 2246822519) >>> 0; b = (b ^ (b >>> 13)) >>> 0; }
+  return a.toString(36) + b.toString(36);
+}
+const amt = v => toNum(String(v == null ? "" : v).replace(/[^\d.\-]/g, ""), 0);
+/* Kotak CSV ("Sl. No." header, Amount + Dr / Cr) and HDFC XLS ("Date, Narration, ... Withdrawal Amt., Deposit Amt.") */
+function parseStatement(rows, fname) {
+  const txt = rows.slice(0, 25).map(r => r.join(" ")).join(" ");
+  const kh = rows.findIndex(r => String(r[0]).trim() === "Sl. No." && r.some(c => /Dr \/ Cr/i.test(c)));
+  const hh = rows.findIndex(r => String(r[0]).trim() === "Date" && r.some(c => /Withdrawal/i.test(c)));
+  const out = [];
+  if (kh >= 0) {
+    const h = rows[kh].map(c => String(c).trim()), ac = (txt.match(/Account No\.?\s*,?\s*"?(\d{6,})/) || txt.match(/(\d{10,})/) || [])[1] || "";
+    const I = n => h.findIndex(c => c === n), iV = I("Value Date"), iT = I("Transaction Date"), iD = I("Description"), iR = h.findIndex(c => /Chq/.test(c)), iA = I("Amount"), iC = h.indexOf("Dr / Cr"), iB = I("Balance");
+    const acct = "Kotak " + ac.slice(-4);
+    rows.slice(kh + 1).forEach(r => {
+      if (!/^\d+$/.test(String(r[0]).trim())) return;
+      const a = amt(r[iA]), dr = /DR/i.test(r[iC]), date = toIso(String(r[iV] || r[iT]).slice(0, 10));
+      out.push({ acct: acct, date: date, narration: String(r[iD]).trim(), ref: String(r[iR] || "").trim(), debit: dr ? a : 0, credit: dr ? 0 : a, balance: amt(r[iB]) * (/DR/i.test(r[iB + 1] || "") ? -1 : 1), stamp: String(r[iT]).trim() });
+    });
+    return { bank: "Kotak", acct: acct, lines: out };
+  }
+  if (hh >= 0) {
+    const h = rows[hh].map(c => String(c).trim()), ac = (txt.match(/A\/?C(?:count)? ?No\.?\s*:?\s*(\d{6,})/i) || [])[1] || (String(fname).match(/X*(\d{4})\b/) || [])[1] || "";
+    const I = re => h.findIndex(c => re.test(c)), iD = I(/^Date$/), iN = I(/Narration/), iR = I(/Ref/), iV = I(/Value/), iW = I(/Withdrawal/), iP = I(/Deposit/), iB = I(/Closing/);
+    const acct = "HDFC " + ac.slice(-4);
+    rows.slice(hh + 1).forEach(r => {
+      if (!/^\d{2}\/\d{2}\/\d{2,4}$/.test(String(r[iD]).trim())) return;
+      out.push({ acct: acct, date: toIso(String(r[iD]).trim()), narration: String(r[iN]).trim(), ref: String(r[iR] || "").trim(), debit: amt(r[iW]), credit: amt(r[iP]), balance: amt(r[iB]), stamp: String(r[iV] || "").trim() });
+    });
+    return { bank: "HDFC", acct: acct, lines: out };
+  }
+  return null;
+}
+let PENDING = [];
+async function onBankFiles(files) {
+  $("#bkPrev").innerHTML = '<div class="sub">Reading…</div>';
+  const have = {}; S.lines.forEach(l => { have[l.id] = 1; });
+  PENDING = [];
+  const parts = [];
+  for (const f of files) {
+    try {
+      const st = parseStatement(await fileRows(f), f.name);
+      if (!st || !st.lines.length) { parts.push('<div class="banner">' + esc(f.name) + ": not a Kotak or HDFC statement this page can read.</div>"); continue; }
+      const seen = {}; let dupIn = 0;
+      st.lines.forEach(l => {
+        // same account, date, amounts, balance and reference = the same line; a running balance keeps two equal payments on one day apart
+        l.id = "b" + hash([l.acct, l.date, l.narration, l.ref, l.debit, l.credit, l.balance].join("|"));
+        if (seen[l.id]) { l.id += "-" + (++seen[l.id]); dupIn++; } else seen[l.id] = 1;
+      });
+      const fresh = st.lines.filter(l => !have[l.id] && !PENDING.some(p => p.id === l.id));
+      PENDING = PENDING.concat(fresh);
+      const ds = st.lines.map(l => l.date).sort(), dr = fresh.filter(l => l.debit > 0);
+      parts.push('<div class="preview"><div><span class="sub">' + esc(f.name) + "</span><b>" + esc(st.acct) + '</b></div><div><span class="sub">Period</span><b>' + dmy(ds[0]) + " to " + dmy(ds[ds.length - 1]) + '</b></div><div><span class="sub">Lines</span><b>' + st.lines.length.toLocaleString("en-IN") + '</b></div><div><span class="sub">New</span><b>' + fresh.length.toLocaleString("en-IN") + '</b></div><div><span class="sub">New payments out</span><b>' + dr.length.toLocaleString("en-IN") + " · " + cmp(dr.reduce((s, l) => s + l.debit, 0)) + "</b></div></div>");
+    } catch (e) { parts.push('<div class="banner">' + esc(f.name) + ": " + esc(e.message || String(e)) + "</div>"); }
+  }
+  $("#bkPrev").innerHTML = parts.join("") + (PENDING.length ? '<div style="margin-top:10px"><button class="primary" data-act="bkadd">Add ' + PENDING.length.toLocaleString("en-IN") + " new lines</button></div>" : (parts.length ? '<div class="sub" style="margin-top:8px">Nothing new: every line is already imported.</div>' : ""));
+}
+function addPending() {
+  const by = USER ? USER.email : "", on = today(), n = PENDING.length;
+  PENDING.forEach(l => S.lines.push({ id: l.id, acct: l.acct, date: l.date, narration: l.narration, ref: l.ref, debit: l.debit, credit: l.credit, balance: l.balance, vendorId: "", cat: "", project: "", adv: false, dupOk: false, note: "", importedOn: on, importedBy: by }));
+  PENDING = []; $("#bkPrev").innerHTML = ""; $("#bkFile").value = "";
+  persist(); fillPeriods(); renderAll(); toast(n.toLocaleString("en-IN") + " bank lines added");
+}
+function renderImport() {
+  const m = {}; S.lines.forEach(l => { const x = m[l.acct] || (m[l.acct] = { n: 0, lo: l.date, hi: l.date, out: 0 }); x.n++; if (l.date < x.lo) x.lo = l.date; if (l.date > x.hi) x.hi = l.date; x.out += l.debit; });
+  const ks = Object.keys(m).sort();
+  $("#bkDone").innerHTML = ks.length ? '<table><thead><tr><th>Account</th><th class="l">From</th><th class="l">To</th><th>Lines</th><th>Money out</th></tr></thead><tbody>' + ks.map(k => "<tr><td>" + esc(k) + '</td><td class="l">' + dmy(m[k].lo) + '</td><td class="l">' + dmy(m[k].hi) + "</td><td>" + m[k].n.toLocaleString("en-IN") + "</td><td>" + cmp(m[k].out) + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Nothing imported yet.</div>';
+  if (document.activeElement && /^set/.test(document.activeElement.id)) return;
+  $("#setSources").value = S.settings.sources || ""; $("#setDupDays").value = S.settings.dupDays; $("#setDupMin").value = S.settings.dupMin;
+}
+/* the Projects import sheet: columns found by their header text */
+async function onProjectFile(f) {
+  try {
+    const rows = await fileRows(f), h = rows.findIndex(r => r.some(c => /Project code/i.test(c)));
+    if (h < 0) { toast("No 'Project code' column found in " + f.name); return; }
+    const H = rows[h].map(c => String(c).trim().toLowerCase()), col = re => H.findIndex(c => re.test(c));
+    const C = { id: col(/^project code/), name: col(/^project name/), client: col(/^client/), site: col(/^site \//), unit: col(/^business/), woNo: col(/^work order/), start: col(/^start/), end: col(/^end/), status: col(/^status/), incharge: col(/in-charge/), words: col(/^bank words/), note: col(/^notes?$/) };
+    let add = 0, upd = 0;
+    rows.slice(h + 1).forEach(r => {
+      const code = String(r[C.id] || "").trim().toUpperCase(); if (!code) return;
+      const g = k => (C[k] >= 0 ? String(r[C[k]] == null ? "" : r[C[k]]).trim() : "");
+      const rec = { name: g("name"), client: g("client"), site: g("site"), unit: g("unit") || "Piling", woNo: g("woNo"), start: toIso(g("start")), end: toIso(g("end")), status: g("status") || "Active", incharge: g("incharge"), words: g("words").toUpperCase(), note: g("note") };
+      const t = PBY[code]; if (t) { Object.assign(t, rec); upd++; } else { S.projects.push(Object.assign({ id: code }, rec)); PBY[code] = S.projects[S.projects.length - 1]; add++; }
+    });
+    persist(); renderAll(); toast(add + " projects added, " + upd + " updated");
+  } catch (e) { toast(e.message || String(e)); }
+}
+
+/* ---------- wiring ---------- */
+function showTab(name) {
+  $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
+  ["overview", "classify", "payments", "vendors", "projects", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  window.scrollTo(0, 0);
+}
+function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
+function wire() {
+  $$("#tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $("#period").onchange = e => { PERIOD = e.target.value ? e.target.value.split("|") : null; renderAll(); };
+  $("#btnUndo").onclick = undo;
+  $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
+  ["pSource", "pCat", "pProj", "pFlag"].forEach(id => { $("#" + id).onchange = () => { P_SHOW = 200; renderPayments(); }; });
+  $("#pSearch").oninput = () => { P_SHOW = 200; renderPayments(); };
+  $("#pReset").onclick = () => drillPay({});
+  $("#pCsv").onclick = payCsv;
+  $("#pSelGo").onclick = () => { const pj = $("#pSelProj").value, ids = Object.keys(P_SEL).filter(k => P_SEL[k]); ROWS.filter(r => P_SEL[r.id]).forEach(r => { r.rec.project = pj; }); P_SEL = {}; persist(); renderAll(); toast(ids.length + " payments set to " + (pj || "no project")); };
+  $("#pSelClear").onclick = () => { P_SEL = {}; renderPayments(); };
+  $("#clMin").onchange = () => { CL_SHOW = 60; renderClassify(); };
+  $("#clSearch").oninput = () => { CL_SHOW = 60; renderClassify(); };
+  $("#vSearch").oninput = renderVendors;
+  $("#bkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onBankFiles(fs); };
+  $("#prFile").onchange = e => { const f = e.target.files[0]; if (f) onProjectFile(f); e.target.value = ""; };
+  $("#setSources").onchange = e => { S.settings.sources = e.target.value.trim(); persist(); renderAll(); };
+  $("#setDupDays").onchange = e => { S.settings.dupDays = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
+  $("#setDupMin").onchange = e => { S.settings.dupMin = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { $$(".cmenu").forEach(m => m.classList.add("hide")); closeModal(); } });
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-act]");
+    $$(".cmenu").forEach(m => { if (!t || t.dataset.act !== "cmenu" || m.parentNode !== t.parentNode) m.classList.add("hide"); });
+    if (!t) return;
+    const id = t.dataset.id, act = t.dataset.act;
+    if (act === "cmenu") t.nextElementSibling.classList.toggle("hide");
+    else if (act === "mclose") closeModal();
+    else if (act === "newpay") openPay(null);
+    else if (act === "pedit") openPay(id);
+    else if (act === "pdel") delPay(id);
+    else if (act === "pmore") { P_SHOW += 200; renderPayments(); }
+    else if (act === "psel") { P_SEL[id] = t.checked; renderPayments(); }
+    else if (act === "pselall") { payFilter().slice(0, P_SHOW).forEach(r => { P_SEL[r.id] = t.checked; }); renderPayments(); }
+    else if (act === "clsave") clSave(t.closest("tr"));
+    else if (act === "cldg") clSave(t.closest("tr"), true);
+    else if (act === "clmore") { CL_SHOW += 60; renderClassify(); }
+    else if (act === "newvendor") openVendor(null);
+    else if (act === "vedit") openVendor(id);
+    else if (act === "vdel") { S.vendors = S.vendors.filter(v => v.id !== id); closeModal(); persist(); renderAll(); toast("Vendor deleted"); }
+    else if (act === "valdel") { const v = VBY[$("#modal").dataset.id]; const a = aliasesOf(v); a.splice(+t.dataset.i, 1); v.aliases = a.join(" | "); persist(); renderAll(); openVendor(v.id); }
+    else if (act === "newproj") openProject(null);
+    else if (act === "predit") openProject(id);
+    else if (act === "bkadd") addPending();
+    else if (act === "kpi") { if (id === "classify") showTab("classify"); else drillPay({ pFlag: id }); }
+    else if (act === "catdr") drillPay({ pCat: id });
+    else if (act === "projdr") drillPay({ pProj: id });
+  });
+  document.addEventListener("input", e => { if (e.target.classList) e.target.classList.remove("bad"); });
+}
+function init() {
+  if (CFG.env && CFG.env !== "production") {
+    const name = String(CFG.env).toUpperCase();
+    $("#envbar").textContent = name + " · test copy, not the live payables. Changes here never reach production.";
+    $("#envbar").classList.remove("hide");
+    document.title = "[" + name + "] " + document.title;
+  }
+  wire();
+  $("#btnSignIn").onclick = signIn;
+  $("#btnSignOut").onclick = signOut;
+  $("#btnRefresh").onclick = () => refresh(false);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && USER && Date.now() - LOADED_AT > 60e3) refresh(true); });
+  window.addEventListener("beforeunload", e => { if (DIRTY || SAVING) { e.preventDefault(); e.returnValue = ""; } });
+  if (!CFG.clientId || !SHEET_ID) { $("#btnSignIn").disabled = true; gateMsg("Setup needed: no payables sheet is set for this site yet (payablesSheetId in config.js, see docs/PAYABLES.md).", true); }
+}
+init();
+})();
+</script>
+</body>
+</html>
