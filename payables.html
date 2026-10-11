@@ -445,7 +445,7 @@ const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets/";
 const TABS = {
   vendors: ["id", "name", "aliases", "unit", "cat", "project", "pan", "gstin", "tdsPct", "phone", "note", "addedBy", "addedOn"],
-  projects: ["id", "name", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
+  projects: ["id", "name", "clientGroup", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
@@ -1033,17 +1033,20 @@ function openVendor(id) {
 
 function renderProjects() {
   const m = {}; ROWS.filter(inPeriod).forEach(r => { if (r.project && !OUT[r.cat]) m[r.project] = (m[r.project] || 0) + r.amt; });
-  const list = S.projects.slice().sort((a, b) => (a.status === "Completed") - (b.status === "Completed") || String(a.id).localeCompare(String(b.id)));
+  const list = S.projects.slice().sort((a, b) => (a.status === "Completed") - (b.status === "Completed") || String(a.clientGroup || "~").localeCompare(String(b.clientGroup || "~")) || String(a.id).localeCompare(String(b.id)));
   $("#prSum").textContent = S.projects.length + " projects";
-  $("#prTbl").innerHTML = list.length ? '<table><thead><tr><th>Code</th><th class="l">Name</th><th class="l">Client</th><th class="l">Business</th><th class="l">Dates</th><th class="l">Status</th><th class="l">Bank words</th><th>Paid</th></tr></thead><tbody>' + list.map(p =>
-    '<tr class="dr" data-act="predit" data-id="' + esc(p.id) + '"><td>' + esc(p.id) + '</td><td class="l">' + esc(p.name) + '</td><td class="l">' + esc(p.client) + '</td><td class="l">' + esc(p.unit) + '</td><td class="l">' + dmy(p.start) + (p.end ? " to " + dmy(p.end) : "") + '</td><td class="l">' + esc(p.status) + '</td><td class="l">' + esc(p.words) + "</td><td>" + (m[p.id] ? fmt(m[p.id]) : "") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">No projects yet. Import the Projects sheet or add one.</div>';
+  $("#prTbl").innerHTML = list.length ? '<table><thead><tr><th>Code</th><th class="l">Name</th><th class="l">Client group</th><th class="l">Client company</th><th class="l">Business</th><th class="l">Dates</th><th class="l">Status</th><th class="l">Bank words</th><th>Paid</th></tr></thead><tbody>' + list.map(p =>
+    '<tr class="dr" data-act="predit" data-id="' + esc(p.id) + '"><td>' + esc(p.id) + '</td><td class="l">' + esc(p.name) + '</td><td class="l">' + esc(p.clientGroup) + '</td><td class="l">' + esc(p.client) + '</td><td class="l">' + esc(p.unit) + '</td><td class="l">' + dmy(p.start) + (p.end ? " to " + dmy(p.end) : "") + '</td><td class="l">' + esc(p.status) + '</td><td class="l">' + esc(p.words) + "</td><td>" + (m[p.id] ? fmt(m[p.id]) : "") + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">No projects yet. Import the Projects sheet or add one.</div>';
 }
 function openProject(id) {
-  const p = PBY[id] || { id: "", name: "", client: "", site: "", unit: "Piling", woNo: "", start: "", end: "", status: "Active", incharge: "", words: "", note: "" };
+  const p = PBY[id] || { id: "", name: "", clientGroup: "", client: "", site: "", unit: "Piling", woNo: "", start: "", end: "", status: "Active", incharge: "", words: "", note: "" };
   const opt = (a, sel) => a.map(x => "<option" + (x === sel ? " selected" : "") + ">" + x + "</option>").join("");
   openModal("<h2>" + (p.id ? esc(p.id) : "New project") + '</h2><div class="form">' +
     '<label>Code<input type="text" id="jId" value="' + esc(p.id) + '"' + (p.id ? " disabled" : "") + ' placeholder="e.g. REN-WAD"></label>' +
-    '<label>Name<input type="text" id="jName" value="' + esc(p.name) + '"></label><label>Client<input type="text" id="jClient" value="' + esc(p.client) + '"></label>' +
+    '<label>Name<input type="text" id="jName" value="' + esc(p.name) + '"></label><label>Client group<input type="text" id="jGroup" list="groupList" value="' + esc(p.clientGroup) + '" placeholder="Pick or type a new group"></label>' +
+    '<label>Client company (billed to)<input type="text" id="jClient" list="clientList" value="' + esc(p.client) + '"></label>' +
+    '<datalist id="groupList">' + uniq(S.projects.map(x => x.clientGroup)).sort().map(g => '<option value="' + esc(g) + '">').join("") + "</datalist>" +
+    '<datalist id="clientList">' + uniq(S.projects.map(x => x.client)).sort().map(g => '<option value="' + esc(g) + '">').join("") + "</datalist>" +
     '<label>Site / location<input type="text" id="jSite" value="' + esc(p.site) + '"></label><label>Business<select id="jUnit">' + opt(["Piling", "DG set", "Head office"], p.unit) + "</select></label>" +
     '<label>Work order no.<input type="text" id="jWo" value="' + esc(p.woNo) + '"></label><label>Start<input type="date" id="jStart" value="' + esc(p.start) + '"></label><label>End<input type="date" id="jEnd" value="' + esc(p.end) + '"></label>' +
     '<label>Status<select id="jStatus">' + opt(["Active", "Completed", "On hold"], p.status) + '</select></label><label>Site in-charge<input type="text" id="jInc" value="' + esc(p.incharge) + '"></label>' +
@@ -1055,7 +1058,7 @@ function openProject(id) {
     if (!code) { $("#jId").classList.add("bad"); return; }
     if (!p.id && PBY[code]) { toast("That code is already used"); $("#jId").classList.add("bad"); return; }
     const t = PBY[code] || (S.projects.push({ id: code }), S.projects[S.projects.length - 1]);
-    Object.assign(t, { name: $("#jName").value.trim(), client: $("#jClient").value.trim(), site: $("#jSite").value.trim(), unit: $("#jUnit").value, woNo: $("#jWo").value.trim(), start: $("#jStart").value, end: $("#jEnd").value, status: $("#jStatus").value, incharge: $("#jInc").value.trim(), words: $("#jWords").value.trim().toUpperCase(), note: $("#jNote").value.trim() });
+    Object.assign(t, { name: $("#jName").value.trim(), clientGroup: $("#jGroup").value.trim(), client: $("#jClient").value.trim(), site: $("#jSite").value.trim(), unit: $("#jUnit").value, woNo: $("#jWo").value.trim(), start: $("#jStart").value, end: $("#jEnd").value, status: $("#jStatus").value, incharge: $("#jInc").value.trim(), words: $("#jWords").value.trim().toUpperCase(), note: $("#jNote").value.trim() });
     closeModal(); persist(); renderAll(); toast("Project saved");
   };
 }
@@ -1194,12 +1197,12 @@ async function onProjectFile(f) {
     const rows = await fileRows(f), h = rows.findIndex(r => r.some(c => /Project code/i.test(c)));
     if (h < 0) { toast("No 'Project code' column found in " + f.name); return; }
     const H = rows[h].map(c => String(c).trim().toLowerCase()), col = re => H.findIndex(c => re.test(c));
-    const C = { id: col(/^project code/), name: col(/^project name/), client: col(/^client/), site: col(/^site \//), unit: col(/^business/), woNo: col(/^work order/), start: col(/^start/), end: col(/^end/), status: col(/^status/), incharge: col(/in-charge/), words: col(/^bank words/), note: col(/^notes?$/) };
+    const C = { id: col(/^project code/), name: col(/^project name/), clientGroup: col(/^client group/), client: col(/^client(?! group)/), site: col(/^site \//), unit: col(/^business/), woNo: col(/^work order/), start: col(/^start/), end: col(/^end/), status: col(/^status/), incharge: col(/in-charge/), words: col(/^bank words/), note: col(/^notes?$/) };
     let add = 0, upd = 0;
     rows.slice(h + 1).forEach(r => {
       const code = String(r[C.id] || "").trim().toUpperCase(); if (!code) return;
       const g = k => (C[k] >= 0 ? String(r[C[k]] == null ? "" : r[C[k]]).trim() : "");
-      const rec = { name: g("name"), client: g("client"), site: g("site"), unit: g("unit") || "Piling", woNo: g("woNo"), start: toIso(g("start")), end: toIso(g("end")), status: g("status") || "Active", incharge: g("incharge"), words: g("words").toUpperCase(), note: g("note") };
+      const rec = { name: g("name"), clientGroup: g("clientGroup"), client: g("client"), site: g("site"), unit: g("unit") || "Piling", woNo: g("woNo"), start: toIso(g("start")), end: toIso(g("end")), status: g("status") || "Active", incharge: g("incharge"), words: g("words").toUpperCase(), note: g("note") };
       const t = PBY[code]; if (t) { Object.assign(t, rec); upd++; } else { S.projects.push(Object.assign({ id: code }, rec)); PBY[code] = S.projects[S.projects.length - 1]; add++; }
     });
     persist(); renderAll(); toast(add + " projects added, " + upd + " updated");
