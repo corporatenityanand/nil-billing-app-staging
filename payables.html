@@ -210,10 +210,12 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .pill.adv{background:color-mix(in srgb,var(--ret) 18%,var(--surface));color:var(--text)}
 .pill.dup{background:color-mix(in srgb,var(--bad) 16%,var(--surface));color:var(--bad)}
 .pill.auto{background:color-mix(in srgb,var(--inv) 12%,var(--surface));color:var(--text)}
-.cltbl td{vertical-align:top}
-.cltbl td.l input[type=text]{width:100%;min-width:180px}
-.cltbl select{max-width:190px}
-.cltbl .nar{font-size:12px;color:var(--muted);white-space:normal;max-width:360px}
+.cltbl{table-layout:fixed;min-width:760px}
+.cltbl td{vertical-align:top;white-space:normal;overflow-wrap:anywhere;padding:5px 6px}
+.cltbl td.l input[type=text],.cltbl select{width:100%;max-width:none;padding:5px 6px}
+.cltbl .nar{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cltbl .acts{display:flex;gap:4px;flex-wrap:wrap}
+.cltbl tr:focus-within td{background:var(--surface2)}
 td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-width:200px;max-width:380px}
 .imprev{margin-top:10px}
 .bars .crow{grid-template-columns:minmax(120px,240px) minmax(0,1fr) 120px}
@@ -285,7 +287,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Payees to classify</h2><span class="sub" id="clSum"></span><span style="flex:1"></span>
         <label class="sub">Show <select id="clMin"><option value="20000">payees paid &#8377;20,000 or more</option><option value="0">every payee</option></select></label>
         <input type="text" id="clSearch" placeholder="Search payee or note"></div>
-      <div class="help">Each row is one name as the bank wrote it. Pick or type the vendor, its usual category and project, and Save: every payment to that name, past and future, follows. Typing a vendor that already exists adds this spelling to it. Mark DG set to leave the payee out of piling payables.</div>
+      <div class="help">Each row is one name as the bank wrote it. Pick or type the vendor, its usual category and project, and Save (or press Enter; the cursor moves on to the next payee): every payment to that name, past and future, follows. Typing a vendor that already exists adds this spelling to it. Mark DG set to leave the payee out of piling payables.</div>
       <div class="tblwrap" id="clTbl"></div>
     </div>
   </section>
@@ -864,14 +866,14 @@ function renderClassify() {
   $("#clSum").textContent = all ? all + " names, " + cmp(allAmt) + (list.length < all ? " · showing " + list.length : "") : "";
   if (!all) { $("#clTbl").innerHTML = '<div class="sub">' + (S.lines.length ? "Every bank payment has a vendor or category." : "Import a bank statement first (Import tab).") + "</div>"; return; }
   const shown = list.slice(0, CL_SHOW);
-  $("#clTbl").innerHTML = '<table class="cltbl"><thead><tr><th>Name in the bank</th><th>Payments</th><th>Vendor</th><th class="l">Category</th><th class="l">Project</th><th></th></tr></thead><tbody>' + shown.map(x => {
+  $("#clTbl").innerHTML = '<table class="cltbl"><colgroup><col style="width:29%"><col style="width:13%"><col style="width:20%"><col style="width:15%"><col style="width:14%"><col style="width:9%"></colgroup><thead><tr><th>Name in the bank</th><th>Payments</th><th class="l">Vendor</th><th class="l">Category</th><th class="l">Project</th><th></th></tr></thead><tbody>' + shown.map(x => {
     const pj = Object.keys(x.proj).sort((a, b) => x.proj[b] - x.proj[a])[0] || "";
-    return '<tr data-key="' + esc(x.key) + '"><td class="l"><b>' + esc(x.payee) + '</b><div class="nar">' + esc(x.notes.join(" · ")) + "</div></td>" +
+    return '<tr data-key="' + esc(x.key) + '"><td class="l"><b>' + esc(x.payee) + '</b><div class="nar" title="' + esc(x.notes.join(" · ")) + '">' + esc(x.notes.join(" · ")) + "</div></td>" +
       "<td>" + fmt(x.amt) + '<div class="sub">' + x.n + " · " + dmy(x.first) + (x.first !== x.last ? " to " + dmy(x.last) : "") + "</div></td>" +
       '<td class="l"><input type="text" class="clV" list="vendorList" value="' + esc(titleCase(x.payee)) + '"></td>' +
       '<td class="l"><select class="clC">' + catOpts("", "Pick…") + "</select></td>" +
       '<td class="l"><select class="clP">' + projOpts(pj, "Varies / not set") + "</select></td>" +
-      '<td class="l"><button class="small primary" data-act="clsave">Save</button> <button class="small" data-act="cldg" title="The DG set partner\'s payee: left out of payables">DG set</button></td></tr>';
+      '<td class="l"><div class="acts"><button class="small primary" data-act="clsave">Save</button><button class="small" data-act="cldg" title="The DG set partner\'s payee: left out of payables">DG set</button></div></td></tr>';
   }).join("") + "</tbody></table>" + (list.length > CL_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="clmore">Show ' + Math.min(60, list.length - CL_SHOW) + " more</button></div>" : "");
 }
 const titleCase = s => String(s || "").toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()).replace(/\b(Ltd|Pvt|Llp)\b/g, w => w.toUpperCase());
@@ -890,7 +892,10 @@ function clSave(tr, dg) {
   if (!cat) { $(".clC", tr).classList.add("bad"); toast("Pick a category, or DG set"); return; }
   const v = ensureVendor(name, r0.payee, { cat: dg ? "" : cat, project: proj, unit: dg ? "DG" : undefined });
   if (!v.cat && !dg) v.cat = cat;
+  const idx = [].indexOf.call(tr.parentNode.children, tr);
   persist(); renderAll();
+  // the saved row drops out of the list: put the cursor on the next payee's category, so each one is a pick and Enter
+  const next = $$("#clTbl tbody tr")[idx]; if (next) $(".clC", next).focus();
   toast(r0.payee + (dg ? " marked DG set" : " → " + v.name));
 }
 
@@ -1240,6 +1245,7 @@ function wire() {
   $("#pSelClear").onclick = () => { P_SEL = {}; renderPayments(); };
   $("#clMin").onchange = () => { CL_SHOW = 60; renderClassify(); };
   $("#clSearch").oninput = () => { CL_SHOW = 60; renderClassify(); };
+  $("#clTbl").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".clV,.clC,.clP")) { e.preventDefault(); clSave(e.target.closest("tr")); } });
   $("#vSearch").oninput = renderVendors;
   $("#bkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onBankFiles(fs); };
   $("#catNew").onkeydown = e => { if (e.key === "Enter") catAdd(); };
