@@ -259,6 +259,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button data-tab="payments">Payments</button>
     <button data-tab="vendors">Vendors</button>
     <button data-tab="projects">Projects</button>
+    <button data-tab="masters">Masters</button>
     <button data-tab="import">Import</button>
   </nav>
 
@@ -334,8 +335,17 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <h2>Imported so far</h2>
       <div class="tblwrap" id="bkDone"></div>
     </div>
+  </section>
+
+  <section id="tab-masters" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Categories</h2><span class="sub" id="catSum"></span></div>
+      <div class="help">Rename a category and every payment in it follows. "Left out" keeps its payments out of the payables totals (like the DG set). "No project" is for company-level payments that never belong to a site. A category in use cannot be deleted: hide it instead, so it stops showing in the pick lists. The categories the bank text sets by itself (tax, GST, PF and ESIC, loans, card bills, bank charges, own accounts, DG set) can be renamed but not removed.</div>
+      <div class="toolbar" style="margin-bottom:8px"><input type="text" id="catNew" placeholder="New category name" style="max-width:280px"><button class="primary small" data-act="catadd">+ Category</button></div>
+      <div class="tblwrap" id="catTbl"></div>
+    </div>
     <div class="card">
-      <h2>Settings</h2>
+      <h2>Payment sources and duplicate check</h2>
       <div class="form">
         <label>Other payment sources (comma separated)<input type="text" id="setSources" placeholder="e.g. Vignesh personal, MD personal"></label>
         <label>Duplicate check: days apart<input type="number" id="setDupDays" min="0" max="30"></label>
@@ -379,26 +389,39 @@ function closeModal() { $("#modalbg").classList.remove("show"); }
 
 /* ---------- categories ---------- */
 // "out": not a payable (money moving between NIL's own accounts, or the DG set partner's business)
-const CATS = [
+// starting list; the categories tab keeps renames, flags and added ones (a row there overrides the default with the same id)
+const DEFAULT_CATS = [
   ["sub", "Subcontract"], ["mat", "Material"], ["hire", "Equipment hire"], ["fuel", "Diesel and fuel"], ["trans", "Transport"],
   ["labour", "Labour contractor"], ["wages", "Salary and wages"], ["rcs", "Manpower agency (RCS)"], ["repair", "Repairs and spares"],
   ["cons", "Consultant and professional"], ["rent", "Rent and utilities"], ["ins", "Insurance"], ["comm", "Commission"],
-  ["family", "Directors and family"], ["loan", "Loan and EMI"], ["tax", "TDS and income tax"], ["gst", "GST"], ["stat", "PF and ESIC"],
-  ["card", "Credit card bill"], ["bank", "Bank charges"], ["float", "Site float top-up"], ["site", "Site expenses"], ["other", "Other"],
-  ["dg", "DG set (left out)"], ["internal", "Own accounts and FD (left out)"]
-];
-const CAT = {}; CATS.forEach(c => { CAT[c[0]] = c[1]; });
-const OUT = { dg: 1, internal: 1 };
-const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.map(c => '<option value="' + c[0] + '"' + (c[0] === sel ? " selected" : "") + ">" + esc(c[1]) + "</option>").join("");
+  ["family", "Directors and family", 0, 1], ["loan", "Loan and EMI", 0, 1], ["tax", "TDS and income tax", 0, 1], ["gst", "GST", 0, 1], ["stat", "PF and ESIC", 0, 1],
+  ["card", "Credit card bill", 0, 1], ["bank", "Bank charges", 0, 1], ["float", "Site float top-up"], ["site", "Site expenses"], ["other", "Other"],
+  ["dg", "DG set (left out)", 1, 1], ["internal", "Own accounts and FD (left out)", 1, 1]
+].map((c, i) => ({ id: c[0], name: c[1], leftOut: !!c[2], noProject: !!c[3], hidden: false, sort: (i + 1) * 10 }));
+const FIXED = { loan: 1, tax: 1, gst: 1, stat: 1, card: 1, bank: 1, dg: 1, internal: 1 };   // set by the bank text or the DG rule: cannot be removed
+const LOCKED = { dg: 1, internal: 1 };   // always left out of payables
+let CATS = [], CAT = {}, OUT = {}, NOPROJ = {};
+function catsRefresh() {
+  CATS = S.cats.slice().sort((a, b) => (+a.sort || 0) - (+b.sort || 0)); CAT = {}; OUT = {}; NOPROJ = {};
+  CATS.forEach(c => { CAT[c.id] = c.name || c.id; if (c.leftOut || LOCKED[c.id]) OUT[c.id] = 1; if (c.noProject) NOPROJ[c.id] = 1; });
+}
+function mergeCats(list) {
+  const out = (Array.isArray(list) ? list : []).filter(c => c && String(c.id || "").trim()), have = {};
+  out.forEach(c => { have[c.id] = 1; });
+  DEFAULT_CATS.forEach(d => { if (!have[d.id]) out.push(Object.assign({}, d)); });
+  return out;
+}
+const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], settings: { sources: "", dupDays: 3, dupMin: 10000 } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000 } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
   ["vendors", "projects", "lines", "pays"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
 }
@@ -425,13 +448,14 @@ const TABS = {
   projects: ["id", "name", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
+  categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1 };
-const BOOLC = { adv: 1, dupOk: 1 };
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1 };
+const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
 const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
@@ -520,7 +544,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.cats = raw.categories;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -747,7 +771,7 @@ const wordsProject = text => { const u = String(text || "").toUpperCase(); for (
 let ROWS = [], OPEN = [];
 const acctLabel = a => a || "";
 function compute() {
-  buildIndex();
+  catsRefresh(); buildIndex();
   const rows = [];
   S.lines.forEach(l => {
     if (!(l.debit > 0)) return;
@@ -777,7 +801,6 @@ function compute() {
   ROWS = rows;
   OPEN = rows.filter(r => r.kind === "bank" && !r.cat);
 }
-const NOPROJ = { tax: 1, gst: 1, stat: 1, loan: 1, card: 1, bank: 1, family: 1 };   // company-level payments: no project expected
 const needsProject = r => !!r.cat && !r.project && !NOPROJ[r.cat] && !OUT[r.cat];
 const inPeriod = r => { const p = PERIOD; return !p || (r.date >= p[0] && r.date <= p[1]); };
 let PERIOD = null;
@@ -803,7 +826,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderVendors(); renderProjects(); renderImport();
+  renderOverview(); renderClassify(); renderPayments(); renderVendors(); renderProjects(); renderImport(); renderMasters();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1134,6 +1157,37 @@ function renderImport() {
   if (document.activeElement && /^set/.test(document.activeElement.id)) return;
   $("#setSources").value = S.settings.sources || ""; $("#setDupDays").value = S.settings.dupDays; $("#setDupMin").value = S.settings.dupMin;
 }
+/* ---------- masters: categories ---------- */
+function renderMasters() {
+  const used = {};
+  ROWS.forEach(r => { if (r.cat) { const u = used[r.cat] || (used[r.cat] = { n: 0, amt: 0, v: 0 }); u.n++; u.amt += r.amt; } });
+  S.vendors.forEach(v => { if (v.cat) (used[v.cat] || (used[v.cat] = { n: 0, amt: 0, v: 0 })).v++; });
+  if (document.activeElement && document.activeElement.classList.contains("catName")) return;
+  $("#catSum").textContent = CATS.length + " categories" + (CATS.some(c => c.hidden) ? ", " + CATS.filter(c => c.hidden).length + " hidden" : "");
+  $("#catTbl").innerHTML = '<table><thead><tr><th class="l">Name</th><th>Left out</th><th>No project</th><th>Hidden</th><th>Payments</th><th>Paid (all dates)</th><th>Vendors</th><th></th></tr></thead><tbody>' +
+    CATS.map((c, i) => { const u = used[c.id] || { n: 0, amt: 0, v: 0 }, inUse = u.n || u.v;
+      return '<tr data-id="' + esc(c.id) + '"' + (c.hidden ? ' style="opacity:.55"' : "") + '><td class="l"><input type="text" class="catName" value="' + esc(c.name) + '" style="min-width:200px"></td>' +
+        '<td><input type="checkbox" data-act="catflag" data-f="leftOut"' + (OUT[c.id] ? " checked" : "") + (LOCKED[c.id] ? " disabled" : "") + "></td>" +
+        '<td><input type="checkbox" data-act="catflag" data-f="noProject"' + (c.noProject ? " checked" : "") + "></td>" +
+        '<td><input type="checkbox" data-act="catflag" data-f="hidden"' + (c.hidden ? " checked" : "") + (FIXED[c.id] ? " disabled" : "") + "></td>" +
+        "<td>" + (u.n ? u.n.toLocaleString("en-IN") : "") + "</td><td>" + (u.amt ? cmp(u.amt) : "") + "</td><td>" + (u.v || "") + "</td>" +
+        '<td style="white-space:nowrap"><button class="small" data-act="catmove" data-d="-1"' + (i ? "" : " disabled") + ' title="Move up">↑</button> <button class="small" data-act="catmove" data-d="1"' + (i < CATS.length - 1 ? "" : " disabled") + ' title="Move down">↓</button>' +
+        (FIXED[c.id] || inUse ? "" : ' <button class="small" data-act="catdel" title="Delete">Delete</button>') + "</td></tr>"; }).join("") + "</tbody></table>";
+}
+const catById = id => S.cats.filter(c => c.id === id)[0];
+function catAdd() {
+  const name = $("#catNew").value.trim();
+  if (!name) { $("#catNew").classList.add("bad"); return; }
+  if (S.cats.some(c => String(c.name).trim().toLowerCase() === name.toLowerCase())) { toast("There is already a category called " + name); return; }
+  S.cats.push({ id: "c" + uid().slice(1), name: name, leftOut: false, noProject: false, hidden: false, sort: Math.max.apply(null, S.cats.map(c => +c.sort || 0).concat([0])) + 10 });
+  $("#catNew").value = ""; persist(); renderAll(); toast("Category added: " + name);
+}
+function catMove(id, d) {
+  catsRefresh(); const i = CATS.findIndex(c => c.id === id), j = i + d; if (i < 0 || j < 0 || j >= CATS.length) return;
+  CATS.forEach((c, k) => { c.sort = (k + 1) * 10; }); const a = CATS[i], b = CATS[j], t = a.sort; a.sort = b.sort; b.sort = t;   // renumber so the stored order stays clean
+  persist(); renderAll();
+}
+
 /* the Projects import sheet: columns found by their header text */
 async function onProjectFile(f) {
   try {
@@ -1155,7 +1209,7 @@ async function onProjectFile(f) {
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "classify", "payments", "vendors", "projects", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
@@ -1174,6 +1228,13 @@ function wire() {
   $("#clSearch").oninput = () => { CL_SHOW = 60; renderClassify(); };
   $("#vSearch").oninput = renderVendors;
   $("#bkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onBankFiles(fs); };
+  $("#catNew").onkeydown = e => { if (e.key === "Enter") catAdd(); };
+  document.addEventListener("change", e => {
+    if (!e.target.classList.contains("catName")) return;
+    const c = catById(e.target.closest("tr").dataset.id), v = e.target.value.trim();
+    if (!c || !v || v === c.name) { if (c) e.target.value = c.name; return; }
+    c.name = v; persist(); renderAll(); toast("Renamed to " + v);
+  });
   $("#prFile").onchange = e => { const f = e.target.files[0]; if (f) onProjectFile(f); e.target.value = ""; };
   $("#setSources").onchange = e => { S.settings.sources = e.target.value.trim(); persist(); renderAll(); };
   $("#setDupDays").onchange = e => { S.settings.dupDays = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
@@ -1202,6 +1263,10 @@ function wire() {
     else if (act === "newproj") openProject(null);
     else if (act === "predit") openProject(id);
     else if (act === "bkadd") addPending();
+    else if (act === "catadd") catAdd();
+    else if (act === "catflag") { const c = catById(t.closest("tr").dataset.id); if (c) { c[t.dataset.f] = t.checked; persist(); renderAll(); } }
+    else if (act === "catmove") catMove(t.closest("tr").dataset.id, +t.dataset.d);
+    else if (act === "catdel") { const id2 = t.closest("tr").dataset.id; S.cats = S.cats.filter(c => c.id !== id2); persist(); renderAll(); toast("Category deleted"); }
     else if (act === "kpi") { if (id === "classify") showTab("classify"); else drillPay({ pFlag: id }); }
     else if (act === "catdr") drillPay({ pCat: id });
     else if (act === "projdr") drillPay({ pProj: id });
