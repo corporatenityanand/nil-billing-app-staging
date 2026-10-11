@@ -1042,7 +1042,7 @@ function openProject(id) {
   const p = PBY[id] || { id: "", name: "", clientGroup: "", client: "", site: "", unit: "Piling", woNo: "", start: "", end: "", status: "Active", incharge: "", words: "", note: "" };
   const opt = (a, sel) => a.map(x => "<option" + (x === sel ? " selected" : "") + ">" + x + "</option>").join("");
   openModal("<h2>" + (p.id ? esc(p.id) : "New project") + '</h2><div class="form">' +
-    '<label>Code<input type="text" id="jId" value="' + esc(p.id) + '"' + (p.id ? " disabled" : "") + ' placeholder="e.g. REN-WAD"></label>' +
+    '<label>Code<input type="text" id="jId" value="' + esc(p.id) + '" placeholder="e.g. REN-WAD"' + (p.id ? ' title="Changing the code moves every payment and vendor on it to the new code"' : "") + '></label>' +
     '<label>Name<input type="text" id="jName" value="' + esc(p.name) + '"></label><label>Client group<input type="text" id="jGroup" list="groupList" value="' + esc(p.clientGroup) + '" placeholder="Pick or type a new group"></label>' +
     '<label>Client company (billed to)<input type="text" id="jClient" list="clientList" value="' + esc(p.client) + '"></label>' +
     '<datalist id="groupList">' + uniq(S.projects.map(x => x.clientGroup)).sort().map(g => '<option value="' + esc(g) + '">').join("") + "</datalist>" +
@@ -1052,14 +1052,25 @@ function openProject(id) {
     '<label>Status<select id="jStatus">' + opt(["Active", "Completed", "On hold"], p.status) + '</select></label><label>Site in-charge<input type="text" id="jInc" value="' + esc(p.incharge) + '"></label>' +
     '<label style="grid-column:1/-1">Bank words (comma separated)<input type="text" id="jWords" value="' + esc(p.words) + '" placeholder="WADALA, BYCULLA"></label>' +
     '<label style="grid-column:1/-1">Note<input type="text" id="jNote" value="' + esc(p.note) + '"></label></div>' +
-    '<div style="margin-top:12px;display:flex;gap:8px"><span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>', true);
+    '<div style="margin-top:12px;display:flex;gap:8px">' + (p.id ? '<button class="danger" id="mDel">Delete project</button>' : "") + '<span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>', true);
+  const refs = id => S.lines.filter(x => x.project === id).length + S.pays.filter(x => x.project === id).length + S.vendors.filter(x => x.project === id).length;
+  if (p.id) $("#mDel").onclick = () => {
+    const n = refs(p.id);
+    if (n) { toast(n + " payments or vendors are set to " + p.id + ". Change the code instead, or move them first."); return; }
+    S.projects = S.projects.filter(x => x.id !== p.id); closeModal(); persist(); renderAll(); toast("Project " + p.id + " deleted");
+  };
   $("#mSave").onclick = () => {
-    const code = (p.id || $("#jId").value).trim().toUpperCase();
+    const code = $("#jId").value.trim().toUpperCase();
     if (!code) { $("#jId").classList.add("bad"); return; }
-    if (!p.id && PBY[code]) { toast("That code is already used"); $("#jId").classList.add("bad"); return; }
+    if (code !== p.id && PBY[code]) { toast("That code is already used"); $("#jId").classList.add("bad"); return; }
+    let moved = 0;
+    if (p.id && code !== p.id) {   // new code: carry every payment and vendor that pointed at the old one
+      S.lines.concat(S.pays, S.vendors).forEach(x => { if (x.project === p.id) { x.project = code; moved++; } });
+      PBY[p.id].id = code; PBY[code] = PBY[p.id]; delete PBY[p.id];
+    }
     const t = PBY[code] || (S.projects.push({ id: code }), S.projects[S.projects.length - 1]);
     Object.assign(t, { name: $("#jName").value.trim(), clientGroup: $("#jGroup").value.trim(), client: $("#jClient").value.trim(), site: $("#jSite").value.trim(), unit: $("#jUnit").value, woNo: $("#jWo").value.trim(), start: $("#jStart").value, end: $("#jEnd").value, status: $("#jStatus").value, incharge: $("#jInc").value.trim(), words: $("#jWords").value.trim().toUpperCase(), note: $("#jNote").value.trim() });
-    closeModal(); persist(); renderAll(); toast("Project saved");
+    closeModal(); persist(); renderAll(); toast(p.id && code !== p.id ? "Code changed to " + code + (moved ? ", " + moved + " payments and vendors moved" : "") : "Project saved");
   };
 }
 
