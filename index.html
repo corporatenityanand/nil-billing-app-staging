@@ -515,14 +515,14 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
@@ -533,6 +533,7 @@ function normalize(o) {
   n.checks = Array.isArray(o.checks) ? o.checks : [];
   n.bdocs = Array.isArray(o.bdocs) ? o.bdocs : [];
   n.ralines = Array.isArray(o.ralines) ? o.ralines : [];
+  n.advbills = Array.isArray(o.advbills) ? o.advbills : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -575,6 +576,7 @@ const TABS = {
   ra_lines: ["id", "pipeId", "woId", "boqId", "code", "item", "unit", "rate", "prevQty", "qty"],
   work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
   wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
+  adv_bills: ["id", "advId", "billId", "amt"],
   bill_docs: ["id", "pipeId", "woId", "cat", "item", "owner", "due", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
@@ -582,8 +584,8 @@ const TABS = {
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines"];   // added after the first Sheets were made: created on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", adv_bills: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines", "adv_bills"];   // added after the first Sheets were made: created on first load if missing
 const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo", "folder"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
 const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1 };
@@ -700,6 +702,7 @@ async function loadAll() {
   n.checks = raw.wo_checks.map(c => Object.assign(c, { due: toIso(c.due), expires: toIso(c.expires), doneOn: toIso(c.doneOn), phase: WO_PH[c.phase] ? c.phase : "start", status: CK_ST[c.status] ? c.status : "open", dueDay: c.dueDay || "" }));
   n.bdocs = raw.bill_docs.map(d => Object.assign(d, { due: toIso(d.due), doneOn: toIso(d.doneOn), status: CK_ST[d.status] ? d.status : "open" }));
   n.ralines = raw.ra_lines;
+  n.advbills = raw.adv_bills;
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -727,6 +730,7 @@ function rowsView() {
   S.checks.forEach(p => { v.wo_checks[p.id] = pick(p, TABS.wo_checks); });
   S.bdocs.forEach(p => { v.bill_docs[p.id] = pick(p, TABS.bill_docs); });
   S.ralines.forEach(p => { v.ra_lines[p.id] = pick(p, TABS.ra_lines); });
+  S.advbills.forEach(p => { v.adv_bills[p.id] = pick(p, TABS.adv_bills); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -1834,24 +1838,36 @@ function cancelCommit(id, done) {
 /* ---------- mobilisation advances ----------
    An advance (client, optional site, date, amount, recovery % of base) is recovered from the RA bills the client
    agreed to. A bill recovers it when it carries an advance deduction; bills without one are not touched.
-   Deductions are matched to advances oldest-first, so the register shows recovered and still-to-recover. */
+   Bills chosen for an advance (`adv_bills`) recover it first, by the amount chosen; other deductions are matched to
+   advances oldest-first, so the register shows recovered and still-to-recover. */
 let ADV = [];
 const advMatches = (a, b) => a.client === b.client && (!a.site || norm(a.site) === norm(b.site || "")) && (!a.date || !b.date || b.date >= a.date);
 function allocateAdvances(list) {
   const out = S.advances.slice().sort((x, y) => (x.date || "").localeCompare(y.date || "") || String(x.id).localeCompare(String(y.id)))
     .map(a => ({ a: a, amt: +a.amt || 0, pct: +a.pct || 0, recInv: 0, recPi: 0, bills: [] }));
-  const left = x => x.amt - x.recInv - x.recPi;
-  list.slice().sort((x, y) => (x.date || "").localeCompare(y.date || "")).forEach(b => {
+  const left = x => x.amt - x.recInv - x.recPi, byId = {}, links = {}, rest0 = {};
+  out.forEach(x => { byId[x.a.id] = x; });
+  S.advbills.forEach(l => { if (byId[l.advId]) (links[l.billId] = links[l.billId] || []).push(l); });
+  const credit = (x, b, take) => { if (b.status === "PI") x.recPi += take; else x.recInv += take; x.bills.push({ b: b, amt: take }); };
+  const sorted = list.slice().sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+  sorted.forEach(b => {   // chosen bills first
+    if (b.status === "Adv" || !links[b.id]) return;
+    if (b.estAdv) b.eAdv = Math.round(links[b.id].reduce((t, l) => t + (+l.amt || 0), 0));
+    let rest = b.eAdv;
+    links[b.id].forEach(l => { const take = Math.min(rest, +l.amt || 0); if (take >= 0.5) { credit(byId[l.advId], b, take); rest -= take; } });
+    rest0[b.id] = rest;
+  });
+  sorted.forEach(b => {
     if (b.status === "Adv") return;
+    if (links[b.id] && !(rest0[b.id] >= 0.5)) return;
     const cand = out.filter(x => advMatches(x.a, b));
     if (!cand.length) return;
-    if (b.estAdv) { const x = cand.filter(c => left(c) >= 1)[0]; b.eAdv = x ? Math.round(Math.min(b.base * x.pct / 100, left(x))) : 0; }
-    let rest = b.eAdv;
+    if (b.estAdv && !links[b.id]) { const x = cand.filter(c => left(c) >= 1)[0]; b.eAdv = x ? Math.round(Math.min(b.base * x.pct / 100, left(x))) : 0; }
+    let rest = links[b.id] ? rest0[b.id] : b.eAdv;
     for (let i = 0; i < cand.length && rest >= 0.5; i++) {
       const x = cand[i], take = i === cand.length - 1 ? rest : Math.min(rest, Math.max(0, left(x)));
       if (take <= 0) continue;
-      if (b.status === "PI") x.recPi += take; else x.recInv += take;
-      x.bills.push({ b: b, amt: take }); rest -= take;
+      credit(x, b, take); rest -= take;
     }
   });
   out.forEach(x => { x.left = round2(left(x)); });
@@ -2365,22 +2381,65 @@ function openAdvance(id, client, fromMemo) {
     '<label>Date received<input type="date" id="vDate" value="' + esc(v.date) + '"></label><label>Amount (\u20B9)<input type="text" inputmode="decimal" id="vAmt" value="' + esc(v.amt) + '"></label>' +
     '<label>Recovery % of base<input type="number" id="vPct" step="0.1" value="' + esc(v.pct) + '"></label><label>Site / project<input type="text" id="vSite" list="vSites" value="' + esc(v.site) + '" placeholder="blank = all sites"><datalist id="vSites">' + sites.map(x => '<option value="' + esc(x) + '">').join("") + "</datalist></label>" +
     '<label style="grid-column:1/-1">Note (optional)<input type="text" id="vNote" value="' + esc(v.note) + '"></label></div>' +
-    '<div class="help">Recovery is taken from each agreed RA bill at this % of the base amount (before GST) until the advance is used up. Bills before the date received do not count against it.</div><div id="vMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div>' +
+    advPickHtml(a, v) +
+    '<div class="help">Tick the bills this advance is recovered from and how much each one takes; that becomes the bill\'s advance deduction. Whatever is left is taken from later bills at the % of base above, until the advance is used up. Unticking a bill removes its advance deduction.</div><div id="vMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div>' +
     '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").classList.add("wide");
+  const pickSum = () => { let t = 0; $$("#vPick tr[data-b]").forEach(tr => { if ($(".vOn", tr).checked) t += parseAmt($(".vTake", tr).value); }); return t; };
+  const pickNote = () => { const amt = parseAmt($("#vAmt").value), t = pickSum(); if ($("#vPlan")) $("#vPlan").innerHTML = "From these bills: <b>" + fmt(t) + "</b>" + (amt > 0 ? " &middot; " + (t > amt + 0.5 ? '<span style="color:var(--bad)">more than the advance by ' + fmt(t - amt) + "</span>" : "left for later bills: " + fmt(amt - t)) : ""); };
+  $$("#vPick tr[data-b]").forEach(tr => {
+    const on = $(".vOn", tr), take = $(".vTake", tr);
+    on.onchange = () => { if (on.checked && !(parseAmt(take.value) > 0)) { const amt = parseAmt($("#vAmt").value), pct = +$("#vPct").value || 0, room = Math.max(0, amt - pickSum()); take.value = Math.round(Math.min(+tr.dataset.base * pct / 100, room || +tr.dataset.base * pct / 100)); } take.disabled = !on.checked; pickNote(); };
+    take.oninput = pickNote;
+  });
+  $("#vAmt").oninput = pickNote; pickNote();
   $("#mCancel").onclick = closeModal;
   $("#mSave").onclick = () => {
     const amt = parseAmt($("#vAmt").value), pct = +$("#vPct").value;
+    const picks = $$("#vPick tr[data-b]").filter(tr => $(".vOn", tr).checked).map(tr => ({ billId: tr.dataset.b, amt: round2(parseAmt($(".vTake", tr).value)) }));
+    if (picks.some(x => !(x.amt > 0))) { $("#vMsg").textContent = "Enter how much each ticked bill recovers."; return; }
+    if (amt > 0 && picks.reduce((t, x) => t + x.amt, 0) > amt + 0.5) { $("#vMsg").textContent = "The ticked bills recover more than the advance."; return; }
     if (!(amt > 0)) { $("#vMsg").textContent = "Enter the amount received."; return; }
     if (!(pct > 0 && pct <= 100)) { $("#vMsg").textContent = "Recovery % should be between 0 and 100."; return; }
     const rec = { id: a ? a.id : uid(), client: v.client, site: $("#vSite").value.trim(), date: $("#vDate").value, amt: round2(amt), pct: pct, note: $("#vNote").value.trim() };
     if (a) Object.assign(a, rec); else S.advances.push(rec);
-    persist(); closeModal(); renderAll(); toast("Advance saved");
+    const other = {};   // what each bill already recovers for other advances without being chosen for them: it stays on the bill
+    ADV.forEach(x => { if (x.a.id === rec.id) return; x.bills.forEach(y => { if (!S.advbills.some(l => l.advId === x.a.id && l.billId === y.b.id)) other[y.b.id] = (other[y.b.id] || 0) + y.amt; }); });
+    const touched = S.advbills.filter(l => l.advId === rec.id).map(l => l.billId).concat(picks.map(x => x.billId)).concat($$("#vPick tr[data-b]").filter(tr => tr.dataset.auto === "1").map(tr => tr.dataset.b));
+    S.advbills = S.advbills.filter(l => l.advId !== rec.id).concat(picks.map(x => ({ id: uid(), advId: rec.id, billId: x.billId, amt: x.amt })));
+    touched.filter((x, i, l) => l.indexOf(x) === i).forEach(bid => setBillAdv(bid, (other[bid] || 0) + S.advbills.filter(l => l.billId === bid).reduce((t, l) => t + (+l.amt || 0), 0)));
+    persist(); closeModal(); renderAll(); toast("Advance saved" + (picks.length ? ", recovered from " + picks.length + " bill" + (picks.length === 1 ? "" : "s") : ""));
   };
+}
+/* the bills an advance can be recovered from: the client's open bills, and any already recovering it */
+function advPickHtml(a, v) {
+  const x = a ? ADV.filter(y => y.a.id === a.id)[0] : null, mine = {};
+  if (x) x.bills.forEach(y => { mine[y.b.id] = (mine[y.b.id] || 0) + y.amt; });
+  const linked = {}; if (a) S.advbills.filter(l => l.advId === a.id).forEach(l => { linked[l.billId] = 1; });
+  const bs = BILLS.filter(b => b.client === v.client && b.status !== "Adv" && !b.direct && (mine[b.id] || b.bal >= 1)).sort((p, q) => (p.date || "").localeCompare(q.date || ""));
+  if (!bs.length) return '<div class="sub" style="margin-top:10px">No open bills for this client yet: later bills recover the advance at the % above.</div>';
+  return '<h3 class="woph">Recover from these bills</h3><div class="tblwrap"><table class="cktbl" id="vPick"><thead><tr><th></th><th class="l">Bill</th><th class="l">Date</th><th>Base</th><th>Balance</th><th>Advance deduction now</th><th>Recover from it (&#8377;)</th></tr></thead><tbody>' +
+    bs.map(b => { const on = mine[b.id] >= 0.5;
+      return '<tr data-b="' + esc(b.id) + '" data-base="' + b.base + '" data-auto="' + (on && !linked[b.id] ? 1 : 0) + '"><td><input type="checkbox" class="vOn"' + (on ? " checked" : "") + '></td><td class="l">' + esc((b.billno || "-") + (b.seq ? " " + b.seq : "")) + (b.status === "PI" ? ' <span class="tag pi">proforma</span>' : "") + (b.site ? '<div class="sub">' + esc(b.site) + "</div>" : "") +
+        '</td><td class="l">' + dmy(b.date) + '</td><td class="hm">' + fmt(b.base) + '</td><td class="hm">' + fmt(b.bal) + '</td><td class="hm">' + (b.eAdv >= 1 ? fmt(b.eAdv) : "–") + (b.eAdv - (mine[b.id] || 0) >= 1 ? '<div class="sub">' + fmt(b.eAdv - (mine[b.id] || 0)) + " for another advance</div>" : "") + '</td><td><input type="text" inputmode="decimal" class="vTake" style="width:110px;text-align:right" value="' + (on ? Math.round(mine[b.id]) : "") + '"' + (on ? "" : " disabled") + "></td></tr>"; }).join("") +
+    '</tbody></table></div><div class="sub" id="vPlan" style="margin-top:4px"></div>';
+}
+/* set a bill's advance deduction, wherever that bill's figures live (added bill, converted proforma, or a sheet row edit) */
+function setBillAdv(id, amt) {
+  const b = BILLS.filter(x => x.id === id)[0]; if (!b) return;
+  amt = round2(amt);
+  const o = S.overrides[id], keep = { tds: round2(b.eTds), ret: round2(b.eRet), oth: round2(b.eOth) };   // an estimated proforma keeps its estimates as real figures
+  if (o) { Object.assign(o, o.manual ? {} : keep, { adv: amt, manual: true }); return; }
+  if (b.added) { const p = S.pis.filter(x => x.id === id)[0]; if (p) Object.assign(p, b.est ? keep : {}, { adv: amt }); return; }
+  const orig = DATA.bills.filter(x => x.id === id)[0]; if (!orig) return;
+  const ch = Object.assign({}, S.billEdits[id] || {}, b.est ? keep : {}, { adv: amt });
+  Object.keys(ch).forEach(k => { if (typeof ch[k] === "number" && Math.abs((+orig[k] || 0) - ch[k]) < 0.005) delete ch[k]; });
+  if (Object.keys(ch).length) S.billEdits[id] = ch; else delete S.billEdits[id];
 }
 function deleteAdvance(id) {
   const a = S.advances.filter(x => x.id === id)[0]; if (!a) return;
   confirmModal("Delete this advance?", esc(a.client) + " &middot; " + fmt(a.amt) + (a.date ? " received " + dmy(a.date) : "") + ".<br>Deductions already on bills stay as they are.", "Delete advance", () => {
-    S.advances = S.advances.filter(x => x.id !== id); persist(); renderAll(); toast("Advance deleted");
+    S.advances = S.advances.filter(x => x.id !== id); S.advbills = S.advbills.filter(l => l.advId !== id); persist(); renderAll(); toast("Advance deleted");
   });
 }
 function exportClient() {
