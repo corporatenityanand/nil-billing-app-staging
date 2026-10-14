@@ -362,6 +362,13 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="imprev" id="bkPrev"></div>
     </div>
     <div class="card" style="margin-bottom:12px">
+      <h2>Site float book</h2>
+      <div class="help">The site float holder's monthly book (.xlsx, one sheet per month with Date, Vr. No., Account Head, Narration, Amount, Credit Amt., Balance). Each paid line becomes a payment from "Site float" (category Site expenses until changed). Each top-up is looked for in the bank: a debit of the same amount up to 4 days before, to the holder's name as the bank writes it; those bank lines are set to "Site float top-up", which is then left out of the totals so nothing counts twice. Importing an updated book again adds only the new lines.</div>
+      <div class="toolbar"><label>Holder's name in the bank <input type="text" id="sfPayee" placeholder="as the statement writes it"></label>
+        <label class="btnlike">Choose float book<input type="file" id="sfFile" accept=".xlsx,.xls" hidden></label></div>
+      <div class="sub" id="sfInfo"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
       <h2>WhatsApp chat extract</h2>
       <div class="help">The bills and payment proofs read from a WhatsApp chat export, as a .json file prepared by Claude. Importing again updates the extracted details and keeps what was checked here (bank line confirmed, paid outside, ignored).</div>
       <label class="btnlike">Choose extract file<input type="file" id="cdFile" accept=".json" hidden></label>
@@ -450,7 +457,7 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000 } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
@@ -1209,6 +1216,7 @@ function renderImport() {
   const ks = Object.keys(m).sort();
   $("#bkDone").innerHTML = ks.length ? '<table><thead><tr><th>Account</th><th class="l">From</th><th class="l">To</th><th>Lines</th><th>Money out</th></tr></thead><tbody>' + ks.map(k => "<tr><td>" + esc(k) + '</td><td class="l">' + dmy(m[k].lo) + '</td><td class="l">' + dmy(m[k].hi) + "</td><td>" + m[k].n.toLocaleString("en-IN") + "</td><td>" + cmp(m[k].out) + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Nothing imported yet.</div>';
   if (document.activeElement && /^set/.test(document.activeElement.id)) return;
+  if (document.activeElement !== $("#sfPayee")) $("#sfPayee").value = S.settings.floatPayee || "";
   $("#setSources").value = S.settings.sources || ""; $("#setDupDays").value = S.settings.dupDays; $("#setDupMin").value = S.settings.dupMin;
 }
 /* ---------- masters: categories ---------- */
@@ -1405,6 +1413,70 @@ async function onChatFile(f) {
   } catch (e) { toast("Could not read " + f.name + ": " + (e.message || e)); }
 }
 
+/* ---------- site float book: the holder's monthly sheets -> payments from "Site float"; top-ups found in the bank ---------- */
+const sfDate = (v, last) => {
+  if (v instanceof Date && !isNaN(v)) return new Date(v.getTime() - v.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  const m = String(v == null ? "" : v).trim().match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+  if (!m) return last;
+  let y = +m[3]; if (y < 100) y += 2000; else if (y < 1000) y = 2000 + (y % 100);   // "10.07.206" is a typo for 2026
+  return y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+};
+function parseFloatBook(wb, X) {
+  const out = [];
+  wb.SheetNames.forEach(sn => {
+    const rows = X.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: "" });
+    const h = rows.findIndex(r => r.some(c => /^narration$/i.test(String(c).trim())) && r.some(c => /^balance$/i.test(String(c).trim())));
+    if (h < 0) return;
+    const H = rows[h].map(c => String(c).trim().toLowerCase()), col = re => H.findIndex(c => re.test(c));
+    const C = { d: col(/^date/), vr: col(/^vr/), head: col(/^account head/), nar: col(/^narration/), out: col(/^amount/), inn: col(/^credit/) };
+    let last = "";
+    rows.slice(h + 1).forEach((r, i) => {
+      const d = sfDate(r[C.d], last); last = d || last;
+      const nar = String(r[C.nar] || "").trim(), head = String(r[C.head] || "").trim();
+      if (/opening balance/i.test(nar)) return;
+      const o = toNum(r[C.out], 0), n = toNum(r[C.inn], 0);
+      if (!(o > 0 || n > 0) || !d) return;
+      out.push({ sheet: sn, row: h + 2 + i, date: d, vr: String(r[C.vr] == null ? "" : r[C.vr]).trim(), head: head, nar: nar, out: o, inn: n });
+    });
+  });
+  return out;
+}
+async function onFloatFile(f) {
+  try {
+    const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), { type: "array", cellDates: true });
+    const recs = parseFloatBook(wb, X);
+    if (!recs.length) { toast("No month sheets with Narration and Balance columns in " + f.name); return; }
+    const have = {}; S.pays.forEach(p => { have[p.id] = 1; });
+    const by = USER ? USER.email : "", on = today(), seen = {};
+    let add = 0, addAmt = 0, same = 0;
+    recs.filter(r => r.out > 0).forEach(r => {
+      let id = "sf" + hash([r.date, r.vr, r.head, r.nar, r.out].join("|"));
+      while (seen[id]) id += "b"; seen[id] = 1;   // two identical lines on one day stay two payments
+      if (have[id]) { same++; return; }
+      const v = vendorByName(r.head);
+      S.pays.push({ id: id, date: r.date, source: "Site float", vendorId: v ? v.id : "", payee: r.head || r.nar.slice(0, 40), amt: r.out, cat: "site", project: wordsProject(r.nar) || "", adv: false, dupOk: false,
+        ref: (r.vr ? "Vr " + r.vr + " · " : "") + r.sheet.trim(), note: r.nar, by: by, on: on });
+      add++; addAmt += r.out;
+    });
+    const who = norm(S.settings.floatPayee || ""), taken = {};
+    let tops = 0, topAmt = 0, inBank = 0, inBankAmt = 0;
+    recs.filter(r => r.inn > 0).forEach(r => {
+      tops++; topAmt += r.inn;
+      if (!who) return;
+      const l = S.lines.filter(x => x.debit > 0 && !taken[x.id] && Math.abs(x.debit - r.inn) <= 1 && daysBetween(x.date, r.date) >= 0 && daysBetween(x.date, r.date) <= 4 && norm(x.narration).indexOf(who) >= 0)
+        .sort((a, b) => daysBetween(a.date, r.date) - daysBetween(b.date, r.date))[0];
+      if (!l) return;
+      taken[l.id] = 1; inBank++; inBankAmt += r.inn;
+      if (l.cat !== "float") l.cat = "float";
+    });
+    if (inBank) { const c = catById("float"); if (c && !c.leftOut) c.leftOut = true; }
+    persist(); renderAll();
+    $("#sfInfo").textContent = add + " payments added (" + fmt(addAmt) + ")" + (same ? ", " + same + " already in" : "") + " · " + tops + " top-ups (" + fmt(topAmt) + "): " +
+      (who ? inBank + " found in the bank (" + fmt(inBankAmt) + "), " + (tops - inBank) + " not in the company bank (given by hand or by a director)" : "type the holder's name as the bank writes it to find them in the bank");
+    toast(add + " site float payments added");
+  } catch (e) { toast("Could not read " + f.name + ": " + (e.message || e)); }
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
@@ -1430,6 +1502,8 @@ function wire() {
   ["cdMonth", "cdKind", "cdState"].forEach(id => { $("#" + id).onchange = () => { CD_SHOW = 100; renderChat(); }; });
   $("#cdSearch").oninput = () => { CD_SHOW = 100; renderChat(); };
   $("#cdReset").onclick = () => { $("#cdMonth").value = ""; $("#cdKind").value = "bill"; $("#cdState").value = ""; $("#cdSearch").value = ""; CD_SHOW = 100; renderChat(); };
+  $("#sfFile").onchange = e => { const f = e.target.files[0]; if (f) onFloatFile(f); e.target.value = ""; };
+  $("#sfPayee").onchange = e => { S.settings.floatPayee = e.target.value.trim(); persist(); };
   $("#cdFile").onchange = e => { const f = e.target.files[0]; if (f) onChatFile(f); e.target.value = ""; };
   $("#bkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onBankFiles(fs); };
   $("#catNew").onkeydown = e => { if (e.key === "Enter") catAdd(); };
