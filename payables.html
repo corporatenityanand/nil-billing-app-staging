@@ -216,6 +216,14 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .cltbl .nar{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cltbl .acts{display:flex;gap:4px;flex-wrap:wrap}
 .cltbl tr:focus-within td{background:var(--surface2)}
+.cdtbl{table-layout:fixed;min-width:760px}
+.cdtbl td{vertical-align:top;white-space:normal;overflow-wrap:anywhere;padding:5px 6px}
+.cdtbl .nar{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cdtbl .acts{display:flex;gap:4px;flex-wrap:wrap}
+.cdtbl tr.rp td{opacity:.55}
+.cdmon td,.cdmon th{white-space:nowrap}
+.cdmon tr.on td{background:var(--surface2);font-weight:600}
+.pill.ok{background:color-mix(in srgb,var(--ok,#2e7d32) 18%,var(--surface));color:var(--text)}
 td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-width:200px;max-width:380px}
 .imprev{margin-top:10px}
 .bars .crow{grid-template-columns:minmax(120px,240px) minmax(0,1fr) 120px}
@@ -259,6 +267,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button data-tab="overview" class="on">Overview</button>
     <button data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
     <button data-tab="payments">Payments</button>
+    <button data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
     <button data-tab="vendors">Vendors</button>
     <button data-tab="projects">Projects</button>
     <button data-tab="masters">Masters</button>
@@ -307,6 +316,25 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <div class="card"><div class="tblwrap" id="pTbl"></div></div>
   </section>
 
+  <section id="tab-chat" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">WhatsApp bills and payment proofs by month</h2><span class="sub" id="cdSum"></span></div>
+      <div class="help">Bills, payment screenshots and other papers read from WhatsApp chat exports (Import tab). Each one is checked against the company bank lines: same amount, a date close by, and the UPI reference or the payee's name when they show. Confirm a suggested bank line, or mark the document paid outside the company bank, or not a bill. Click a month to see its documents.</div>
+      <div class="tblwrap" id="cdMon"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px">
+        <select id="cdMonth"></select>
+        <select id="cdKind"><option value="bill">Bills</option><option value="pay">Payment proofs</option><option value="other">Other papers</option><option value="">All documents</option></select>
+        <select id="cdState"><option value="">Any state</option><option value="open">To check</option><option value="sugg">Bank line suggested</option><option value="nomatch">No bank line found</option><option value="ok">Matched to bank</option><option value="outside">Paid outside company bank</option><option value="ignore">Not a bill / ignored</option><option value="repost">Posted twice</option></select>
+        <input type="text" id="cdSearch" placeholder="Search vendor, bill no., items, UPI ref">
+        <button id="cdReset" class="small">Reset filters</button>
+      </div>
+      <div class="sub" id="cdInfo" style="margin:-2px 0 8px"></div>
+      <div class="tblwrap" id="cdTbl"></div>
+    </div>
+  </section>
+
   <section id="tab-vendors" class="hide">
     <div class="card">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Vendors</h2><span class="sub" id="vSum"></span><span style="flex:1"></span>
@@ -332,6 +360,12 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="help">Upload statements as the bank gives them: Kotak as CSV, HDFC as XLS. Lines already imported are skipped, so overlapping periods are fine. Sweeps to fixed deposits and transfers between NIL's own accounts are recognised and kept out of payables.</div>
       <label class="btnlike">Choose statement files<input type="file" id="bkFile" accept=".csv,.xls,.xlsx" multiple hidden></label>
       <div class="imprev" id="bkPrev"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <h2>WhatsApp chat extract</h2>
+      <div class="help">The bills and payment proofs read from a WhatsApp chat export, as a .json file prepared by Claude. Importing again updates the extracted details and keeps what was checked here (bank line confirmed, paid outside, ignored).</div>
+      <label class="btnlike">Choose extract file<input type="file" id="cdFile" accept=".json" hidden></label>
+      <span class="sub" id="cdImpInfo"></span>
     </div>
     <div class="card" style="margin-bottom:12px">
       <h2>Imported so far</h2>
@@ -416,13 +450,13 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000 } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000 } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
-  ["vendors", "projects", "lines", "pays"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  ["vendors", "projects", "lines", "pays", "docs"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
@@ -451,14 +485,15 @@ const TABS = {
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1 };
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
-const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
@@ -546,7 +581,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.cats = raw.categories;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.cats = raw.categories;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -828,7 +863,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderVendors(); renderProjects(); renderImport(); renderMasters();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderVendors(); renderProjects(); renderImport(); renderMasters();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1225,10 +1260,155 @@ async function onProjectFile(f) {
   } catch (e) { toast(e.message || String(e)); }
 }
 
+/* ---------- WhatsApp bills: documents read from chat exports, checked against the bank lines ---------- */
+const CD_BILL = { "tax invoice": 1, "bill / memo": 1, "fuel slip / pump bill": 1, "voucher / handwritten": 1 };
+const CD_PAY = { "payment screenshot": 1, "bank payment list": 1 };
+const cdKind = d => (CD_BILL[d.type] ? "bill" : CD_PAY[d.type] ? "pay" : "other");
+const cdAmt = d => (cdKind(d) === "pay" ? +d.paid || +d.total || 0 : +d.total || +d.paid || 0);
+const cdDate = d => d.docDate || d.posted || "";
+const cdDrive = d => (d.driveId ? "https://drive.google.com/file/d/" + encodeURIComponent(d.driveId) + "/view" : "");
+let CD_SHOW = 100, CDM = {};
+const STOPN = { BANK: 1, UPI: 1, NEFT: 1, IMPS: 1, RTGS: 1, PAYMENT: 1, SENT: 1, TO: 1, FROM: 1, KOTAK: 1, HDFC: 1, TRANSFER: 1, ENTERPRISES: 1, ENTERPRISE: 1, TRADERS: 1, SERVICES: 1, INDIA: 1 };
+const cdWords = s => norm(s).split(" ").filter(w => w.length >= 3 && !STOPN[w]);
+/* the best bank debit for each open document: UPI reference first, then amount with the payee's name, then amount and date alone */
+function cdMatch() {
+  CDM = {};
+  const taken = {}, byAmt = {};
+  S.docs.forEach(d => { if (d.lineId) taken[d.lineId] = d.id; });
+  S.lines.forEach(l => { if (l.debit > 0) (byAmt[Math.round(l.debit)] || (byAmt[Math.round(l.debit)] = [])).push(l); });
+  S.docs.forEach(d => {
+    if (d.status || d.repostOf) return;
+    const a = cdAmt(d), dt = cdDate(d), k = cdKind(d);
+    if (!(a > 0) || !dt || k === "other") return;
+    const lo = k === "pay" ? -2 : -30, hi = k === "pay" ? 4 : 120;
+    const ref = String(d.txn || "").replace(/\D/g, "").slice(-12), vw = cdWords(d.vendor);
+    let best = null;
+    [-1, 0, 1].forEach(o => (byAmt[Math.round(a) + o] || []).forEach(l => {
+      if (taken[l.id] || Math.abs(l.debit - a) > 1) return;
+      const gap = daysBetween(dt, l.date); if (gap < lo || gap > hi) return;
+      const txt = (l.narration || "") + " " + (l.ref || ""), lw = cdWords(txt);
+      const how = ref.length >= 6 && txt.replace(/\D/g, " ").indexOf(ref) >= 0 ? 3 : vw.some(w => lw.indexOf(w) >= 0) ? 2 : (k === "pay" || a >= 5000) ? 1 : 0;
+      if (!how) return;
+      const sc = how * 1000 - Math.abs(gap);
+      if (!best || sc > best.sc) best = { l: l, how: how, gap: gap, sc: sc };
+    }));
+    if (best) CDM[d.id] = best;
+  });
+}
+const CD_HOW = { 3: "UPI reference", 2: "amount and name", 1: "amount and date" };
+function cdState(d) {
+  if (d.repostOf) return "repost";
+  if (d.status) return d.status;
+  if (cdKind(d) === "other") return "open";
+  return CDM[d.id] ? "sugg" : "nomatch";
+}
+const CD_LBL = { open: "To check", sugg: "Bank line suggested", nomatch: "No bank line found", ok: "Matched to bank", outside: "Paid outside company bank", ignore: "Not a bill", repost: "Posted twice" };
+function cdFilter() {
+  const m = $("#cdMonth").value, k = $("#cdKind").value, st = $("#cdState").value, q = $("#cdSearch").value.trim().toLowerCase();
+  return S.docs.filter(d => {
+    if (m && d.month !== m) return false;
+    if (k && cdKind(d) !== k) return false;
+    const s = cdState(d);
+    if (st === "open" ? (s !== "sugg" && s !== "nomatch" && s !== "open") : st ? s !== st : s === "repost") return false;
+    if (q && [d.vendor, d.docNo, d.items, d.txn, d.upi, d.site, d.caption, d.who, d.file].join(" ").toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  }).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : (a.post || 0) - (b.post || 0)));
+}
+function renderChat() {
+  cdMatch();
+  const live = S.docs.filter(d => !d.repostOf);
+  const todoN = live.filter(d => !d.status && cdKind(d) !== "other").length; $("#cdCnt").textContent = todoN ? "(" + todoN.toLocaleString("en-IN") + ")" : "";
+  const months = uniq(S.docs.map(d => d.month).filter(Boolean)).sort();
+  const sel = $("#cdMonth"), cur = sel.value;
+  sel.innerHTML = '<option value="">All months</option>' + months.slice().reverse().map(m => '<option value="' + esc(m) + '">' + esc(monLbl(m)) + "</option>").join("");
+  sel.value = months.indexOf(cur) >= 0 ? cur : "";
+  const bills = live.filter(d => cdKind(d) === "bill"), pays = live.filter(d => cdKind(d) === "pay");
+  const sum = a => a.reduce((s, d) => s + cdAmt(d), 0);
+  $("#cdSum").textContent = S.docs.length ? bills.length.toLocaleString("en-IN") + " bills " + cmp(sum(bills)) + " · " + pays.length.toLocaleString("en-IN") + " payment proofs " + cmp(sum(pays)) : "";
+  if (!S.docs.length) {
+    $("#cdMon").innerHTML = '<div class="sub">Nothing imported yet. Import a WhatsApp chat extract (.json) on the Import tab.</div>';
+    $("#cdTbl").innerHTML = ""; $("#cdInfo").textContent = ""; return;
+  }
+  const bank = d => d.status === "ok" || (!d.status && CDM[d.id]);
+  $("#cdMon").innerHTML = '<table class="cdmon"><thead><tr><th class="l">Month</th><th>Bills</th><th>Bill value</th><th>Payment proofs</th><th>Paid per proofs</th><th>Proofs matched to bank</th><th>Paid outside company bank</th><th>Still to check</th></tr></thead><tbody>' +
+    months.map(m => {
+      const b = bills.filter(d => d.month === m), p = pays.filter(d => d.month === m);
+      const pm = p.filter(d => d.status === "ok"), ps = p.filter(d => !d.status && CDM[d.id]), po = p.filter(d => d.status === "outside");
+      const todo = live.filter(d => d.month === m && !d.status && cdKind(d) !== "other").length;
+      return '<tr class="dr' + ($("#cdMonth").value === m ? " on" : "") + '" data-act="cdmon" data-id="' + esc(m) + '"><td class="l">' + esc(monLbl(m)) + "</td><td>" + (b.length || "") + "</td><td>" + (b.length ? cmp(sum(b)) : "") + "</td><td>" + (p.length || "") + "</td><td>" + (p.length ? cmp(sum(p)) : "") +
+        "</td><td>" + (pm.length ? cmp(sum(pm)) : "") + (ps.length ? ' <span class="sub">' + (pm.length ? "+ " : "") + cmp(sum(ps)) + " suggested</span>" : "") + "</td><td>" + (po.length ? cmp(sum(po)) : "") + "</td><td>" + (todo || "") + "</td></tr>";
+    }).join("") + "</tbody></table>";
+  const list = cdFilter(), shown = list.slice(0, CD_SHOW);
+  $("#cdInfo").textContent = list.length.toLocaleString("en-IN") + " documents · " + cmp(sum(list)) + (list.length > CD_SHOW ? " · showing the first " + CD_SHOW : "");
+  $("#cdTbl").innerHTML = list.length ? '<table class="cdtbl"><colgroup><col style="width:10%"><col style="width:20%"><col style="width:24%"><col style="width:11%"><col style="width:22%"><col style="width:13%"></colgroup><thead><tr><th class="l">Date</th><th class="l">Document</th><th class="l">Vendor and items</th><th>Amount</th><th class="l">Company bank</th><th class="l"></th></tr></thead><tbody>' +
+    shown.map(d => {
+      const st = cdState(d), m = CDM[d.id], ln = d.lineId ? S.lines.filter(l => l.id === d.lineId)[0] : null, url = cdDrive(d);
+      const v = VBY[ALIAS[norm(d.vendor)]];
+      const doc = '<span class="pill">' + esc(d.type || "document") + "</span>" + (d.docNo ? " " + esc(d.docNo) : "") +
+        '<div class="nar">' + (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">Open in Drive</a> · ' : "") + esc(d.who || "") + (d.posted ? " " + esc(dmy(d.posted)) : "") + "</div>";
+      const who = "<b>" + esc(d.vendor || "?") + "</b>" + (v && v.name !== d.vendor ? ' <span class="sub">(' + esc(v.name) + ")</span>" : "") +
+        '<div class="nar" title="' + esc([d.items, d.site, d.caption, d.note].filter(Boolean).join(" · ")) + '">' + esc([d.items, d.site, d.note].filter(Boolean).join(" · ")) + "</div>";
+      const lineTxt = l => esc((l.acct || "") + " " + dmy(l.date) + " " + fmt(l.debit)) + '<div class="nar" title="' + esc(l.narration) + '">' + esc(l.narration) + "</div>";
+      let bk = "", acts = "";
+      if (st === "ok" && ln) { bk = '<span class="pill ok">matched</span> ' + lineTxt(ln); acts = '<button class="small" data-act="cdset" data-s="" data-id="' + esc(d.id) + '">Undo</button>'; }
+      else if (st === "ok") { bk = '<span class="pill ok">matched</span> <span class="sub">bank line no longer in the sheet</span>'; acts = '<button class="small" data-act="cdset" data-s="" data-id="' + esc(d.id) + '">Undo</button>'; }
+      else if (st === "outside" || st === "ignore") { bk = '<span class="pill">' + esc(CD_LBL[st]) + "</span>"; acts = '<button class="small" data-act="cdset" data-s="" data-id="' + esc(d.id) + '">Undo</button>'; }
+      else if (st === "repost") { bk = '<span class="pill">posted twice</span> <span class="sub">same as ' + esc(d.repostOf) + "</span>"; }
+      else {
+        if (m) { bk = '<span class="pill auto">' + esc(CD_HOW[m.how]) + "</span> " + lineTxt(m.l); acts = '<button class="small primary" data-act="cdok" data-id="' + esc(d.id) + '" data-line="' + esc(m.l.id) + '">Confirm</button>'; }
+        else if (cdKind(d) !== "other") bk = '<span class="sub">' + (cdAmt(d) ? "No company bank debit of this amount close to this date" : "No amount read") + (d.paidFrom ? "; paid from " + esc(d.paidFrom) : "") + "</span>";
+        acts += '<button class="small" data-act="cdpick" data-id="' + esc(d.id) + '">Pick line</button><button class="small" data-act="cdset" data-s="outside" data-id="' + esc(d.id) + '" title="Paid from a personal account, site float or Direct">Paid outside</button><button class="small" data-act="cdset" data-s="ignore" data-id="' + esc(d.id) + '">Not a bill</button>';
+      }
+      return '<tr data-id="' + esc(d.id) + '"' + (st === "repost" ? ' class="rp"' : "") + '><td class="l">' + esc(dmy(cdDate(d))) + (d.docDate ? "" : ' <span class="sub">posted</span>') + "</td><td class=\"l\">" + doc + '</td><td class="l">' + who + "</td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") + (d.conf && d.conf !== "high" ? '<div class="sub">' + esc(d.conf) + " confidence</div>" : "") + '</td><td class="l">' + bk + '</td><td class="l"><div class="acts">' + acts + "</div></td></tr>";
+    }).join("") + "</tbody></table>" + (list.length > CD_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="cdmore">Show ' + Math.min(100, list.length - CD_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">No documents match these filters.</div>';
+}
+const monLbl = m => { const p = String(m).split("-"); return p.length === 2 ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+p[1] - 1] + " " + p[0] : m; };
+function cdSet(id, status, lineId) {
+  const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
+  d.status = status || ""; d.lineId = status === "ok" ? lineId || "" : "";
+  d.checkedBy = status ? (USER ? USER.email : "") : ""; d.checkedOn = status ? today() : "";
+  closeModal(); persist(); renderChat();
+  toast(status === "ok" ? "Matched to the bank line" : status ? CD_LBL[status] : "Back to check");
+}
+/* pick a bank line by hand: debits of about this amount first, any date */
+function cdPick(id) {
+  const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
+  const a = cdAmt(d), dt = cdDate(d), taken = {};
+  S.docs.forEach(x => { if (x.lineId && x.id !== id) taken[x.lineId] = 1; });
+  const near = S.lines.filter(l => l.debit > 0 && !taken[l.id] && (!a || Math.abs(l.debit - a) <= Math.max(1, a * 0.02)))
+    .sort((x, y) => Math.abs(daysBetween(dt || x.date, x.date)) - Math.abs(daysBetween(dt || y.date, y.date))).slice(0, 30);
+  openModal("<h2>Pick the bank line for " + esc(d.vendor || d.file || "this document") + "</h2>" +
+    '<div class="help">' + esc(fmt(a)) + (dt ? " on " + esc(dmy(dt)) : "") + ". Company bank debits within 2% of this amount, nearest date first." + "</div>" +
+    (near.length ? '<div class="tblwrap"><table><thead><tr><th class="l">Bank</th><th>Date</th><th>Amount</th><th class="l">Narration</th><th></th></tr></thead><tbody>' +
+      near.map(l => '<tr><td class="l">' + esc(l.acct) + "</td><td>" + esc(dmy(l.date)) + "</td><td>" + fmt(l.debit) + '</td><td class="l" style="white-space:normal;overflow-wrap:anywhere">' + esc(l.narration) + '</td><td><button class="small primary" data-act="cdok" data-id="' + esc(id) + '" data-line="' + esc(l.id) + '">This one</button></td></tr>').join("") + "</tbody></table></div>"
+      : '<div class="sub">No company bank debit within 2% of this amount.</div>') +
+    '<div style="margin-top:10px;text-align:right"><button data-act="mclose">Close</button></div>', true);
+}
+async function onChatFile(f) {
+  try {
+    const j = JSON.parse(await f.text()), list = Array.isArray(j) ? j : (j && j.docs) || [];
+    if (!list.length || !list[0].id) { toast("This file has no WhatsApp documents in it"); return; }
+    const by = {}; S.docs.forEach(d => { by[d.id] = d; });
+    const keep = ["lineId", "status", "checkedBy", "checkedOn"];
+    let add = 0, upd = 0;
+    list.forEach(x => {
+      if (!x || !x.id) return;
+      const rec = {}; TABS.chat_docs.forEach(c => { if (keep.indexOf(c) < 0) rec[c] = cellIn(c, x[c]); });
+      const t = by[x.id];
+      if (t) { Object.assign(t, rec); upd++; }
+      else { keep.forEach(c => { rec[c] = cellIn(c, x[c]); }); S.docs.push(rec); by[x.id] = rec; add++; }
+    });
+    persist(); renderAll();
+    $("#cdImpInfo").textContent = add + " added, " + upd + " updated from " + f.name;
+    toast(add + " WhatsApp documents added, " + upd + " updated");
+  } catch (e) { toast("Could not read " + f.name + ": " + (e.message || e)); }
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "classify", "payments", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
@@ -1247,6 +1427,10 @@ function wire() {
   $("#clSearch").oninput = () => { CL_SHOW = 60; renderClassify(); };
   $("#clTbl").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".clV,.clC,.clP")) { e.preventDefault(); clSave(e.target.closest("tr")); } });
   $("#vSearch").oninput = renderVendors;
+  ["cdMonth", "cdKind", "cdState"].forEach(id => { $("#" + id).onchange = () => { CD_SHOW = 100; renderChat(); }; });
+  $("#cdSearch").oninput = () => { CD_SHOW = 100; renderChat(); };
+  $("#cdReset").onclick = () => { $("#cdMonth").value = ""; $("#cdKind").value = "bill"; $("#cdState").value = ""; $("#cdSearch").value = ""; CD_SHOW = 100; renderChat(); };
+  $("#cdFile").onchange = e => { const f = e.target.files[0]; if (f) onChatFile(f); e.target.value = ""; };
   $("#bkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onBankFiles(fs); };
   $("#catNew").onkeydown = e => { if (e.key === "Enter") catAdd(); };
   document.addEventListener("change", e => {
@@ -1276,6 +1460,11 @@ function wire() {
     else if (act === "clsave") clSave(t.closest("tr"));
     else if (act === "cldg") clSave(t.closest("tr"), true);
     else if (act === "clmore") { CL_SHOW += 60; renderClassify(); }
+    else if (act === "cdmore") { CD_SHOW += 100; renderChat(); }
+    else if (act === "cdmon") { $("#cdMonth").value = id; CD_SHOW = 100; renderChat(); }
+    else if (act === "cdok") cdSet(id, "ok", t.dataset.line);
+    else if (act === "cdset") cdSet(id, t.dataset.s);
+    else if (act === "cdpick") cdPick(id);
     else if (act === "newvendor") openVendor(null);
     else if (act === "vedit") openVendor(id);
     else if (act === "vdel") { S.vendors = S.vendors.filter(v => v.id !== id); closeModal(); persist(); renderAll(); toast("Vendor deleted"); }
