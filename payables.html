@@ -419,14 +419,36 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="tgbar"><i id="tgBar" style="width:0"></i></div>
       <div class="tgsrc" id="tgSrc"></div>
     </div>
-    <div class="tgsteps"><button data-act="tgstep" data-id="1">1 · Equipment list</button><button data-act="tgstep" data-id="2" class="on">2 · Tag party by party</button><button data-act="tgstep" data-id="3">3 · Check the totals</button></div>
-    <div class="card hide" id="tgStep1">
+    <div class="tgsteps"><button data-act="tgstep" data-id="1" class="on">1 · Classify the raw data</button><button data-act="tgstep" data-id="2">2 · Tie bills to entries</button><button data-act="tgstep" data-id="3">3 · Equipment list</button><button data-act="tgstep" data-id="4">4 · Projects and equipment</button><button data-act="tgstep" data-id="5">5 · Check the totals</button></div>
+    <div id="tgStep1">
+      <div class="card" style="margin-bottom:12px">
+        <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">WhatsApp documents</h2><span class="sub" id="rwDocSum"></span><span style="flex:1"></span>
+          <select id="rwDocKind"><option value="">All documents</option><option value="bill">Bills</option><option value="pay">Payment proofs</option><option value="other">Other papers</option></select></div>
+        <div class="tgbar"><i id="rwDocBar" style="width:0"></i></div>
+        <div class="help" style="margin-top:8px">Open each document beside what was read from it: correct the type, vendor, bill no., date and amounts (Save and next, or Ctrl+Enter), or mark it not a bill. A document counts as classified once it is reviewed or set aside.</div>
+        <div class="tblwrap" id="rwDocTbl"></div>
+      </div>
+      <div class="card">
+        <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Site float book (petty expenses)</h2><span class="sub" id="rwPcSum"></span></div>
+        <div class="tgbar"><i id="rwPcBar" style="width:0"></i></div>
+        <div class="help" style="margin-top:8px">Each line from the site float book: who was paid (pick a vendor or type the name) and what for, then Save (or Enter). Lines come in as Site expenses until classified here.</div>
+        <div class="tblwrap" id="rwPcTbl"></div>
+      </div>
+    </div>
+    <div class="card hide" id="tgStep2">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tie each bill to its payment and its Tally voucher</h2><span class="sub" id="tiSum"></span><span style="flex:1"></span>
+        <select id="tiShow"><option value="open">Not tied yet</option><option value="done">Tied</option><option value="">All</option></select></div>
+      <div class="tgbar"><i id="tiBar" style="width:0"></i></div>
+      <div class="help" style="margin-top:8px">Each WhatsApp bill or payment proof with the entries it most likely belongs to: the bank debit (same amount, the UPI reference or the vendor's name), the Tally purchase voucher (same total, or the same bill no.) and the site float line (same amount within a few days). Tie the right ones. A tied bill and its entries then move together when you set the project and equipment in step 4.</div>
+      <div class="tblwrap" id="tiTbl"></div>
+    </div>
+    <div class="card hide" id="tgStep3">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Equipment</h2><span class="sub" id="eqSum"></span><span style="flex:1"></span><button class="primary small" data-act="eqnew">+ Equipment</button></div>
       <div class="help">Rigs, cranes, vehicles and other machines that costs are booked against. Words are spellings that appear in bank narrations, bills or Tally ledgers for that machine (a serial number, a short name); entries that contain one are suggested for it.</div>
       <div class="tblwrap" id="eqTbl"></div>
       <div id="eqSug" style="margin-top:12px"></div>
     </div>
-    <div class="card" id="tgStep2">
+    <div class="card hide" id="tgStep4">
       <div class="help">Each party's entries from every source together: bank, other payments (site float, direct), WhatsApp bills, Tally. Pick the project (and the equipment, if the cost is for a machine) and apply it to the party's untagged entries, to the ones ticked, or to a date range when the party moved between sites. Every change is saved and logged in the audit tab.</div>
       <div class="tggrid">
         <div><input type="text" id="tgSearch" placeholder="Search party" style="width:100%;margin-bottom:6px">
@@ -435,7 +457,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
         <div id="tgParty"></div>
       </div>
     </div>
-    <div class="card hide" id="tgStep3">
+    <div class="card hide" id="tgStep5">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Totals by project and equipment</h2><span style="flex:1"></span><button class="small" data-act="tgcsv">Download all entries</button></div>
       <div class="help">The same cost can show in more than one source (a bill on WhatsApp, its bank payment and its Tally voucher), so read each column on its own rather than adding across.</div>
       <div class="tblwrap" id="tgProj"></div>
@@ -604,9 +626,9 @@ const TABS = {
   vendors: ["id", "name", "aliases", "unit", "cat", "project", "pan", "gstin", "tdsPct", "phone", "note", "addedBy", "addedOn"],
   projects: ["id", "name", "clientGroup", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy", "equip"],
-  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip"],
+  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip", "checkedBy", "checkedOn"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
-  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip", "tallyId", "payId"],
   tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone", "project", "equip"],
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
@@ -1497,7 +1519,8 @@ function cdSet(id, status, lineId) {
   const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
   d.status = status || ""; d.lineId = status === "ok" ? lineId || "" : "";
   d.checkedBy = status ? (USER ? USER.email : "") : ""; d.checkedOn = status ? today() : "";
-  closeModal(); persist(); renderChat();
+  if (status === "ok") tgCarry(d);
+  closeModal(); persist(); renderChat(); renderTag();
   toast(status === "ok" ? "Matched to the bank line" : status ? CD_LBL[status] : "Back to check");
 }
 /* pick a bank line by hand: debits of about this amount first, any date */
@@ -1520,9 +1543,9 @@ const RV_F = [["type", "Document type", "sel"], ["vendor", "Vendor"], ["gstin", 
   ["txn", "UPI / UTR reference"], ["paidFrom", "Paid from"], ["items", "Items", "wide"], ["note", "Note", "wide"]];
 const RV_TYPES = ["tax invoice", "bill / memo", "fuel slip / pump bill", "voucher / handwritten", "payment screenshot", "bank payment list", "quotation / estimate", "delivery challan / e-way bill", "purchase order", "statement / ledger", "fastag / toll", "other document", "not a document", "photo, no text read"];
 let RV_LIST = [];
-function cdReview(id) {
+function cdReview(id, list) {
   const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
-  RV_LIST = cdFilter().map(x => x.id); if (RV_LIST.indexOf(id) < 0) RV_LIST.unshift(id);
+  RV_LIST = list || cdFilter().map(x => x.id); if (RV_LIST.indexOf(id) < 0) RV_LIST.unshift(id);
   const pos = RV_LIST.indexOf(id), url = d.driveId ? "https://drive.google.com/file/d/" + encodeURIComponent(d.driveId) + "/preview" : "";
   const fld = f => {
     const v = d[f[0]] == null ? "" : d[f[0]];
@@ -1552,7 +1575,7 @@ function rvSave(go) {
   if (bad) { toast("Check the amounts"); return; }
   if (d.docDate) d.month = d.docDate.slice(0, 7);
   d.reviewedBy = USER ? USER.email : ""; d.reviewedOn = today();
-  persist(); renderChat();
+  persist(); renderChat(); renderTag();
   const i = RV_LIST.indexOf(id), nx = +go ? RV_LIST[i + +go] : null;
   if (nx) cdReview(nx); else { closeModal(); toast(+go > 0 ? "Saved. That was the last one in this list." : "Saved"); }
 }
@@ -1930,9 +1953,120 @@ function bkChgCsv() {
 }
 
 
+
+/* step 1: classify the raw data (WhatsApp documents, site float lines); step 2: tie bills to bank, Tally and site float entries */
+const rwDocs = () => S.docs.filter(d => !d.repostOf);
+const rwDone = d => !!d.reviewedOn || d.status === "ignore";
+const rwFloat = () => S.pays.filter(p => p.source === "Site float");
+let RW_SHOW = 100, TI_SHOW = 60;
+function bar(el, n, of) { $(el).style.width = (of ? Math.round(n / of * 100) : 0) + "%"; }
+function renderRaw() {
+  const all = rwDocs(), k = $("#rwDocKind").value, done = all.filter(rwDone);
+  $("#rwDocSum").textContent = done.length.toLocaleString("en-IN") + " of " + all.length.toLocaleString("en-IN") + " classified"; bar("#rwDocBar", done.length, all.length);
+  const open = all.filter(d => !rwDone(d) && (!k || cdKind(d) === k)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0));
+  $("#rwDocTbl").innerHTML = open.length ? '<table class="tgtbl"><colgroup><col style="width:11%"><col style="width:17%"><col style="width:26%"><col style="width:30%"><col style="width:16%"></colgroup><thead><tr><th class="l">Date</th><th class="l">Read as</th><th class="l">Vendor</th><th class="l">Detail</th><th>Amount</th></tr></thead><tbody>' +
+    open.slice(0, RW_SHOW).map(d => '<tr><td class="l">' + dmy(cdDate(d)) + '</td><td class="l">' + esc(d.type || "") + '</td><td class="l">' + esc(d.vendor || d.who || "") + '</td><td class="l"><div class="nar">' + esc([d.docNo, d.items, d.caption].filter(Boolean).join(" · ")) + "</div></td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") +
+      '<div class="acts" style="justify-content:flex-end;margin-top:3px"><button class="small primary" data-act="rwrev" data-id="' + esc(d.id) + '">Review</button><button class="small" data-act="rwnot" data-id="' + esc(d.id) + '">Not a bill</button></div></td></tr>').join("") + "</tbody></table>" +
+    (open.length > RW_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="rwmore">Show ' + Math.min(100, open.length - RW_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">' + (all.length ? "Every document is classified." : "No WhatsApp documents imported yet (Import tab).") + "</div>";
+  const fl = rwFloat(), fd = fl.filter(p => p.checkedOn), fo = fl.filter(p => !p.checkedOn).sort((a, b) => (a.date < b.date ? -1 : 1));
+  $("#rwPcSum").textContent = fd.length.toLocaleString("en-IN") + " of " + fl.length.toLocaleString("en-IN") + " classified"; bar("#rwPcBar", fd.length, fl.length);
+  $("#rwPcTbl").innerHTML = fo.length ? '<table class="tgtbl"><colgroup><col style="width:11%"><col style="width:33%"><col style="width:12%"><col style="width:22%"><col style="width:22%"></colgroup><thead><tr><th class="l">Date</th><th class="l">Book says</th><th>Amount</th><th class="l">Paid to</th><th class="l">What for</th></tr></thead><tbody>' +
+    fo.slice(0, RW_SHOW).map(p => '<tr data-id="' + esc(p.id) + '"><td class="l">' + dmy(p.date) + '</td><td class="l"><div class="nar">' + esc([p.payee, p.note].filter(Boolean).join(" · ")) + "</div></td><td>" + fmt(p.amt) +
+      '</td><td class="l"><input type="text" class="rwPay" list="vendorList" value="' + esc(VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "") + '" style="width:100%"></td><td class="l"><div style="display:flex;gap:4px"><select class="rwCat" style="flex:1;min-width:0">' + catOpts(p.cat || "site") + '</select><button class="small primary" data-act="rwpc" data-id="' + esc(p.id) + '">Save</button></div></td></tr>').join("") + "</tbody></table>"
+    : '<div class="sub">' + (fl.length ? "Every site float line is classified." : "No site float book imported yet (Import tab).") + "</div>";
+}
+function rwPcSave(tr) {
+  const p = S.pays.filter(x => x.id === tr.dataset.id)[0]; if (!p) return;
+  const name = tr.querySelector(".rwPay").value.trim(), v = name ? vendorByName(name) : null;
+  if (!name) { tr.querySelector(".rwPay").classList.add("bad"); return; }
+  p.payee = v ? v.name : name; p.vendorId = v ? v.id : ""; p.cat = tr.querySelector(".rwCat").value;
+  p.checkedBy = USER ? USER.email : ""; p.checkedOn = today();
+  const nx = tr.nextElementSibling ? tr.nextElementSibling.dataset.id : "";
+  persist(); renderAll();
+  const f = nx && $('#rwPcTbl tr[data-id="' + nx + '"] .rwPay'); if (f) f.focus();
+  toast("Saved");
+}
+/* suggestions for one document: bank (the WhatsApp tab's own match), Tally purchase voucher, site float line */
+function tiSugg() {
+  cdMatch();
+  const takenT = {}, takenP = {};
+  S.docs.forEach(d => { if (d.tallyId) takenT[d.tallyId] = 1; if (d.payId) takenP[d.payId] = 1; });
+  const nn = x => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const purch = S.tally.filter(t => !t.gone && !takenT[t.id] && /purchase/i.test(t.type)), byNo = {};
+  purch.forEach(t => { const k = nn(t.no); if (k.length >= 3) (byNo[k] || (byNo[k] = [])).push(t); });
+  const fl = rwFloat().filter(p => !takenP[p.id]);
+  const out = {};
+  S.docs.forEach(d => {
+    if (d.repostOf || d.status === "ignore") return;
+    const a = cdAmt(d), dt = cdDate(d), o = {};
+    if (!d.lineId && CDM[d.id]) o.bank = CDM[d.id];
+    if (!d.tallyId && cdKind(d) === "bill") {
+      const byN = nn(d.docNo).length >= 3 ? (byNo[nn(d.docNo)] || []).filter(t => !a || Math.abs((t.cr || t.dr) - a) <= Math.max(1, a * 0.02))[0] : null;
+      let best = byN ? { t: byN, how: "bill no." } : null;
+      if (!best && a > 0 && dt) purch.forEach(t => { if (Math.abs((t.cr || t.dr) - a) > 1) return; const g = daysBetween(dt, t.date); if (g < -45 || g > 120) return; if (!best || Math.abs(g) < Math.abs(best.g)) best = { t: t, how: "amount and date", g: g }; });
+      if (best) o.tally = best;
+    }
+    if (!d.payId && a > 0 && dt) { let b = null; fl.forEach(p => { if (Math.abs(p.amt - a) > 1) return; const g = daysBetween(dt, p.date); if (g < -3 || g > 10) return; if (!b || Math.abs(g) < Math.abs(b.g)) b = { p: p, g: g }; }); if (b) o.pay = b; }
+    out[d.id] = o;
+  });
+  return out;
+}
+const tiTied = d => !!(d.lineId || d.tallyId || d.payId || d.status === "outside");   // paid outside: nothing in the bank to tie
+function renderTie() {
+  const docs = rwDocs().filter(d => d.status !== "ignore" && cdKind(d) !== "other"), tied = docs.filter(tiTied), show = $("#tiShow").value;
+  $("#tiSum").textContent = tied.length.toLocaleString("en-IN") + " of " + docs.length.toLocaleString("en-IN") + " tied"; bar("#tiBar", tied.length, docs.length);
+  const SG = tiSugg(), LBY = {}, TBY = {}, PBY2 = {};
+  S.lines.forEach(l => { LBY[l.id] = l; }); S.tally.forEach(t => { TBY[t.id] = t; }); S.pays.forEach(p => { PBY2[p.id] = p; });
+  const list = docs.filter(d => !show || (show === "done") === tiTied(d)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0));
+  const cell = (d, kind) => {
+    const sg = SG[d.id] || {};
+    if (kind === "bank") {
+      if (d.lineId && LBY[d.lineId]) { const l = LBY[d.lineId]; return '<span class="pill ok">tied</span> ' + esc(l.acct) + " · " + dmy(l.date) + " · " + fmt(l.debit) + '<div class="nar">' + esc(l.narration) + '</div><button class="small" data-act="tiun" data-k="bank" data-id="' + esc(d.id) + '">Untie</button>'; }
+      if (d.status === "outside") return '<span class="pill">paid outside company bank</span>';
+      if (sg.bank) { const l = sg.bank.l; return '<span class="pill auto">' + esc(CD_HOW[sg.bank.how]) + "</span> " + esc(l.acct) + " · " + dmy(l.date) + " · " + fmt(l.debit) + '<div class="nar">' + esc(l.narration) + '</div><div class="acts"><button class="small primary" data-act="cdok" data-id="' + esc(d.id) + '" data-line="' + esc(l.id) + '">Tie</button><button class="small" data-act="cdpick" data-id="' + esc(d.id) + '">Pick another</button></div>'; }
+      return '<div class="acts"><button class="small" data-act="cdpick" data-id="' + esc(d.id) + '">Pick a bank line</button><button class="small" data-act="cdset" data-s="outside" data-id="' + esc(d.id) + '">Paid outside</button></div>';
+    }
+    if (kind === "tally") {
+      if (d.tallyId && TBY[d.tallyId]) { const t = TBY[d.tallyId]; return '<span class="pill ok">tied</span> ' + esc(t.book) + " · " + dmy(t.date) + " · " + esc(t.type + (t.no ? " " + t.no : "")) + " · " + fmt(t.cr || t.dr) + '<div class="nar">' + esc(t.party) + '</div><button class="small" data-act="tiun" data-k="tally" data-id="' + esc(d.id) + '">Untie</button>'; }
+      if (sg.tally) { const t = sg.tally.t; return '<span class="pill auto">' + esc(sg.tally.how) + "</span> " + esc(t.book) + " · " + dmy(t.date) + " · " + esc(t.type + (t.no ? " " + t.no : "")) + " · " + fmt(t.cr || t.dr) + '<div class="nar">' + esc(t.party) + '</div><button class="small primary" data-act="tiset" data-k="tally" data-v="' + esc(t.id) + '" data-id="' + esc(d.id) + '">Tie</button>'; }
+      return cdKind(d) === "bill" ? '<span class="sub">no voucher found</span>' : "";
+    }
+    if (d.payId && PBY2[d.payId]) { const p = PBY2[d.payId]; return '<span class="pill ok">tied</span> ' + dmy(p.date) + " · " + fmt(p.amt) + '<div class="nar">' + esc(p.payee) + '</div><button class="small" data-act="tiun" data-k="pay" data-id="' + esc(d.id) + '">Untie</button>'; }
+    if (sg.pay) { const p = sg.pay.p; return dmy(p.date) + " · " + fmt(p.amt) + '<div class="nar">' + esc([p.payee, p.note].filter(Boolean).join(" · ")) + '</div><button class="small primary" data-act="tiset" data-k="pay" data-v="' + esc(p.id) + '" data-id="' + esc(d.id) + '">Tie</button>'; }
+    return "";
+  };
+  $("#tiTbl").innerHTML = list.length ? '<table class="tgtbl" style="min-width:1000px"><colgroup><col style="width:22%"><col style="width:10%"><col style="width:26%"><col style="width:24%"><col style="width:18%"></colgroup><thead><tr><th class="l">Bill or proof</th><th>Amount</th><th class="l">Bank debit</th><th class="l">Tally voucher</th><th class="l">Site float line</th></tr></thead><tbody>' +
+    list.slice(0, TI_SHOW).map(d => '<tr><td class="l">' + dmy(cdDate(d)) + " · " + esc(d.type || "") + "<br><b>" + esc(d.vendor || d.who || "") + '</b><div class="nar">' + esc([d.docNo, d.items].filter(Boolean).join(" · ")) + "</div>" + (cdDrive(d) ? '<a href="' + esc(cdDrive(d)) + '" target="_blank" rel="noopener">Open</a> · ' : "") + '<a href="#" data-act="rwrev1" data-id="' + esc(d.id) + '">Review</a></td><td>' + fmt(cdAmt(d)) + '</td><td class="l">' + cell(d, "bank") + '</td><td class="l">' + cell(d, "tally") + '</td><td class="l">' + cell(d, "pay") + "</td></tr>").join("") + "</tbody></table>" +
+    (list.length > TI_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="timore">Show ' + Math.min(60, list.length - TI_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">' + (docs.length ? "Nothing in this list." : "No WhatsApp bills imported yet.") + "</div>";
+}
+function tiSet(id, k, v) {
+  const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
+  if (k === "bank") { d.lineId = ""; d.status = ""; d.checkedBy = ""; d.checkedOn = ""; }
+  else d[k === "tally" ? "tallyId" : "payId"] = v || "";
+  if (v) tgCarry(d);   // a newly tied entry takes the bill's project and equipment, or gives its own
+  persist(); renderAll(); toast(v ? "Tied" : "Untied");
+}
+/* tied entries move together: the bill, its bank line, its Tally voucher, its site float line */
+function tgLinked(rec) {
+  const L = [], add = x => { if (x && L.indexOf(x) < 0) L.push(x); };
+  const docsOf = S.docs.filter(d => d === rec || (d.status === "ok" && d.lineId === rec.id) || d.tallyId === rec.id || d.payId === rec.id);
+  docsOf.forEach(d => { add(d);
+    if (d.status === "ok" && d.lineId) add(S.lines.filter(l => l.id === d.lineId)[0]);
+    if (d.tallyId) add(S.tally.filter(t => t.id === d.tallyId)[0]);
+    if (d.payId) add(S.pays.filter(p => p.id === d.payId)[0]); });
+  add(rec); return L;
+}
+function tgCarry(d) {
+  const L = tgLinked(d), p = L.map(x => x.project).filter(Boolean)[0] || "", q = L.map(x => x.equip).filter(Boolean)[0] || "";
+  L.forEach(x => { if (p && !x.project) x.project = p; if (q && !x.equip) x.equip = q; });
+}
+function tgSetField(rec, f, v) { const L = tgLinked(rec); L.forEach(x => { x[f] = v; }); return L.length; }
+
 /* ---------- Project tags: every payment entry from every source tied to a project, and to equipment where it is for a machine ---------- */
 const TG_SRC_L = { bank: "Bank statements", pay: "Site float and direct", doc: "WhatsApp bills", tp: "Tally, Piling book", tm: "Tally, Main book" };
-let TG_SRC = { bank: 1, pay: 1, doc: 1, tp: 1, tm: 0 }, TG_STEP = "2", TG_CUR = "", TG_SEL = {}, TG_IDX = {};
+let TG_SRC = { bank: 1, pay: 1, doc: 1, tp: 1, tm: 0 }, TG_STEP = "1", TG_CUR = "", TG_SEL = {}, TG_IDX = {};
 const EBY = () => { const m = {}; S.equip.forEach(e => { m[e.id] = e; }); return m; };
 const eqOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.equip.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(e => '<option value="' + esc(e.id) + '"' + (e.id === sel ? " selected" : "") + ">" + esc(e.name || e.id) + "</option>").join("");
 const tgProjOpts = (sel, blank) => projOpts(sel, blank) + '<option value="_co"' + (sel === "_co" ? " selected" : "") + ">Company level (no project)</option>";
@@ -1982,9 +2116,9 @@ function renderTag() {
     const a = all.filter(e => e.src === k), d = a.filter(e => e.rec.project), aa = a.reduce((s, e) => s + e.amt, 0), da = d.reduce((s, e) => s + e.amt, 0), p = aa ? Math.round(da / aa * 100) : 0;
     return '<div><label><input type="checkbox" class="chk1" data-act="tgsrc" data-id="' + k + '"' + (TG_SRC[k] ? " checked" : "") + "> " + TG_SRC_L[k] + '</label><span class="sub">' + d.length.toLocaleString("en-IN") + " of " + a.length.toLocaleString("en-IN") + " · " + fmt(da) + " of " + fmt(aa) + '</span><div class="tgbar"><i style="width:' + p + '%"></i></div></div>';
   }).join("");
-  ["1", "2", "3"].forEach(n => { $("#tgStep" + n).classList.toggle("hide", n !== TG_STEP); });
+  ["1", "2", "3", "4", "5"].forEach(n => { $("#tgStep" + n).classList.toggle("hide", n !== TG_STEP); });
   $$(".tgsteps button").forEach(b => b.classList.toggle("on", b.dataset.id === TG_STEP));
-  if (TG_STEP === "1") renderEquip(); else if (TG_STEP === "3") renderTagTotals(); else renderTagQueue();
+  if (TG_STEP === "1") renderRaw(); else if (TG_STEP === "2") renderTie(); else if (TG_STEP === "3") renderEquip(); else if (TG_STEP === "5") renderTagTotals(); else renderTagQueue();
 }
 function renderTagQueue() {
   TG_G = tgGroups(TG_E);
@@ -2012,7 +2146,7 @@ function renderTagParty() {
     '<div class="toolbar" style="gap:6px"><button class="primary" data-act="tgapply">Apply</button><button data-act="tgnext">Apply and next party</button></div></div>' +
     '<div class="tblwrap" style="margin-top:10px;max-height:58vh"><table class="tgtbl"><colgroup><col style="width:4%"><col style="width:10%"><col style="width:14%"><col style="width:30%"><col style="width:12%"><col style="width:16%"><col style="width:14%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="tgselall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
     L.map(e => { const k = e.src + "|" + e.id;
-      return '<tr><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div></td><td>" + fmt(e.amt) +
+      return '<tr><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (tgLinked(e.rec).length > 1 ? '<span class="pill ok">tied</span>' : "") + "</td><td>" + fmt(e.amt) +
         '</td><td class="l"><select class="tgOne" data-f="project" data-id="' + esc(k) + '">' + tgProjOpts(e.rec.project || "", "Not tagged") + '</select></td><td class="l"><select class="tgOne" data-f="equip" data-id="' + esc(k) + '">' + eqOpts(e.rec.equip || "", "None") + "</select></td></tr>"; }).join("") +
     "</tbody></table></div>";
 }
@@ -2025,7 +2159,7 @@ function tgApply(next) {
     if (sc === "open" && e.rec.project) return;
     if (sc === "sel" && !TG_SEL[e.src + "|" + e.id]) return;
     if ((fr && e.date && e.date < fr) || (to && e.date && e.date > to)) return;
-    if (p) e.rec.project = p; if (q) e.rec.equip = q === "_none" ? "" : q; n++;
+    if (p) tgSetField(e.rec, "project", p); if (q) tgSetField(e.rec, "equip", q === "_none" ? "" : q); n++;
   });
   if (!n) { toast(sc === "sel" ? "Tick the entries first" : "No entries in that range"); return; }
   TG_SEL = {}; persist();
@@ -2120,11 +2254,14 @@ function wire() {
   ["bkBook", "bkKind", "bkChgSt"].forEach(id => { $("#" + id).onchange = () => { BK_SHOW = 150; renderBooks(); }; });
   $("#bkSearch").oninput = () => { BK_SHOW = 150; renderBooks(); };
   $("#tgSearch").oninput = renderTagQueue;
+  $("#rwDocKind").onchange = () => { RW_SHOW = 100; renderRaw(); };
+  $("#tiShow").onchange = () => { TI_SHOW = 60; renderTie(); };
+  $("#rwPcTbl").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".rwPay,.rwCat")) { e.preventDefault(); rwPcSave(e.target.closest("tr")); } });
   $("#tgDone").onchange = renderTagQueue;
   document.addEventListener("change", e => {
     if (!e.target.classList.contains("tgOne")) return;
     const x = TG_IDX[e.target.dataset.id]; if (!x) return;
-    x.rec[e.target.dataset.f] = e.target.value; persist(); renderAll(); toast("Saved");
+    const k = tgSetField(x.rec, e.target.dataset.f, e.target.value); persist(); renderAll(); toast(k > 1 ? "Saved, with " + (k - 1) + " tied entries" : "Saved");
   });
   $("#sfFile").onchange = e => { const f = e.target.files[0]; if (f) onFloatFile(f); e.target.value = ""; };
   $("#sfPayee").onchange = e => { S.settings.floatPayee = e.target.value.trim(); persist(); };
@@ -2171,6 +2308,13 @@ function wire() {
     else if (act === "bksnapdl") bkSnapCsv();
     else if (act === "bkchgcsv") bkChgCsv();
     else if (act === "tgstep") { TG_STEP = id; renderTag(); }
+    else if (act === "rwrev" || act === "rwrev1") { e.preventDefault(); const k = $("#rwDocKind").value; cdReview(id, act === "rwrev" ? rwDocs().filter(d => !rwDone(d) && (!k || cdKind(d) === k)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0)).map(d => d.id) : [id]); }
+    else if (act === "rwnot") cdSet(id, "ignore");
+    else if (act === "rwmore") { RW_SHOW += 100; renderRaw(); }
+    else if (act === "rwpc") rwPcSave(t.closest("tr"));
+    else if (act === "tiset") tiSet(id, t.dataset.k, t.dataset.v);
+    else if (act === "tiun") tiSet(id, t.dataset.k, "");
+    else if (act === "timore") { TI_SHOW += 60; renderTie(); }
     else if (act === "tgsrc") { TG_SRC[id] = t.checked ? 1 : 0; TG_CUR = ""; renderTag(); }
     else if (act === "tgparty") { TG_CUR = id; TG_SEL = {}; renderTagQueue(); }
     else if (act === "tgsel") TG_SEL[id] = t.checked;
