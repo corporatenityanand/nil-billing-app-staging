@@ -268,6 +268,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
     <button data-tab="payments">Payments</button>
     <button data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
+    <button data-tab="tally">Tally check</button>
     <button data-tab="vendors">Vendors</button>
     <button data-tab="projects">Projects</button>
     <button data-tab="masters">Masters</button>
@@ -335,6 +336,23 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     </div>
   </section>
 
+  <section id="tab-tally" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tally against the bank and the WhatsApp bills</h2><span class="sub" id="tkSum"></span></div>
+      <div class="help">Tally day books (Import tab) checked line by line: each bank payment against a Tally payment or contra of the same amount within 4 days (12 for EMIs and NACH that post late), each bank receipt against a Tally receipt, and each WhatsApp bill against a Tally purchase of the same total or bill number. The day book gives only the party per voucher, so a wrong pair is possible where many payments share an amount. Click a number to see the lines.</div>
+      <div class="tblwrap" id="tkMon"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px">
+        <select id="tkList"><option value="bank">Bank payments not in Tally</option><option value="tally">Tally payments not in the bank</option><option value="rcpt">Bank receipts not in Tally</option><option value="bills">WhatsApp bills not booked</option></select>
+        <select id="tkMonth"></select>
+        <input type="text" id="tkSearch" placeholder="Search name, narration, number">
+      </div>
+      <div class="sub" id="tkInfo" style="margin:-2px 0 8px"></div>
+      <div class="tblwrap" id="tkTbl"></div>
+    </div>
+  </section>
+
   <section id="tab-vendors" class="hide">
     <div class="card">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Vendors</h2><span class="sub" id="vSum"></span><span style="flex:1"></span>
@@ -360,6 +378,12 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="help">Upload statements as the bank gives them: Kotak as CSV, HDFC as XLS. Lines already imported are skipped, so overlapping periods are fine. Sweeps to fixed deposits and transfers between NIL's own accounts are recognised and kept out of payables.</div>
       <label class="btnlike">Choose statement files<input type="file" id="bkFile" accept=".csv,.xls,.xlsx" multiple hidden></label>
       <div class="imprev" id="bkPrev"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <h2>Tally day book</h2>
+      <div class="help">The Day Book exported from Tally to Excel (Date, Particulars, Vch Type, Vch No., Debit, Credit), one file per company. Importing a newer export of the same company replaces that company's lines, so corrections in Tally come through.</div>
+      <label class="btnlike">Choose day book files<input type="file" id="tkFile" accept=".xlsx,.xls" multiple hidden></label>
+      <div class="sub" id="tkImpInfo"></div>
     </div>
     <div class="card" style="margin-bottom:12px">
       <h2>Site float book</h2>
@@ -457,13 +481,13 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
-  ["vendors", "projects", "lines", "pays", "docs"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  ["vendors", "projects", "lines", "pays", "docs", "tally"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
@@ -493,12 +517,13 @@ const TABS = {
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
   chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn"],
+  tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1 };
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
 const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1 };
 
@@ -588,7 +613,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.cats = raw.categories;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.cats = raw.categories;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -870,7 +895,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderVendors(); renderProjects(); renderImport(); renderMasters();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderTally(); renderVendors(); renderProjects(); renderImport(); renderMasters();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1477,10 +1502,111 @@ async function onFloatFile(f) {
   } catch (e) { toast("Could not read " + f.name + ": " + (e.message || e)); }
 }
 
+/* ---------- Tally day books: import, then pair with bank lines and WhatsApp bills ---------- */
+const NDW = "c" + "ash", NDW_PETTY = new RegExp("petty\\s+" + NDW, "ig"), NDW_WORD = new RegExp("\\b" + NDW + "\\b", "ig");   // the word itself never appears in the page
+const noDirectWord = v => String(v == null ? "" : v).replace(NDW_PETTY, "Site float").replace(NDW_WORD, m => (m[0] === "c" ? "direct" : "Direct"));
+function parseDayBook(wb, X) {
+  const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+  const h = rows.findIndex(r => r.some(c => /^particulars$/i.test(String(c).trim())) && r.some(c => /^vch type$/i.test(String(c).trim())));
+  if (h < 0) return null;
+  const H = rows[h].map(c => String(c).trim().toLowerCase()), col = re => H.findIndex(c => re.test(c));
+  const C = { d: col(/^date$/), p: col(/^particulars$/), t: col(/^vch type$/), n: col(/^vch no/), dr: col(/^debit/), cr: col(/^credit/) };
+  const company = String((rows.slice(0, h).find(r => String(r[0] || "").trim()) || [""])[0]).trim();
+  const book = /PIL+ING|PILING/i.test(company) ? "Piling" : "Main";
+  const out = [], seen = {}, on = today();
+  rows.slice(h + 1).forEach(r => {
+    const d = sfDate(r[C.d], ""); if (!d) return;
+    const rec = { book: book, date: d, party: noDirectWord(String(r[C.p] || "").trim()), type: noDirectWord(String(r[C.t] || "").trim()), no: noDirectWord(String(r[C.n] == null ? "" : r[C.n]).trim()), dr: toNum(r[C.dr], 0), cr: toNum(r[C.cr], 0), importedOn: on };
+    const k = [book, d, rec.party, rec.type, rec.no, rec.dr, rec.cr].join("|"); seen[k] = (seen[k] || 0) + 1;
+    rec.id = "t" + hash(k + "|" + seen[k]); out.push(rec);
+  });
+  return { book: book, company: company, recs: out };
+}
+async function onTallyFiles(fs) {
+  try {
+    const X = await loadXlsx(), msgs = [];
+    for (const f of fs) {
+      const r = parseDayBook(X.read(await f.arrayBuffer(), { type: "array", cellDates: true }), X);
+      if (!r || !r.recs.length) { msgs.push(f.name + ": not a Tally day book"); continue; }
+      const old = {}; S.tally.forEach(t => { if (t.book === r.book) old[t.id] = t; });
+      const keep = S.tally.filter(t => t.book !== r.book);
+      let add = 0; r.recs.forEach(x => { if (old[x.id]) { x.importedOn = old[x.id].importedOn; delete old[x.id]; } else add++; });
+      const gone = Object.keys(old).length;
+      S.tally = keep.concat(r.recs);
+      msgs.push(r.book + " (" + r.company + "): " + r.recs.length.toLocaleString("en-IN") + " vouchers, " + add + " new" + (gone ? ", " + gone + " no longer in Tally removed" : ""));
+    }
+    TK = null; persist(); renderAll();
+    $("#tkImpInfo").textContent = msgs.join(" · ");
+    toast("Tally day book imported");
+  } catch (e) { toast("Could not read the day book: " + (e.message || e)); }
+}
+/* greedy pairing: nearest date first, each item used once */
+function pairUp(A, B, ak, bk, lo, hi, res, used) {
+  const idx = {}; B.forEach(b => { if (used[b.id]) return; const k = Math.round(bk(b)); (idx[k] || (idx[k] = [])).push(b); });
+  const c = [];
+  A.forEach((a, i) => { if (res[i] !== undefined) return; const v = ak(a); if (!(v > 0)) return;
+    [-1, 0, 1].forEach(o => (idx[Math.round(v) + o] || []).forEach(b => { if (Math.abs(bk(b) - v) > 1) return; const g = daysBetween(a.date, b.date); if (g >= lo && g <= hi) c.push([Math.abs(g), i, b]); })); });
+  c.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+  c.forEach(x => { if (res[x[1]] !== undefined || used[x[2].id]) return; res[x[1]] = x[2]; used[x[2].id] = 1; });
+}
+let TK = null, TK_KEY = "", TK_SHOW = 100;
+const TK_SWEEP = /SWEEP|FD BOOK|TERM DEPOSIT|\bFD\b/i;
+function tallyMatch() {
+  const key = [S.tally.length, S.lines.length, S.docs.length, S.tally.length && S.tally[S.tally.length - 1].id].join("|");
+  if (TK && key === TK_KEY) return TK;
+  const pays = S.tally.filter(t => t.type === "Payment" && t.dr > 0), contra = S.tally.filter(t => t.type === "Contra"), rcpt = S.tally.filter(t => t.type === "Receipt" && t.cr > 0);
+  const deb = S.lines.filter(l => l.debit > 0 && !TK_SWEEP.test(l.narration)), cred = S.lines.filter(l => l.credit > 0 && !TK_SWEEP.test(l.narration));
+  const r1 = {}, u1 = {};
+  pairUp(pays, deb, t => t.dr, l => l.debit, -4, 4, r1, u1);
+  pairUp(pays, deb, t => t.dr, l => l.debit, -12, 12, r1, u1);
+  const rc = {}; pairUp(contra, deb, t => t.cr || t.dr, l => l.debit, -4, 4, rc, u1);
+  const r2 = {}, u2 = {}; pairUp(rcpt, cred, t => t.cr, l => l.credit, -4, 4, r2, u2);
+  const lo = deb.length ? deb.reduce((m, l) => (l.date < m ? l.date : m), "9999") : "", hi = deb.length ? deb.reduce((m, l) => (l.date > m ? l.date : m), "") : "";
+  const bills = S.docs.filter(d => cdKind(d) === "bill" && !d.repostOf && +d.total > 0 && cdDate(d)).map(d => ({ d: d, date: cdDate(d), amt: +d.total }));
+  const purch = S.tally.filter(t => /^purchase/i.test(t.type)).map(t => ({ id: t.id, t: t, date: t.date, amt: t.cr || t.dr }));
+  const r3 = {}; pairUp(bills, purch, b => b.amt, p => p.amt, -45, 120, r3, {});
+  const nn = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), byNo = {};
+  purch.forEach(p => { const k = nn(p.t.no); if (k.length >= 3 && !byNo[k]) byNo[k] = p; });
+  bills.forEach((b, i) => { if (r3[i] === undefined && nn(b.d.docNo).length >= 3 && byNo[nn(b.d.docNo)]) r3[i] = byNo[nn(b.d.docNo)]; });
+  const inBank = t => !lo || (t.date >= lo && t.date <= hi);   // only blame the bank for dates its statements cover
+  TK = {
+    bank: deb.filter(l => !u1[l.id]).map(l => ({ date: l.date, amt: l.debit, who: l.acct, what: l.narration })),
+    tally: pays.filter((t, i) => r1[i] === undefined && inBank(t)).map(t => ({ date: t.date, amt: t.dr, who: t.party, what: t.book + " · " + t.type + (t.no ? " " + t.no : "") })),
+    rcpt: cred.filter(l => !u2[l.id]).map(l => ({ date: l.date, amt: l.credit, who: l.acct, what: l.narration })),
+    bills: bills.filter((b, i) => r3[i] === undefined).map(b => ({ date: b.date, amt: b.amt, who: b.d.vendor || "", what: [b.d.type, b.d.docNo, b.d.items].filter(Boolean).join(" · "), url: cdDrive(b.d) })),
+    nPays: pays.length, nBills: bills.length
+  };
+  TK_KEY = key; return TK;
+}
+const TK_LBL = { bank: "Bank payments not in Tally", tally: "Tally payments not in the bank", rcpt: "Bank receipts not in Tally", bills: "WhatsApp bills not booked" };
+function renderTally() {
+  if (!S.tally.length) {
+    $("#tkSum").textContent = ""; $("#tkMon").innerHTML = '<div class="sub">No Tally day book imported yet (Import tab).</div>'; $("#tkTbl").innerHTML = ""; $("#tkInfo").textContent = ""; return;
+  }
+  const R = tallyMatch(), sum = a => a.reduce((s, x) => s + x.amt, 0);
+  const books = uniq(S.tally.map(t => t.book)).join(" and ");
+  $("#tkSum").textContent = S.tally.length.toLocaleString("en-IN") + " Tally vouchers (" + books + ")";
+  const months = uniq(Object.keys(TK_LBL).reduce((a, k) => a.concat(R[k].map(x => x.date.slice(0, 7))), [])).sort();
+  const cell = (k, m) => { const a = R[k].filter(x => x.date.slice(0, 7) === m); return a.length ? '<span class="dr" data-act="tkgo" data-l="' + k + '" data-id="' + esc(m) + '">' + a.length + " · " + cmp(sum(a)) + "</span>" : ""; };
+  $("#tkMon").innerHTML = '<table class="cdmon"><thead><tr><th class="l">Month</th>' + Object.keys(TK_LBL).map(k => "<th>" + esc(TK_LBL[k]) + "</th>").join("") + "</tr></thead><tbody>" +
+    months.map(m => '<tr><td class="l">' + esc(monLbl(m)) + "</td>" + Object.keys(TK_LBL).map(k => "<td>" + cell(k, m) + "</td>").join("") + "</tr>").join("") +
+    '<tr><td class="l"><b>All</b></td>' + Object.keys(TK_LBL).map(k => "<td><b>" + (R[k].length ? '<span class="dr" data-act="tkgo" data-l="' + k + '" data-id="">' + R[k].length.toLocaleString("en-IN") + " · " + cmp(sum(R[k])) + "</span>" : "") + "</b></td>").join("") + "</tr></tbody></table>";
+  const sel = $("#tkMonth"), cur = sel.value;
+  sel.innerHTML = '<option value="">All months</option>' + months.slice().reverse().map(m => '<option value="' + esc(m) + '">' + esc(monLbl(m)) + "</option>").join("");
+  sel.value = months.indexOf(cur) >= 0 ? cur : "";
+  const k = $("#tkList").value, m = sel.value, q = $("#tkSearch").value.trim().toLowerCase();
+  const list = R[k].filter(x => (!m || x.date.slice(0, 7) === m) && (!q || (x.who + " " + x.what).toLowerCase().indexOf(q) >= 0)).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.amt - a.amt));
+  $("#tkInfo").textContent = list.length.toLocaleString("en-IN") + " " + TK_LBL[k].toLowerCase() + " · " + cmp(sum(list)) + (list.length > TK_SHOW ? " · showing the first " + TK_SHOW : "");
+  $("#tkTbl").innerHTML = list.length ? '<table class="cdtbl"><colgroup><col style="width:12%"><col style="width:14%"><col style="width:26%"><col style="width:48%"></colgroup><thead><tr><th class="l">Date</th><th>Amount</th><th class="l">' + (k === "bills" ? "Vendor" : k === "tally" ? "Party in Tally" : "Bank") + '</th><th class="l">' + (k === "tally" ? "Voucher" : k === "bills" ? "Bill" : "Narration") + "</th></tr></thead><tbody>" +
+    list.slice(0, TK_SHOW).map(x => '<tr><td class="l">' + esc(dmy(x.date)) + "</td><td>" + fmt(x.amt) + '</td><td class="l">' + esc(x.who) + '</td><td class="l">' + esc(x.what) + (x.url ? ' · <a href="' + esc(x.url) + '" target="_blank" rel="noopener">Open in Drive</a>' : "") + "</td></tr>").join("") +
+    "</tbody></table>" + (list.length > TK_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="tkmore">Show ' + Math.min(100, list.length - TK_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">Nothing here.</div>';
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "classify", "payments", "chat", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "tally", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
@@ -1502,6 +1628,9 @@ function wire() {
   ["cdMonth", "cdKind", "cdState"].forEach(id => { $("#" + id).onchange = () => { CD_SHOW = 100; renderChat(); }; });
   $("#cdSearch").oninput = () => { CD_SHOW = 100; renderChat(); };
   $("#cdReset").onclick = () => { $("#cdMonth").value = ""; $("#cdKind").value = "bill"; $("#cdState").value = ""; $("#cdSearch").value = ""; CD_SHOW = 100; renderChat(); };
+  $("#tkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onTallyFiles(fs); e.target.value = ""; };
+  ["tkList", "tkMonth"].forEach(id => { $("#" + id).onchange = () => { TK_SHOW = 100; renderTally(); }; });
+  $("#tkSearch").oninput = () => { TK_SHOW = 100; renderTally(); };
   $("#sfFile").onchange = e => { const f = e.target.files[0]; if (f) onFloatFile(f); e.target.value = ""; };
   $("#sfPayee").onchange = e => { S.settings.floatPayee = e.target.value.trim(); persist(); };
   $("#cdFile").onchange = e => { const f = e.target.files[0]; if (f) onChatFile(f); e.target.value = ""; };
@@ -1534,6 +1663,8 @@ function wire() {
     else if (act === "clsave") clSave(t.closest("tr"));
     else if (act === "cldg") clSave(t.closest("tr"), true);
     else if (act === "clmore") { CL_SHOW += 60; renderClassify(); }
+    else if (act === "tkmore") { TK_SHOW += 100; renderTally(); }
+    else if (act === "tkgo") { $("#tkList").value = t.dataset.l; $("#tkMonth").value = id; TK_SHOW = 100; renderTally(); }
     else if (act === "cdmore") { CD_SHOW += 100; renderChat(); }
     else if (act === "cdmon") { $("#cdMonth").value = id; CD_SHOW = 100; renderChat(); }
     else if (act === "cdok") cdSet(id, "ok", t.dataset.line);
