@@ -222,6 +222,15 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .cdtbl .acts{display:flex;gap:4px;flex-wrap:wrap}
 .cdtbl tr.rp td{opacity:.55}
 #modal.review{width:min(1180px,100%)}
+#modal.ledger{width:min(980px,100%)}
+.pill.chg{background:color-mix(in srgb,var(--ret) 18%,var(--surface));color:var(--text)}
+.pill.lock{background:color-mix(in srgb,var(--inv) 12%,var(--surface));color:var(--text)}
+.bksnap{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;font-size:13px}
+.bktbl td.l,.bktbl th.l{text-align:left}
+.bktbl tr.go{cursor:pointer}
+.bktbl tr.go:hover td{background:var(--surface2)}
+.bktbl tr.x td{text-decoration:line-through;opacity:.55}
+.bktbl tr.x td:last-child{text-decoration:none;opacity:1}
 .rvgrid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}
 .rvdoc{min-height:60vh;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface2)}
 .rvdoc iframe{width:100%;height:68vh;border:0;display:block}
@@ -275,6 +284,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
     <button data-tab="payments">Payments</button>
     <button data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
+    <button data-tab="books">Books <span class="cnt" id="bkCnt"></span></button>
     <button data-tab="tally">Tally check</button>
     <button data-tab="vendors">Vendors</button>
     <button data-tab="projects">Projects</button>
@@ -360,6 +370,32 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     </div>
   </section>
 
+  <section id="tab-books" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Snapshot of the Tally books</h2><span style="flex:1"></span>
+        <button class="small" data-act="bksnapdl">Download snapshot</button>
+        <button class="primary small" data-act="bksnap" id="bkSnapBtn">Take snapshot</button></div>
+      <div class="help">The day books imported from Tally (Import tab) are the books here. Taking a snapshot locks the vouchers as they are: a later import never changes or removes a locked voucher, and the fingerprint shows at once if anyone edits one in the Sheet. Every change after that is made here as a new voucher, an edit or a cancellation with a reason, kept in the change log below until someone posts it in Tally.</div>
+      <div id="bkSnap"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Ledgers</h2><span class="sub" id="bkSum"></span><span style="flex:1"></span>
+        <select id="bkBook"><option value="">Both books</option><option>Main</option><option>Piling</option></select>
+        <select id="bkKind"><option value="v">Vendors (with purchases)</option><option value="">All ledgers</option></select>
+        <input type="text" id="bkSearch" placeholder="Search ledger">
+        <button class="primary small" data-act="bknew">+ Voucher</button></div>
+      <div class="help">Balance = credits less debits from the first voucher in the day book (1-Apr-2025). The day books carry no opening balances, so this is the movement since then, not Tally's closing balance. Cr: NIL owes the party; Dr: paid ahead of bills booked. Click a ledger to see its vouchers.</div>
+      <div class="tblwrap" id="bkTbl"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Changes to post in Tally</h2><span class="sub" id="bkChgSum"></span><span style="flex:1"></span>
+        <select id="bkChgSt"><option value="To post">To post</option><option value="Posted">Posted in Tally</option><option value="Withdrawn">Withdrawn</option><option value="">All</option></select>
+        <button class="small" data-act="bkchgcsv">Download list</button></div>
+      <div class="help">The audit trail: who changed what, when, from what to what, and why. Entries are never deleted. When the accountant has entered one in Tally, mark it posted with the Tally voucher number; the next day book import also marks a change posted by itself when Tally has a voucher with the same book, ledger, date and amount.</div>
+      <div class="tblwrap" id="bkChg"></div>
+    </div>
+  </section>
+
   <section id="tab-vendors" class="hide">
     <div class="card">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Vendors</h2><span class="sub" id="vSum"></span><span style="flex:1"></span>
@@ -388,7 +424,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     </div>
     <div class="card" style="margin-bottom:12px">
       <h2>Tally day book</h2>
-      <div class="help">The Day Book exported from Tally to Excel (Date, Particulars, Vch Type, Vch No., Debit, Credit), one file per company. Importing a newer export of the same company replaces that company's lines, so corrections in Tally come through.</div>
+      <div class="help">The Day Book exported from Tally to Excel (Date, Particulars, Vch Type, Vch No., Debit, Credit), one file per company. Importing a newer export of the same company brings in its new vouchers. Before a snapshot (Books tab) it also drops vouchers no longer in Tally; after one, locked vouchers are kept and those missing from the export are listed as removed in Tally.</div>
       <label class="btnlike">Choose day book files<input type="file" id="tkFile" accept=".xlsx,.xls" multiple hidden></label>
       <div class="sub" id="tkImpInfo"></div>
     </div>
@@ -488,13 +524,13 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
-  ["vendors", "projects", "lines", "pays", "docs", "tally"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  ["vendors", "projects", "lines", "pays", "docs", "tally", "tsnap", "tchg"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
@@ -524,15 +560,17 @@ const TABS = {
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
   chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn"],
-  tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn"],
+  tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone"],
+  tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
+  tally_changes: ["id", "kind", "ref", "book", "date", "party", "type", "no", "dr", "cr", "was", "reason", "by", "at", "status", "postedBy", "postedOn", "tallyNo", "tallyId"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1 };
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
-const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
@@ -620,7 +658,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.cats = raw.categories;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.cats = raw.categories;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -902,7 +940,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderTally(); renderVendors(); renderProjects(); renderImport(); renderMasters();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderVendors(); renderProjects(); renderImport(); renderMasters();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1582,11 +1620,14 @@ async function onTallyFiles(fs) {
       const r = parseDayBook(X.read(await f.arrayBuffer(), { type: "array", cellDates: true }), X);
       if (!r || !r.recs.length) { msgs.push(f.name + ": not a Tally day book"); continue; }
       const old = {}; S.tally.forEach(t => { if (t.book === r.book) old[t.id] = t; });
-      const keep = S.tally.filter(t => t.book !== r.book);
-      let add = 0; r.recs.forEach(x => { if (old[x.id]) { x.importedOn = old[x.id].importedOn; delete old[x.id]; } else add++; });
-      const gone = Object.keys(old).length;
-      S.tally = keep.concat(r.recs);
-      msgs.push(r.book + " (" + r.company + "): " + r.recs.length.toLocaleString("en-IN") + " vouchers, " + add + " new" + (gone ? ", " + gone + " no longer in Tally removed" : ""));
+      const keep = S.tally.filter(t => t.book !== r.book), added = [];
+      const recs = r.recs.map(x => { const o = old[x.id]; if (o) { delete old[x.id]; o.gone = ""; return o; } added.push(x); return x; });
+      let gone = 0, dropped = 0;
+      Object.keys(old).forEach(k => { const o = old[k]; if (o.snap) { if (!o.gone) { o.gone = today(); gone++; } recs.push(o); } else dropped++; });   // locked vouchers are never removed
+      S.tally = keep.concat(recs);
+      const posted = bkMatchPosted(r.book, added);
+      msgs.push(r.book + " (" + r.company + "): " + r.recs.length.toLocaleString("en-IN") + " vouchers, " + added.length + " new" + (dropped ? ", " + dropped + " no longer in Tally removed" : "") +
+        (gone ? ", " + gone + " locked vouchers no longer in Tally (kept, listed in Books)" : "") + (posted ? ", " + posted + " changes found posted in Tally" : ""));
     }
     TK = null; persist(); renderAll();
     $("#tkImpInfo").textContent = msgs.join(" · ");
@@ -1656,10 +1697,194 @@ function renderTally() {
     : '<div class="sub">Nothing here.</div>';
 }
 
+
+/* ---------- Books: the Tally day books as ledgers, a locked snapshot, and a change log for posting in Tally ---------- */
+const bkKey = (b, p) => b + "|" + String(p || "").trim().toUpperCase();
+const bkFp = rows => hash(rows.map(t => [t.id, t.date, t.party, t.type, t.no, round2(+t.dr || 0), round2(+t.cr || 0)].join("|")).sort().join("\n"));
+const bkLive = c => c.status !== "Withdrawn";
+const BK_FPC = new WeakMap();   // fingerprint checks, per loaded copy of the tally rows (they change only on load, import or a new snapshot)
+function bkIntact(z, locked) {
+  let m = BK_FPC.get(S.tally); if (!m) { m = {}; BK_FPC.set(S.tally, m); }
+  if (!(z.id in m)) { const rows = locked.filter(t => t.snap === z.id); m[z.id] = { n: rows.length, ok: rows.length === +z.vouchers && bkFp(rows) === z.fingerprint }; }
+  return m[z.id];
+}
+function bkEntries() {   // what the books say now: Tally's vouchers, less the ones changed here, plus changes not yet seen in Tally
+  const sup = {}; S.tchg.forEach(c => { if (bkLive(c) && c.ref) sup[c.ref] = c; });
+  const out = [];
+  S.tally.forEach(t => { if (!t.gone && !sup[t.id]) out.push({ id: t.id, book: t.book, date: t.date, party: t.party, type: t.type, no: t.no, dr: +t.dr || 0, cr: +t.cr || 0, snap: t.snap, src: "tally" }); });
+  S.tchg.forEach(c => { if (bkLive(c) && c.kind !== "cancel" && !c.tallyId) out.push({ id: c.id, book: c.book, date: c.date, party: c.party, type: c.type, no: c.no, dr: +c.dr || 0, cr: +c.cr || 0, src: "app", chg: c }); });
+  return out;
+}
+function bkLedgers(E) {
+  const L = {};
+  E.forEach(e => { const k = bkKey(e.book, e.party), l = L[k] || (L[k] = { key: k, book: e.book, party: e.party, n: 0, dr: 0, cr: 0, pur: false, last: "", chg: 0 });
+    l.n++; l.dr += e.dr; l.cr += e.cr; if (/purchase/i.test(e.type)) l.pur = true; if (e.date > l.last) l.last = e.date; if (e.src === "app" && e.chg.status === "To post") l.chg++; });
+  return Object.keys(L).map(k => L[k]);
+}
+const bkBal = n => (Math.abs(n) < 0.5 ? "–" : fmt(Math.abs(n)) + (n > 0 ? " Cr" : " Dr"));
+function bkMatchPosted(book, added) {   // a change whose voucher has now come in from Tally is posted
+  if (!added.length) return 0;
+  const by = {}; added.forEach(x => { const k = [bkKey(book, x.party), x.date, Math.round(x.dr), Math.round(x.cr)].join("|"); (by[k] || (by[k] = [])).push(x); });
+  const goneIds = {}; S.tally.forEach(t => { if (t.book === book && t.gone) goneIds[t.id] = 1; });
+  let n = 0;
+  S.tchg.forEach(c => {
+    if (!bkLive(c) || c.book !== book || c.tallyId) return;
+    let hit = null;
+    if (c.kind === "cancel") { if (goneIds[c.ref]) hit = { id: c.ref, no: "" }; }
+    else { const l = by[[bkKey(book, c.party), c.date, Math.round(c.dr), Math.round(c.cr)].join("|")]; if (l && l.length) hit = l.shift(); }
+    if (!hit) return;
+    c.tallyId = hit.id;
+    if (c.status !== "Posted") { c.status = "Posted"; c.postedBy = "Tally import"; c.postedOn = today(); c.tallyNo = hit.no || c.tallyNo || ""; }
+    n++;
+  });
+  return n;
+}
+let BK_SHOW = 150;
+function renderBooks() {
+  const pend = S.tchg.filter(c => c.status === "To post").length;
+  $("#bkCnt").textContent = pend || "";
+  /* snapshot */
+  const locked = S.tally.filter(t => t.snap), free = S.tally.filter(t => !t.snap), gone = S.tally.filter(t => t.gone);
+  $("#bkSnapBtn").textContent = S.tsnap.length ? "Lock new vouchers" : "Take snapshot";
+  $("#bkSnapBtn").disabled = !free.length;
+  $("#bkSnap").innerHTML = !S.tally.length ? '<div class="sub">No Tally day book imported yet (Import tab).</div>' :
+    (S.tsnap.length ? '<div class="tblwrap"><table class="bktbl"><thead><tr><th class="l">Book</th><th class="l">Vouchers dated</th><th>Vouchers</th><th>Debits</th><th>Credits</th><th class="l">Taken</th><th class="l">Fingerprint</th></tr></thead><tbody>' +
+      S.tsnap.slice().sort((a, b) => (a.takenAt < b.takenAt ? -1 : 1)).map(z => {
+        const ck = bkIntact(z, locked), ok = ck.ok;
+        return '<tr><td class="l">' + esc(z.book) + '</td><td class="l">' + dmy(z.from) + " to " + dmy(z.asOn) + "</td><td>" + (+z.vouchers).toLocaleString("en-IN") + "</td><td>" + fmt(z.dr) + "</td><td>" + fmt(z.cr) + '</td><td class="l">' + esc(String(z.takenAt).slice(0, 16).replace("T", " ")) + " · " + esc(z.takenBy) +
+          '</td><td class="l"><code>' + esc(z.fingerprint) + "</code> " + (ok ? '<span class="pill ok">intact</span>' : '<span class="pill dup">changed in the Sheet: ' + ck.n + " vouchers now</span>") + "</td></tr>";
+      }).join("") + "</tbody></table></div>" : "") +
+    '<div class="bksnap" style="margin-top:6px"><span>' + locked.length.toLocaleString("en-IN") + " of " + S.tally.length.toLocaleString("en-IN") + " Tally vouchers locked</span>" +
+    (free.length ? "<span>" + free.length.toLocaleString("en-IN") + " not locked yet</span>" : "") +
+    (gone.length ? '<span class="pill dup">' + gone.length + " locked vouchers no longer in the latest Tally export</span>" : "") + "</div>" +
+    (gone.length ? '<div class="tblwrap" style="margin-top:6px"><table class="bktbl"><thead><tr><th class="l">Book</th><th class="l">Date</th><th class="l">Ledger</th><th class="l">Voucher</th><th>Debit</th><th>Credit</th><th class="l">Missing since</th></tr></thead><tbody>' +
+      gone.slice(0, 200).map(t => '<tr><td class="l">' + esc(t.book) + '</td><td class="l">' + dmy(t.date) + '</td><td class="l">' + esc(t.party) + '</td><td class="l">' + esc(t.type + (t.no ? " " + t.no : "")) + "</td><td>" + (t.dr ? fmt(t.dr) : "") + "</td><td>" + (t.cr ? fmt(t.cr) : "") + '</td><td class="l">' + dmy(t.gone) + "</td></tr>").join("") + "</tbody></table></div>" : "");
+  /* ledgers */
+  const E = bkEntries(), bk = $("#bkBook").value, kind = $("#bkKind").value, q = $("#bkSearch").value.trim().toLowerCase();
+  const all = bkLedgers(E), list = all.filter(l => (!bk || l.book === bk) && (!kind || l.pur) && (!q || l.party.toLowerCase().indexOf(q) >= 0))
+    .sort((a, b) => Math.abs(b.cr - b.dr) - Math.abs(a.cr - a.dr) || a.party.localeCompare(b.party));
+  const owe = list.reduce((s, l) => s + Math.max(0, l.cr - l.dr), 0);
+  $("#bkSum").textContent = S.tally.length ? list.length.toLocaleString("en-IN") + " ledgers · Cr balances " + fmt(owe) : "";
+  $("#bkTbl").innerHTML = !S.tally.length ? "" : list.length ? '<table class="bktbl"><thead><tr><th class="l">Book</th><th class="l">Ledger</th><th>Vouchers</th><th>Debits</th><th>Credits</th><th>Balance</th><th class="l">Last voucher</th></tr></thead><tbody>' +
+    list.slice(0, BK_SHOW).map(l => '<tr class="go" data-act="bkled" data-id="' + esc(l.key) + '"><td class="l">' + esc(l.book) + '</td><td class="l">' + esc(l.party) + (l.chg ? ' <span class="pill chg">' + l.chg + " to post</span>" : "") + "</td><td>" + l.n + "</td><td>" + fmt(l.dr) + "</td><td>" + fmt(l.cr) + "</td><td><b>" + bkBal(l.cr - l.dr) + '</b></td><td class="l">' + dmy(l.last) + "</td></tr>").join("") + "</tbody></table>" +
+    (list.length > BK_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="bkmore">Show ' + Math.min(150, list.length - BK_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">No ledger matches.</div>';
+  /* change log */
+  const st = $("#bkChgSt").value, ch = S.tchg.filter(c => !st || c.status === st).sort((a, b) => (a.at < b.at ? 1 : -1));
+  $("#bkChgSum").textContent = pend + " to post · " + S.tchg.filter(c => c.status === "Posted").length + " posted";
+  const KL = { "new": "New voucher", edit: "Edit", cancel: "Cancel" };
+  $("#bkChg").innerHTML = ch.length ? '<table class="bktbl cdtbl" style="min-width:980px"><colgroup><col style="width:11%"><col style="width:8%"><col style="width:22%"><col style="width:13%"><col style="width:16%"><col style="width:16%"><col style="width:14%"></colgroup><thead><tr><th class="l">When, who</th><th class="l">Change</th><th class="l">Voucher</th><th>Amount</th><th class="l">Was</th><th class="l">Reason</th><th class="l">Status</th></tr></thead><tbody>' +
+    ch.map(c => {
+      let was = ""; try { const w = c.was ? JSON.parse(c.was) : null; if (w) was = dmy(w.date) + " · " + w.party + " · " + w.type + (w.no ? " " + w.no : "") + " · " + (w.dr ? fmt(w.dr) + " Dr" : fmt(w.cr) + " Cr"); } catch (e) { was = c.was; }
+      return '<tr><td class="l">' + esc(String(c.at).slice(0, 16).replace("T", " ")) + '<div class="nar">' + esc(c.by) + '</div></td><td class="l">' + KL[c.kind] + '</td><td class="l">' + esc(c.book) + " · " + dmy(c.date) + "<br>" + esc(c.party) + '<div class="nar">' + esc(c.type + (c.no ? " " + c.no : "")) + "</div></td><td>" + (c.kind === "cancel" ? "" : c.dr ? fmt(c.dr) + " Dr" : fmt(c.cr) + " Cr") +
+        '</td><td class="l"><div class="nar">' + esc(was) + '</div></td><td class="l"><div class="nar">' + esc(c.reason) + '</div></td><td class="l">' +
+        (c.status === "To post" ? '<span class="pill chg">To post</span><div class="acts" style="margin-top:4px"><button class="small" data-act="bkpost" data-id="' + esc(c.id) + '">Mark posted</button><button class="small" data-act="bkwd" data-id="' + esc(c.id) + '">Withdraw</button></div>'
+          : c.status === "Posted" ? '<span class="pill ok">Posted</span><div class="nar">' + esc((c.tallyNo ? "Vch " + c.tallyNo + " · " : "") + dmy(c.postedOn) + " · " + c.postedBy) + "</div>" : '<span class="pill">Withdrawn</span><div class="nar">' + esc(dmy(c.postedOn) + " · " + c.postedBy) + "</div>") + "</td></tr>";
+    }).join("") + "</tbody></table>" : '<div class="sub">No changes ' + (st ? "with this status" : "yet") + ".</div>";
+}
+function bkLedger(key) {
+  const E = bkEntries().filter(e => bkKey(e.book, e.party) === key).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const cancelled = S.tchg.filter(c => bkLive(c) && c.kind === "cancel" && bkKey(c.book, c.party) === key);
+  if (!E.length && !cancelled.length) { closeModal(); return; }
+  const h = E[0] || cancelled[0];
+  let bal = 0;
+  openModal('<h2>' + esc(h.party) + ' <span class="sub">' + esc(h.book) + " book · " + E.length + " vouchers</span></h2>" +
+    '<div class="tblwrap" style="max-height:62vh"><table class="bktbl"><thead><tr><th class="l">Date</th><th class="l">Voucher</th><th>Debit</th><th>Credit</th><th>Balance</th><th class="l"></th></tr></thead><tbody>' +
+    E.map(e => { bal += e.cr - e.dr;
+      return "<tr><td class=\"l\">" + dmy(e.date) + '</td><td class="l">' + esc(e.type + (e.no ? " " + e.no : "")) + (e.src === "app" ? ' <span class="pill chg">' + (e.chg.kind === "edit" ? "edited here" : "added here") + ", " + esc(e.chg.status.toLowerCase()) + "</span>" : e.snap ? "" : ' <span class="pill">not locked</span>') +
+        "</td><td>" + (e.dr ? fmt(e.dr) : "") + "</td><td>" + (e.cr ? fmt(e.cr) : "") + "</td><td>" + bkBal(bal) + '</td><td class="l"><div class="acts">' +
+        (e.src === "tally" ? '<button class="small" data-act="bkedit" data-id="' + esc(e.id) + '">Edit</button><button class="small" data-act="bkcancel" data-id="' + esc(e.id) + '">Cancel</button>'
+          : e.chg.status === "To post" ? '<button class="small" data-act="bkwd" data-id="' + esc(e.chg.id) + '">Withdraw</button>' : "") + "</div></td></tr>"; }).join("") +
+    cancelled.map(c => { let w = {}; try { w = JSON.parse(c.was || "{}"); } catch (e) {} return '<tr class="x"><td class="l">' + dmy(w.date) + '</td><td class="l">' + esc((w.type || "") + (w.no ? " " + w.no : "")) + ' <span class="pill chg">cancelled here, ' + esc(c.status.toLowerCase()) + "</span></td><td>" + (w.dr ? fmt(w.dr) : "") + "</td><td>" + (w.cr ? fmt(w.cr) : "") + '</td><td></td><td class="l">' + (c.status === "To post" ? '<button class="small" data-act="bkwd" data-id="' + esc(c.id) + '">Withdraw</button>' : "") + "</td></tr>"; }).join("") +
+    "</tbody></table></div>" +
+    '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button><button class="primary" data-act="bknew" data-id="' + esc(key) + '">+ Voucher in this ledger</button></div>', "ledger");
+  $("#modal").className = "ledger"; $("#modal").dataset.led = key;
+}
+function bkForm(kind, row, ledKey) {   // kind: new | edit | cancel
+  const t = row || {}, books = uniq(S.tally.map(x => x.book).concat(["Main", "Piling"]));
+  const lk = ledKey ? ledKey.split("|") : null, book = t.book || (lk ? lk[0] : $("#bkBook").value || "Main");
+  const party = t.party || (lk ? (bkEntries().filter(e => bkKey(e.book, e.party) === ledKey)[0] || {}).party || "" : "");
+  const parties = uniq(S.tally.map(x => x.party)).sort(), types = uniq(S.tally.map(x => x.type)).sort();
+  const title = kind === "new" ? "New voucher" : kind === "edit" ? "Edit voucher" : "Cancel voucher";
+  openModal("<h2>" + title + "</h2>" + (row ? '<div class="help">Now: ' + esc(t.book) + " · " + dmy(t.date) + " · " + esc(t.party) + " · " + esc(t.type + (t.no ? " " + t.no : "")) + " · " + (t.dr ? fmt(t.dr) + " Dr" : fmt(t.cr) + " Cr") + (t.snap ? " (locked in the snapshot; the change is logged and the original stays in the snapshot)" : "") + "</div>" : "") +
+    '<div class="form" id="bkForm">' + (kind === "cancel" ? "" :
+      '<label>Book<select data-f="book"' + (row ? " disabled" : "") + ">" + books.map(b => "<option" + (b === book ? " selected" : "") + ">" + esc(b) + "</option>").join("") + "</select></label>" +
+      '<label>Date<input type="date" data-f="date" value="' + esc(t.date || today()) + '"></label>' +
+      '<label class="w" style="grid-column:1/-1">Ledger<input type="text" data-f="party" list="bkParties" value="' + esc(party) + '"></label>' +
+      '<label>Voucher type<input type="text" data-f="type" list="bkTypes" value="' + esc(t.type || "") + '"></label>' +
+      '<label>Voucher no.<input type="text" data-f="no" value="' + esc(t.no || "") + '"></label>' +
+      '<label>Debit<input type="text" inputmode="decimal" data-f="dr" value="' + (t.dr ? t.dr : "") + '"></label>' +
+      '<label>Credit<input type="text" inputmode="decimal" data-f="cr" value="' + (t.cr ? t.cr : "") + '"></label>') +
+    '<label style="grid-column:1/-1">Reason (kept in the change log)<input type="text" data-f="reason" placeholder="why this change"></label></div>' +
+    '<datalist id="bkParties">' + parties.map(x => '<option value="' + esc(x) + '">').join("") + '</datalist><datalist id="bkTypes">' + types.map(x => '<option value="' + esc(x) + '">').join("") + "</datalist>" +
+    '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button><button class="primary" data-act="bksave">' + (kind === "cancel" ? "Cancel this voucher" : "Save to the change log") + "</button></div>", "wide");
+  const m = $("#modal"); m.dataset.kind = kind; m.dataset.ref = row ? row.id : ""; m.dataset.led = ledKey || "";
+  const f = $('#bkForm [data-f="' + (kind === "cancel" ? "reason" : kind === "edit" ? "dr" : "party") + '"]'); if (f) f.focus();
+}
+function bkSave() {
+  const m = $("#modal"), kind = m.dataset.kind, ref = m.dataset.ref, v = {}; let bad = false;
+  $$("#bkForm [data-f]").forEach(el => { v[el.dataset.f] = el.value.trim(); });
+  const t = ref ? S.tally.filter(x => x.id === ref)[0] : null;
+  if (ref && !t) { toast("That voucher is no longer here"); return; }
+  const mark = f => { const el = $('#bkForm [data-f="' + f + '"]'); if (el) el.classList.add("bad"); bad = true; };
+  if (!v.reason) mark("reason");
+  const c = { id: "c" + uid(), kind: kind, ref: ref || "", by: USER ? USER.email : "", at: new Date().toISOString(), status: "To post", postedBy: "", postedOn: "", tallyNo: "", tallyId: "", reason: v.reason,
+    was: t ? JSON.stringify({ id: t.id, date: t.date, party: t.party, type: t.type, no: t.no, dr: t.dr, cr: t.cr }) : "" };
+  if (kind === "cancel") Object.assign(c, { book: t.book, date: t.date, party: t.party, type: t.type, no: t.no, dr: 0, cr: 0 });
+  else {
+    const dr = v.dr === "" ? 0 : toNum(v.dr.replace(/[^\d.\-]/g, ""), NaN), cr = v.cr === "" ? 0 : toNum(v.cr.replace(/[^\d.\-]/g, ""), NaN);
+    if (isNaN(dr) || dr < 0) mark("dr"); if (isNaN(cr) || cr < 0) mark("cr"); if (!dr && !cr) { mark("dr"); mark("cr"); }
+    if (!v.party) mark("party"); if (!v.type) mark("type"); if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date || "")) mark("date");
+    Object.assign(c, { book: t ? t.book : v.book, date: v.date, party: noDirectWord(v.party), type: noDirectWord(v.type), no: noDirectWord(v.no), dr: round2(dr), cr: round2(cr) });
+    if (t && !bad && [c.date, c.party, c.type, c.no, c.dr, c.cr].join("|") === [t.date, t.party, t.type, t.no, +t.dr || 0, +t.cr || 0].join("|")) { toast("Nothing changed"); return; }
+  }
+  if (bad) { toast(v.reason ? "Check the marked fields" : "Give a reason: it goes in the change log"); return; }
+  if (ref && S.tchg.some(x => bkLive(x) && x.ref === ref && !x.tallyId)) { toast("This voucher already has a change waiting; withdraw that first"); return; }
+  S.tchg.push(c); persist(); renderBooks();
+  const led = m.dataset.led || bkKey(c.book, c.party);
+  if (bkEntries().some(e => bkKey(e.book, e.party) === led) || kind === "cancel") bkLedger(led); else closeModal();
+  toast(kind === "cancel" ? "Cancellation logged, to post in Tally" : "Logged, to post in Tally");
+}
+function bkStatus(id, st) {
+  const c = S.tchg.filter(x => x.id === id)[0]; if (!c || c.status !== "To post") return;
+  if (st === "Posted") {
+    openModal('<h2>Posted in Tally</h2><div class="help">' + esc(c.book) + " · " + dmy(c.date) + " · " + esc(c.party) + "</div>" +
+      '<div class="form" id="bkPostF"><label style="grid-column:1/-1">Tally voucher no. (if any)<input type="text" id="bkPostNo"></label></div>' +
+      '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button><button class="primary" data-act="bkposted" data-id="' + esc(id) + '">Mark posted</button></div>');
+    $("#bkPostNo").focus(); return;
+  }
+  c.status = st; c.postedBy = USER ? USER.email : ""; c.postedOn = today();
+  persist(); renderBooks(); if ($("#modal").className === "ledger" && $("#modalbg").classList.contains("show")) bkLedger($("#modal").dataset.led);
+  toast("Withdrawn: the voucher is back as Tally has it");
+}
+function bkSnapshot() {
+  const free = S.tally.filter(t => !t.snap && !t.gone); if (!free.length) { toast("Nothing new to lock"); return; }
+  const at = new Date().toISOString(), books = uniq(free.map(t => t.book));
+  books.forEach(b => {
+    const rows = free.filter(t => t.book === b), id = "s" + uid();
+    rows.forEach(t => { t.snap = id; });
+    const ds = rows.map(t => t.date).sort();
+    S.tsnap.push({ id: id, book: b, from: ds[0], asOn: ds[ds.length - 1], vouchers: rows.length, dr: round2(rows.reduce((s, t) => s + (+t.dr || 0), 0)), cr: round2(rows.reduce((s, t) => s + (+t.cr || 0), 0)), fingerprint: bkFp(rows), takenBy: USER ? USER.email : "", takenAt: at });
+  });
+  BK_FPC.delete(S.tally); persist(); renderBooks(); toast(free.length.toLocaleString("en-IN") + " vouchers locked");
+}
+function bkSnapCsv() {
+  const rows = S.tally.filter(t => t.snap).sort((a, b) => (a.book + a.date < b.book + b.date ? -1 : 1));
+  if (!rows.length) { toast("No snapshot yet"); return; }
+  const z = {}; S.tsnap.forEach(x => { z[x.id] = x; });
+  exportCsv("tally_snapshot_" + today() + ".csv", ["Snapshot", "Taken", "Fingerprint", "Book", "Date", "Ledger", "Voucher type", "Voucher no.", "Debit", "Credit", "Voucher id", "Missing from Tally since"],
+    rows.map(t => [t.snap, (z[t.snap] || {}).takenAt || "", (z[t.snap] || {}).fingerprint || "", t.book, t.date, t.party, t.type, t.no, t.dr || "", t.cr || "", t.id, t.gone || ""]));
+}
+function bkChgCsv() {
+  const st = $("#bkChgSt").value, ch = S.tchg.filter(c => !st || c.status === st).sort((a, b) => (a.at < b.at ? -1 : 1));
+  exportCsv("tally_changes_" + (st || "all").replace(/\s+/g, "_").toLowerCase() + "_" + today() + ".csv", ["Logged", "By", "Change", "Book", "Date", "Ledger", "Voucher type", "Voucher no.", "Debit", "Credit", "Was", "Reason", "Status", "Posted by", "Posted on", "Tally voucher no."],
+    ch.map(c => [c.at, c.by, c.kind, c.book, c.date, c.party, c.type, c.no, c.dr || "", c.cr || "", c.was, c.reason, c.status, c.postedBy, c.postedOn, c.tallyNo]));
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "classify", "payments", "chat", "tally", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "books", "tally", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
@@ -1684,6 +1909,8 @@ function wire() {
   $("#tkFile").onchange = e => { const fs = Array.from(e.target.files || []); if (fs.length) onTallyFiles(fs); e.target.value = ""; };
   ["tkList", "tkMonth"].forEach(id => { $("#" + id).onchange = () => { TK_SHOW = 100; renderTally(); }; });
   $("#tkSearch").oninput = () => { TK_SHOW = 100; renderTally(); };
+  ["bkBook", "bkKind", "bkChgSt"].forEach(id => { $("#" + id).onchange = () => { BK_SHOW = 150; renderBooks(); }; });
+  $("#bkSearch").oninput = () => { BK_SHOW = 150; renderBooks(); };
   $("#sfFile").onchange = e => { const f = e.target.files[0]; if (f) onFloatFile(f); e.target.value = ""; };
   $("#sfPayee").onchange = e => { S.settings.floatPayee = e.target.value.trim(); persist(); };
   $("#cdFile").onchange = e => { const f = e.target.files[0]; if (f) onChatFile(f); e.target.value = ""; };
@@ -1717,6 +1944,17 @@ function wire() {
     else if (act === "cldg") clSave(t.closest("tr"), true);
     else if (act === "clmore") { CL_SHOW += 60; renderClassify(); }
     else if (act === "tkmore") { TK_SHOW += 100; renderTally(); }
+    else if (act === "bkmore") { BK_SHOW += 150; renderBooks(); }
+    else if (act === "bkled") bkLedger(id);
+    else if (act === "bknew") bkForm("new", null, id || "");
+    else if (act === "bkedit" || act === "bkcancel") { const r = S.tally.filter(x => x.id === id)[0]; if (r) bkForm(act === "bkedit" ? "edit" : "cancel", r, bkKey(r.book, r.party)); }
+    else if (act === "bksave") bkSave();
+    else if (act === "bkpost") bkStatus(id, "Posted");
+    else if (act === "bkposted") { const c = S.tchg.filter(x => x.id === id)[0]; if (c && c.status === "To post") { c.status = "Posted"; c.postedBy = USER ? USER.email : ""; c.postedOn = today(); c.tallyNo = $("#bkPostNo").value.trim(); persist(); renderBooks(); closeModal(); toast("Marked posted in Tally"); } }
+    else if (act === "bkwd") bkStatus(id, "Withdrawn");
+    else if (act === "bksnap") bkSnapshot();
+    else if (act === "bksnapdl") bkSnapCsv();
+    else if (act === "bkchgcsv") bkChgCsv();
     else if (act === "tkgo") { $("#tkList").value = t.dataset.l; $("#tkMonth").value = id; TK_SHOW = 100; renderTally(); }
     else if (act === "cdmore") { CD_SHOW += 100; renderChat(); }
     else if (act === "cdmon") { $("#cdMonth").value = id; CD_SHOW = 100; renderChat(); }
