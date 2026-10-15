@@ -221,6 +221,13 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .cdtbl .nar{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cdtbl .acts{display:flex;gap:4px;flex-wrap:wrap}
 .cdtbl tr.rp td{opacity:.55}
+#modal.review{width:min(1180px,100%)}
+.rvgrid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}
+.rvdoc{min-height:60vh;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface2)}
+.rvdoc iframe{width:100%;height:68vh;border:0;display:block}
+.rvgrid .form{grid-template-columns:1fr 1fr}
+.rvgrid .form label.w{grid-column:1/-1}
+@media (max-width:760px){.rvgrid{grid-template-columns:minmax(0,1fr)}.rvdoc iframe{height:50vh}}
 .cdmon td,.cdmon th{white-space:nowrap}
 .cdmon tr.on td{background:var(--surface2);font-weight:600}
 .pill.ok{background:color-mix(in srgb,var(--ok,#2e7d32) 18%,var(--surface));color:var(--text)}
@@ -327,7 +334,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="toolbar" style="margin-bottom:6px">
         <select id="cdMonth"></select>
         <select id="cdKind"><option value="bill">Bills</option><option value="pay">Payment proofs</option><option value="other">Other papers</option><option value="">All documents</option></select>
-        <select id="cdState"><option value="">Any state</option><option value="open">To check</option><option value="sugg">Bank line suggested</option><option value="nomatch">No bank line found</option><option value="ok">Matched to bank</option><option value="outside">Paid outside company bank</option><option value="ignore">Not a bill / ignored</option><option value="repost">Posted twice</option></select>
+        <select id="cdState"><option value="">Any state</option><option value="open">To check</option><option value="sugg">Bank line suggested</option><option value="nomatch">No bank line found</option><option value="ok">Matched to bank</option><option value="outside">Paid outside company bank</option><option value="ignore">Not a bill / ignored</option><option value="repost">Posted twice</option><option value="unrev">Not reviewed yet</option><option value="rev">Reviewed</option><option value="noproj">Without a project</option></select>
         <input type="text" id="cdSearch" placeholder="Search vendor, bill no., items, UPI ref">
         <button id="cdReset" class="small">Reset filters</button>
       </div>
@@ -516,7 +523,7 @@ const TABS = {
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
-  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn"],
   tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
@@ -1342,7 +1349,8 @@ function cdFilter() {
     if (m && d.month !== m) return false;
     if (k && cdKind(d) !== k) return false;
     const s = cdState(d);
-    if (st === "open" ? (s !== "sugg" && s !== "nomatch" && s !== "open") : st ? s !== st : s === "repost") return false;
+    if (st === "unrev" || st === "rev" || st === "noproj") { if (s === "repost" || (st === "unrev" && d.reviewedOn) || (st === "rev" && !d.reviewedOn) || (st === "noproj" && d.project)) return false; }
+    else if (st === "open" ? (s !== "sugg" && s !== "nomatch" && s !== "open") : st ? s !== st : s === "repost") return false;
     if (q && [d.vendor, d.docNo, d.items, d.txn, d.upi, d.site, d.caption, d.who, d.file].join(" ").toLowerCase().indexOf(q) < 0) return false;
     return true;
   }).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : (a.post || 0) - (b.post || 0)));
@@ -1380,6 +1388,7 @@ function renderChat() {
       const doc = '<span class="pill">' + esc(d.type || "document") + "</span>" + (d.docNo ? " " + esc(d.docNo) : "") +
         '<div class="nar">' + (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">Open in Drive</a> · ' : "") + esc(d.who || "") + (d.posted ? " " + esc(dmy(d.posted)) : "") + "</div>";
       const who = "<b>" + esc(d.vendor || "?") + "</b>" + (v && v.name !== d.vendor ? ' <span class="sub">(' + esc(v.name) + ")</span>" : "") +
+        (d.project ? ' <span class="pill">' + esc(d.project) + "</span>" : "") + (d.reviewedOn ? ' <span class="pill ok" title="' + esc("Checked by " + d.reviewedBy + " on " + dmy(d.reviewedOn)) + '">reviewed</span>' : "") +
         '<div class="nar" title="' + esc([d.items, d.site, d.caption, d.note].filter(Boolean).join(" · ")) + '">' + esc([d.items, d.site, d.note].filter(Boolean).join(" · ")) + "</div>";
       const lineTxt = l => esc((l.acct || "") + " " + dmy(l.date) + " " + fmt(l.debit)) + '<div class="nar" title="' + esc(l.narration) + '">' + esc(l.narration) + "</div>";
       let bk = "", acts = "";
@@ -1392,6 +1401,7 @@ function renderChat() {
         else if (cdKind(d) !== "other") bk = '<span class="sub">' + (cdAmt(d) ? "No company bank debit of this amount close to this date" : "No amount read") + (d.paidFrom ? "; paid from " + esc(d.paidFrom) : "") + "</span>";
         acts += '<button class="small" data-act="cdpick" data-id="' + esc(d.id) + '">Pick line</button><button class="small" data-act="cdset" data-s="outside" data-id="' + esc(d.id) + '" title="Paid from a personal account, site float or Direct">Paid outside</button><button class="small" data-act="cdset" data-s="ignore" data-id="' + esc(d.id) + '">Not a bill</button>';
       }
+      acts = '<button class="small' + (d.reviewedOn ? "" : " primary") + '" data-act="cdrev" data-id="' + esc(d.id) + '">Review</button>' + acts;
       return '<tr data-id="' + esc(d.id) + '"' + (st === "repost" ? ' class="rp"' : "") + '><td class="l">' + esc(dmy(cdDate(d))) + (d.docDate ? "" : ' <span class="sub">posted</span>') + "</td><td class=\"l\">" + doc + '</td><td class="l">' + who + "</td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") + (d.conf && d.conf !== "high" ? '<div class="sub">' + esc(d.conf) + " confidence</div>" : "") + '</td><td class="l">' + bk + '</td><td class="l"><div class="acts">' + acts + "</div></td></tr>";
     }).join("") + "</tbody></table>" + (list.length > CD_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="cdmore">Show ' + Math.min(100, list.length - CD_SHOW) + " more</button></div>" : "")
     : '<div class="sub">No documents match these filters.</div>';
@@ -1418,22 +1428,65 @@ function cdPick(id) {
       : '<div class="sub">No company bank debit within 2% of this amount.</div>') +
     '<div style="margin-top:10px;text-align:right"><button data-act="mclose">Close</button></div>', true);
 }
+/* review panel: the bill beside its extracted fields; corrections and the project are saved, and the row is marked reviewed */
+const RV_F = [["type", "Document type", "sel"], ["vendor", "Vendor"], ["gstin", "Vendor GSTIN"], ["docNo", "Bill no."], ["docDate", "Bill date", "date"], ["site", "Site"],
+  ["taxable", "Taxable value (&#8377;)", "num"], ["gst", "GST (&#8377;)", "num"], ["total", "Bill total (&#8377;)", "num"], ["paid", "Amount paid (&#8377;)", "num"],
+  ["txn", "UPI / UTR reference"], ["paidFrom", "Paid from"], ["items", "Items", "wide"], ["note", "Note", "wide"]];
+const RV_TYPES = ["tax invoice", "bill / memo", "fuel slip / pump bill", "voucher / handwritten", "payment screenshot", "bank payment list", "quotation / estimate", "delivery challan / e-way bill", "purchase order", "statement / ledger", "fastag / toll", "other document", "not a document", "photo, no text read"];
+let RV_LIST = [];
+function cdReview(id) {
+  const d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
+  RV_LIST = cdFilter().map(x => x.id); if (RV_LIST.indexOf(id) < 0) RV_LIST.unshift(id);
+  const pos = RV_LIST.indexOf(id), url = d.driveId ? "https://drive.google.com/file/d/" + encodeURIComponent(d.driveId) + "/preview" : "";
+  const fld = f => {
+    const v = d[f[0]] == null ? "" : d[f[0]];
+    if (f[2] === "sel") return '<label>' + f[1] + '<select data-f="' + f[0] + '">' + uniq(RV_TYPES.concat([String(v)])).filter(Boolean).map(o => "<option" + (o === v ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>";
+    return '<label' + (f[2] === "wide" ? ' class="w"' : "") + ">" + f[1] + '<input type="' + (f[2] === "date" ? "date" : "text") + '"' + (f[2] === "num" ? ' inputmode="decimal"' : "") + ' data-f="' + f[0] + '" value="' + esc(f[2] === "num" ? (v === "" || v === 0 ? "" : v) : v) + '"></label>';
+  };
+  openModal('<h2>Review ' + esc(d.type || "document") + ' <span class="sub">' + (pos + 1) + " of " + RV_LIST.length + " in this list</span></h2>" +
+    '<div class="rvgrid"><div class="rvdoc">' + (url ? '<iframe src="' + esc(url) + '" title="The bill" allow="autoplay"></iframe>' : '<div class="help" style="padding:12px">No Drive copy of this file.</div>') + "</div>" +
+    '<div><div class="help">' + esc(d.who || "") + (d.posted ? " posted it on " + esc(dmy(d.posted)) : "") + (d.caption ? ": " + esc(d.caption) : "") + (url ? ' · <a href="' + esc(url.replace(/\/preview$/, "/view")) + '" target="_blank" rel="noopener">Open in Drive</a>' : "") + "</div>" +
+    '<div class="form" id="rvForm"><label class="w">Project<select data-f="project">' + projOpts(d.project || "", "No project yet") + "</select></label>" + RV_F.map(fld).join("") + "</div>" +
+    (d.reviewedOn ? '<div class="sub" style="margin-top:6px">Reviewed by ' + esc(d.reviewedBy) + " on " + esc(dmy(d.reviewedOn)) + "</div>" : "") +
+    '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button>' +
+    (pos > 0 ? '<button data-act="rvsave" data-go="-1">Save, previous</button>' : "") + '<button data-act="rvsave" data-go="0">Save</button>' +
+    '<button class="primary" data-act="rvsave" data-go="1">Save and next</button></div></div></div>', "review");
+  $("#modal").className = "review"; $("#modal").dataset.id = id;
+  const first = $('#rvForm [data-f="total"]') || $("#rvForm input"); if (first) first.focus();
+}
+function rvSave(go) {
+  const id = $("#modal").dataset.id, d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
+  let bad = false;
+  $$("#rvForm [data-f]").forEach(el => {
+    const f = el.dataset.f, num = ["taxable", "gst", "total", "paid"].indexOf(f) >= 0;
+    let v = el.value.trim();
+    if (num) { if (v === "") v = 0; else { const n = toNum(v.replace(/[^\d.\-]/g, ""), NaN); if (isNaN(n)) { el.classList.add("bad"); bad = true; return; } v = n; } }
+    d[f] = v;
+  });
+  if (bad) { toast("Check the amounts"); return; }
+  if (d.docDate) d.month = d.docDate.slice(0, 7);
+  d.reviewedBy = USER ? USER.email : ""; d.reviewedOn = today();
+  persist(); renderChat();
+  const i = RV_LIST.indexOf(id), nx = +go ? RV_LIST[i + +go] : null;
+  if (nx) cdReview(nx); else { closeModal(); toast(+go > 0 ? "Saved. That was the last one in this list." : "Saved"); }
+}
 async function onChatFile(f) {
   try {
     const j = JSON.parse(await f.text()), list = Array.isArray(j) ? j : (j && j.docs) || [];
     if (!list.length || !list[0].id) { toast("This file has no WhatsApp documents in it"); return; }
     const by = {}; S.docs.forEach(d => { by[d.id] = d; });
-    const keep = ["lineId", "status", "checkedBy", "checkedOn"];
-    let add = 0, upd = 0;
+    const keep = ["lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn"];
+    let add = 0, upd = 0, held = 0;
     list.forEach(x => {
       if (!x || !x.id) return;
       const rec = {}; TABS.chat_docs.forEach(c => { if (keep.indexOf(c) < 0) rec[c] = cellIn(c, x[c]); });
       const t = by[x.id];
+      if (t && t.reviewedOn) { held++; return; }   // corrected by hand: the new extract does not overwrite it
       if (t) { Object.assign(t, rec); upd++; }
       else { keep.forEach(c => { rec[c] = cellIn(c, x[c]); }); S.docs.push(rec); by[x.id] = rec; add++; }
     });
     persist(); renderAll();
-    $("#cdImpInfo").textContent = add + " added, " + upd + " updated from " + f.name;
+    $("#cdImpInfo").textContent = add + " added, " + upd + " updated" + (held ? ", " + held + " reviewed by hand kept as they are" : "") + " from " + f.name;
     toast(add + " WhatsApp documents added, " + upd + " updated");
   } catch (e) { toast("Could not read " + f.name + ": " + (e.message || e)); }
 }
@@ -1646,7 +1699,7 @@ function wire() {
   $("#setSources").onchange = e => { S.settings.sources = e.target.value.trim(); persist(); renderAll(); };
   $("#setDupDays").onchange = e => { S.settings.dupDays = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
   $("#setDupMin").onchange = e => { S.settings.dupMin = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { $$(".cmenu").forEach(m => m.classList.add("hide")); closeModal(); } });
+  document.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && $("#rvForm")) { e.preventDefault(); rvSave("1"); return; } if (e.key === "Escape") { $$(".cmenu").forEach(m => m.classList.add("hide")); closeModal(); } });
   document.addEventListener("click", e => {
     const t = e.target.closest("[data-act]");
     $$(".cmenu").forEach(m => { if (!t || t.dataset.act !== "cmenu" || m.parentNode !== t.parentNode) m.classList.add("hide"); });
@@ -1670,6 +1723,8 @@ function wire() {
     else if (act === "cdok") cdSet(id, "ok", t.dataset.line);
     else if (act === "cdset") cdSet(id, t.dataset.s);
     else if (act === "cdpick") cdPick(id);
+    else if (act === "cdrev") cdReview(id);
+    else if (act === "rvsave") rvSave(t.dataset.go);
     else if (act === "newvendor") openVendor(null);
     else if (act === "vedit") openVendor(id);
     else if (act === "vdel") { S.vendors = S.vendors.filter(v => v.id !== id); closeModal(); persist(); renderAll(); toast("Vendor deleted"); }
