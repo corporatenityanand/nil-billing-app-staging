@@ -223,6 +223,22 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .cdtbl tr.rp td{opacity:.55}
 #modal.review{width:min(1180px,100%)}
 #modal.ledger{width:min(980px,100%)}
+.tgbar{height:10px;border-radius:99px;background:var(--surface2);overflow:hidden}
+.tgbar i{display:block;height:100%;background:var(--cred)}
+.tgsrc{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px;margin-top:10px;font-size:13px}
+.tgsrc label{display:flex;gap:6px;align-items:center;font-weight:600}
+.tgsrc .sub{display:block;margin:2px 0 4px}
+.tgsteps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tgsteps button.on{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.tggrid{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:14px}
+@media (max-width:860px){.tggrid{grid-template-columns:minmax(0,1fr)}}
+.tgq{max-height:70vh;overflow:auto;border:1px solid var(--line);border-radius:9px}
+.tgq div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.tgq div.on{background:var(--surface2);font-weight:600}
+.tgq div .sub{display:block;font-weight:400}
+.tgtbl select{max-width:100%;font-size:12px;padding:3px 4px}
+.tgtbl{table-layout:fixed;min-width:760px}
+.tgtbl td{vertical-align:top;white-space:normal;overflow-wrap:anywhere;padding:5px 6px}
 .pill.chg{background:color-mix(in srgb,var(--ret) 18%,var(--surface));color:var(--text)}
 .pill.lock{background:color-mix(in srgb,var(--inv) 12%,var(--surface));color:var(--text)}
 .bksnap{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;font-size:13px}
@@ -286,6 +302,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
     <button data-tab="books">Books <span class="cnt" id="bkCnt"></span></button>
     <button data-tab="tally">Tally check</button>
+    <button data-tab="tag">Project tags <span class="cnt" id="tgCnt"></span></button>
     <button data-tab="vendors">Vendors</button>
     <button data-tab="projects">Projects</button>
     <button data-tab="masters">Masters</button>
@@ -393,6 +410,36 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
         <button class="small" data-act="bkchgcsv">Download list</button></div>
       <div class="help">The audit trail: who changed what, when, from what to what, and why. Entries are never deleted. When the accountant has entered one in Tally, mark it posted with the Tally voucher number; the next day book import also marks a change posted by itself when Tally has a voucher with the same book, ledger, date and amount.</div>
       <div class="tblwrap" id="bkChg"></div>
+    </div>
+  </section>
+
+  <section id="tab-tag" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tie every entry to a project and equipment</h2><span style="flex:1"></span><span class="sub" id="tgTot"></span></div>
+      <div class="tgbar"><i id="tgBar" style="width:0"></i></div>
+      <div class="tgsrc" id="tgSrc"></div>
+    </div>
+    <div class="tgsteps"><button data-act="tgstep" data-id="1">1 · Equipment list</button><button data-act="tgstep" data-id="2" class="on">2 · Tag party by party</button><button data-act="tgstep" data-id="3">3 · Check the totals</button></div>
+    <div class="card hide" id="tgStep1">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Equipment</h2><span class="sub" id="eqSum"></span><span style="flex:1"></span><button class="primary small" data-act="eqnew">+ Equipment</button></div>
+      <div class="help">Rigs, cranes, vehicles and other machines that costs are booked against. Words are spellings that appear in bank narrations, bills or Tally ledgers for that machine (a serial number, a short name); entries that contain one are suggested for it.</div>
+      <div class="tblwrap" id="eqTbl"></div>
+      <div id="eqSug" style="margin-top:12px"></div>
+    </div>
+    <div class="card" id="tgStep2">
+      <div class="help">Each party's entries from every source together: bank, other payments (site float, direct), WhatsApp bills, Tally. Pick the project (and the equipment, if the cost is for a machine) and apply it to the party's untagged entries, to the ones ticked, or to a date range when the party moved between sites. Every change is saved and logged in the audit tab.</div>
+      <div class="tggrid">
+        <div><input type="text" id="tgSearch" placeholder="Search party" style="width:100%;margin-bottom:6px">
+          <label class="sub" style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="checkbox" id="tgDone" class="chk1"> show parties already done</label>
+          <div class="tgq" id="tgQueue"></div></div>
+        <div id="tgParty"></div>
+      </div>
+    </div>
+    <div class="card hide" id="tgStep3">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Totals by project and equipment</h2><span style="flex:1"></span><button class="small" data-act="tgcsv">Download all entries</button></div>
+      <div class="help">The same cost can show in more than one source (a bill on WhatsApp, its bank payment and its Tally voucher), so read each column on its own rather than adding across.</div>
+      <div class="tblwrap" id="tgProj"></div>
+      <div class="tblwrap" id="tgEq" style="margin-top:12px"></div>
     </div>
   </section>
 
@@ -524,13 +571,13 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "" } });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
-  ["vendors", "projects", "lines", "pays", "docs", "tally", "tsnap", "tchg"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  ["vendors", "projects", "lines", "pays", "docs", "tally", "tsnap", "tchg", "equip"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
@@ -556,18 +603,19 @@ const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets/";
 const TABS = {
   vendors: ["id", "name", "aliases", "unit", "cat", "project", "pan", "gstin", "tdsPct", "phone", "note", "addedBy", "addedOn"],
   projects: ["id", "name", "clientGroup", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
-  bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy"],
-  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on"],
+  bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy", "equip"],
+  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
-  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn"],
-  tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip"],
+  tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone", "project", "equip"],
+  equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
   tally_changes: ["id", "kind", "ref", "book", "date", "party", "type", "no", "dr", "cr", "was", "reason", "by", "at", "status", "postedBy", "postedOn", "tallyNo", "tallyId"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "settings"];
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg", equipment: "equip" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "settings"];
 const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
 const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1 };
@@ -658,7 +706,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.cats = raw.categories;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.equip = raw.equipment; n.cats = raw.categories;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -930,7 +978,7 @@ function fillPeriods() {
   PERIOD = sel.value ? sel.value.split("|") : null;
 }
 const vName = r => r.v ? r.v.name : r.payee;
-const projName = id => (PBY[id] ? PBY[id].name || id : id);
+const projName = id => (id === "_co" ? "Company level" : PBY[id] ? PBY[id].name || id : id);
 const projOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.projects.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))).map(p => '<option value="' + esc(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.id + " · " + (p.name || "")) + "</option>").join("");
 const srcList = () => uniq(S.lines.map(l => l.acct).concat(["Direct", "Site float"]).concat(String(S.settings.sources || "").split(",").map(s => s.trim())));
 
@@ -940,7 +988,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderVendors(); renderProjects(); renderImport(); renderMasters();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderTag(); renderVendors(); renderProjects(); renderImport(); renderMasters();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1170,7 +1218,7 @@ function openProject(id) {
     '<label style="grid-column:1/-1">Bank words (comma separated)<input type="text" id="jWords" value="' + esc(p.words) + '" placeholder="WADALA, BYCULLA"></label>' +
     '<label style="grid-column:1/-1">Note<input type="text" id="jNote" value="' + esc(p.note) + '"></label></div>' +
     '<div style="margin-top:12px;display:flex;gap:8px">' + (p.id ? '<button class="danger" id="mDel">Delete project</button>' : "") + '<span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" id="mSave">Save</button></div>', true);
-  const refs = id => S.lines.filter(x => x.project === id).length + S.pays.filter(x => x.project === id).length + S.vendors.filter(x => x.project === id).length;
+  const refs = id => S.lines.concat(S.pays, S.vendors, S.docs, S.tally, S.equip).filter(x => x.project === id).length;
   if (p.id) $("#mDel").onclick = () => {
     const n = refs(p.id);
     if (n) { toast(n + " payments or vendors are set to " + p.id + ". Change the code instead, or move them first."); return; }
@@ -1182,7 +1230,7 @@ function openProject(id) {
     if (code !== p.id && PBY[code]) { toast("That code is already used"); $("#jId").classList.add("bad"); return; }
     let moved = 0;
     if (p.id && code !== p.id) {   // new code: carry every payment and vendor that pointed at the old one
-      S.lines.concat(S.pays, S.vendors).forEach(x => { if (x.project === p.id) { x.project = code; moved++; } });
+      S.lines.concat(S.pays, S.vendors, S.docs, S.tally, S.equip).forEach(x => { if (x.project === p.id) { x.project = code; moved++; } });
       PBY[p.id].id = code; PBY[code] = PBY[p.id]; delete PBY[p.id];
     }
     const t = PBY[code] || (S.projects.push({ id: code }), S.projects[S.projects.length - 1]);
@@ -1881,10 +1929,170 @@ function bkChgCsv() {
     ch.map(c => [c.at, c.by, c.kind, c.book, c.date, c.party, c.type, c.no, c.dr || "", c.cr || "", c.was, c.reason, c.status, c.postedBy, c.postedOn, c.tallyNo]));
 }
 
+
+/* ---------- Project tags: every payment entry from every source tied to a project, and to equipment where it is for a machine ---------- */
+const TG_SRC_L = { bank: "Bank statements", pay: "Site float and direct", doc: "WhatsApp bills", tp: "Tally, Piling book", tm: "Tally, Main book" };
+let TG_SRC = { bank: 1, pay: 1, doc: 1, tp: 1, tm: 0 }, TG_STEP = "2", TG_CUR = "", TG_SEL = {}, TG_IDX = {};
+const EBY = () => { const m = {}; S.equip.forEach(e => { m[e.id] = e; }); return m; };
+const eqOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.equip.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(e => '<option value="' + esc(e.id) + '"' + (e.id === sel ? " selected" : "") + ">" + esc(e.name || e.id) + "</option>").join("");
+const tgProjOpts = (sel, blank) => projOpts(sel, blank) + '<option value="_co"' + (sel === "_co" ? " selected" : "") + ">Company level (no project)</option>";
+let TG_KC = {};
+function tgKey(name) { const s0 = String(name || "").trim(); if (TG_KC[s0]) return TG_KC[s0]; const v = vendorByName(s0); return (TG_KC[s0] = v ? ["v:" + v.id, v.name] : ["n:" + norm(s0), s0]); }
+function tgEntries() {
+  const out = []; TG_IDX = {}; TG_KC = {};
+  const add = (src, rec, date, name, amt, detail, where, hint) => {
+    if (!(amt > 0)) return;
+    const k = tgKey(name), e = { src: src, id: rec.id, rec: rec, date: date || "", key: k[0], party: k[1] || "(no name)", amt: amt, detail: detail, where: where, hint: hint || "" };
+    out.push(e); TG_IDX[src + "|" + rec.id] = e;
+  };
+  ROWS.forEach(r => { if (OUT[r.cat]) return;
+    add(r.kind === "bank" ? "bank" : "pay", r.rec, r.date, r.v ? r.v.name : r.payee, r.amt, r.kind === "bank" ? r.narration : r.note, r.source, (r.project && !r.rec.project ? r.project : "") ); });
+  S.docs.forEach(d => { if (d.repostOf || d.status === "ignore") return; const k = cdKind(d); if (k !== "bill" && !(k === "pay" && d.status === "outside")) return;
+    add("doc", d, cdDate(d), d.vendor || d.who, cdAmt(d), [d.type, d.docNo, d.items].filter(Boolean).join(" · "), "WhatsApp " + (d.chat || ""), ""); });
+  S.tally.forEach(t => { if (t.gone) return; const src = t.book === "Piling" ? "tp" : "tm";
+    add(src, t, t.date, t.party, Math.max(+t.dr || 0, +t.cr || 0), t.type + (t.no ? " " + t.no : "") + (t.dr ? " · Dr" : " · Cr"), "Tally " + t.book, ""); });
+  return out;
+}
+function tgGroups(E) {
+  const G = {};
+  E.forEach(e => { const g = G[e.key] || (G[e.key] = { key: e.key, party: e.party, n: 0, amt: 0, open: 0, openAmt: 0, list: [] });
+    g.n++; g.amt += e.amt; g.list.push(e); if (!e.rec.project) { g.open++; g.openAmt += e.amt; } });
+  return Object.keys(G).map(k => G[k]);
+}
+function tgSuggest(g) {   // most used project and machine on this party's tagged entries, else the vendor's own project, else words in the text
+  const cnt = (f) => { const m = {}; g.list.forEach(e => { if (e.rec[f]) m[e.rec[f]] = (m[e.rec[f]] || 0) + e.amt; }); return Object.keys(m).sort((a, b) => m[b] - m[a])[0] || ""; };
+  let p = cnt("project"), why = p ? "most used on this party" : "";
+  if (!p && g.key.indexOf("v:") === 0 && VBY[g.key.slice(2)] && VBY[g.key.slice(2)].project) { p = VBY[g.key.slice(2)].project; why = "the vendor's usual project"; }
+  if (!p) { const h = g.list.filter(e => e.hint)[0] || g.list.filter(e => wordsProject(e.party + " " + e.detail))[0]; if (h) { p = h.hint || wordsProject(h.party + " " + h.detail); why = "project words in the bank text"; } }
+  let q = cnt("equip"), qwhy = q ? "most used on this party" : "";
+  if (!q) { const u = (g.party + " " + g.list.map(e => e.detail).join(" ")).toUpperCase(); const m = S.equip.filter(e => String(e.words || "").split(",").map(w => w.trim().toUpperCase()).filter(w => w.length >= 3).some(w => u.indexOf(w) >= 0))[0]; if (m) { q = m.id; qwhy = "its words appear in the entries"; } }
+  return { p: p, why: why, q: q, qwhy: qwhy };
+}
+let TG_E = [], TG_G = [];
+function renderTag() {
+  if ($("#tab-tag").classList.contains("hide")) return;   // heavy: only while the tab is open
+  const all = tgEntries();
+  TG_E = all.filter(e => TG_SRC[e.src]);
+  const tot = TG_E.reduce((a, e) => a + e.amt, 0), done = TG_E.filter(e => e.rec.project), doneAmt = done.reduce((a, e) => a + e.amt, 0);
+  const pc = tot ? Math.round(doneAmt / tot * 100) : 0;
+  $("#tgBar").style.width = pc + "%";
+  $("#tgTot").textContent = TG_E.length ? pc + "% of the amount tagged · " + done.length.toLocaleString("en-IN") + " of " + TG_E.length.toLocaleString("en-IN") + " entries" : "Nothing imported yet";
+  $("#tgCnt").textContent = TG_E.length - done.length ? (TG_E.length - done.length).toLocaleString("en-IN") : "";
+  $("#tgSrc").innerHTML = Object.keys(TG_SRC_L).map(k => {
+    const a = all.filter(e => e.src === k), d = a.filter(e => e.rec.project), aa = a.reduce((s, e) => s + e.amt, 0), da = d.reduce((s, e) => s + e.amt, 0), p = aa ? Math.round(da / aa * 100) : 0;
+    return '<div><label><input type="checkbox" class="chk1" data-act="tgsrc" data-id="' + k + '"' + (TG_SRC[k] ? " checked" : "") + "> " + TG_SRC_L[k] + '</label><span class="sub">' + d.length.toLocaleString("en-IN") + " of " + a.length.toLocaleString("en-IN") + " · " + fmt(da) + " of " + fmt(aa) + '</span><div class="tgbar"><i style="width:' + p + '%"></i></div></div>';
+  }).join("");
+  ["1", "2", "3"].forEach(n => { $("#tgStep" + n).classList.toggle("hide", n !== TG_STEP); });
+  $$(".tgsteps button").forEach(b => b.classList.toggle("on", b.dataset.id === TG_STEP));
+  if (TG_STEP === "1") renderEquip(); else if (TG_STEP === "3") renderTagTotals(); else renderTagQueue();
+}
+function renderTagQueue() {
+  TG_G = tgGroups(TG_E);
+  const q = $("#tgSearch").value.trim().toLowerCase(), showDone = $("#tgDone").checked;
+  const list = TG_G.filter(g => (showDone || g.open) && (!q || g.party.toLowerCase().indexOf(q) >= 0)).sort((a, b) => b.openAmt - a.openAmt || b.amt - a.amt);
+  if (!TG_CUR || !TG_G.some(g => g.key === TG_CUR)) TG_CUR = list.length ? list[0].key : "";
+  $("#tgQueue").innerHTML = list.length ? list.slice(0, 300).map(g => '<div data-act="tgparty" data-id="' + esc(g.key) + '" class="' + (g.key === TG_CUR ? "on" : "") + '">' + esc(g.party) +
+    '<span class="sub">' + (g.open ? g.open + " untagged · " + fmt(g.openAmt) : "all " + g.n + " tagged") + "</span></div>").join("") + (list.length > 300 ? '<div class="sub">' + (list.length - 300) + " more: search to find them</div>" : "")
+    : '<div class="sub">' + (TG_E.length ? "Every party is tagged." : "No entries in the sources ticked above.") + "</div>";
+  renderTagParty();
+}
+function renderTagParty() {
+  const g = TG_G.filter(x => x.key === TG_CUR)[0];
+  if (!g) { $("#tgParty").innerHTML = ""; return; }
+  const sg = tgSuggest(g), L = g.list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)), E = EBY();
+  const bySrc = {}; L.forEach(e => { bySrc[e.src] = (bySrc[e.src] || 0) + 1; });
+  const ds = L.map(e => e.date).filter(Boolean);
+  $("#tgParty").innerHTML = '<div class="toolbar" style="margin-bottom:4px"><h2 style="margin:0">' + esc(g.party) + '</h2><span class="sub">' + g.n + " entries · " + fmt(g.amt) + " · " + Object.keys(bySrc).map(k => bySrc[k] + " " + TG_SRC_L[k].toLowerCase()).join(", ") + "</span></div>" +
+    (sg.p || sg.q ? '<div class="help">Suggested: ' + (sg.p ? "<b>" + esc(projName(sg.p)) + "</b> (" + sg.why + ")" : "") + (sg.p && sg.q ? ", " : "") + (sg.q ? "<b>" + esc((E[sg.q] || {}).name || sg.q) + "</b> (" + sg.qwhy + ")" : "") + "</div>" : "") +
+    '<div class="form" id="tgForm" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end">' +
+    '<label>Project<select id="tgP">' + tgProjOpts(sg.p, "Keep as is") + "</select></label>" +
+    '<label>Equipment<select id="tgQ">' + eqOpts(sg.q, "Keep as is") + '<option value="_none">No equipment</option></select></label>' +
+    '<label>Apply to<select id="tgScope"><option value="open">Untagged entries (' + g.open + ')</option><option value="sel">Ticked entries</option><option value="all">All ' + g.n + " entries</option></select></label>" +
+    '<label>From<input type="date" id="tgFrom" value="' + (ds[0] || "") + '"></label><label>To<input type="date" id="tgTo" value="' + (ds[ds.length - 1] || "") + '"></label>' +
+    '<div class="toolbar" style="gap:6px"><button class="primary" data-act="tgapply">Apply</button><button data-act="tgnext">Apply and next party</button></div></div>' +
+    '<div class="tblwrap" style="margin-top:10px;max-height:58vh"><table class="tgtbl"><colgroup><col style="width:4%"><col style="width:10%"><col style="width:14%"><col style="width:30%"><col style="width:12%"><col style="width:16%"><col style="width:14%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="tgselall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
+    L.map(e => { const k = e.src + "|" + e.id;
+      return '<tr><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div></td><td>" + fmt(e.amt) +
+        '</td><td class="l"><select class="tgOne" data-f="project" data-id="' + esc(k) + '">' + tgProjOpts(e.rec.project || "", "Not tagged") + '</select></td><td class="l"><select class="tgOne" data-f="equip" data-id="' + esc(k) + '">' + eqOpts(e.rec.equip || "", "None") + "</select></td></tr>"; }).join("") +
+    "</tbody></table></div>";
+}
+function tgApply(next) {
+  const g = TG_G.filter(x => x.key === TG_CUR)[0]; if (!g) return;
+  const p = $("#tgP").value, q = $("#tgQ").value, sc = $("#tgScope").value, fr = $("#tgFrom").value, to = $("#tgTo").value;
+  if (!p && !q) { toast("Pick a project or equipment first"); return; }
+  let n = 0;
+  g.list.forEach(e => {
+    if (sc === "open" && e.rec.project) return;
+    if (sc === "sel" && !TG_SEL[e.src + "|" + e.id]) return;
+    if ((fr && e.date && e.date < fr) || (to && e.date && e.date > to)) return;
+    if (p) e.rec.project = p; if (q) e.rec.equip = q === "_none" ? "" : q; n++;
+  });
+  if (!n) { toast(sc === "sel" ? "Tick the entries first" : "No entries in that range"); return; }
+  TG_SEL = {}; persist();
+  if (next) { const rest = TG_G.filter(x => x.key !== g.key && x.list.some(e => !e.rec.project)).sort((a, b) => b.openAmt - a.openAmt); if (rest.length) TG_CUR = rest[0].key; }
+  renderAll(); toast(n + " entries tagged");
+}
+function renderEquip() {
+  const used = {}; TG_E.forEach(e => { if (e.rec.equip) used[e.rec.equip] = (used[e.rec.equip] || 0) + e.amt; });
+  $("#eqSum").textContent = S.equip.length + " machines";
+  $("#eqTbl").innerHTML = S.equip.length ? '<table><thead><tr><th class="l">Code</th><th class="l">Name</th><th class="l">Kind</th><th class="l">Make, model</th><th class="l">Serial</th><th class="l">Words</th><th class="l">Now at</th><th class="l">Status</th><th>Tagged</th></tr></thead><tbody>' +
+    S.equip.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))).map(e => '<tr class="dr" data-act="eqedit" data-id="' + esc(e.id) + '"><td class="l">' + esc(e.id) + '</td><td class="l">' + esc(e.name) + '</td><td class="l">' + esc(e.kind) + '</td><td class="l">' + esc([e.make, e.model].filter(Boolean).join(" ")) + '</td><td class="l">' + esc(e.serial) + '</td><td class="l">' + esc(e.words) + '</td><td class="l">' + esc(e.project ? projName(e.project) : "") + '</td><td class="l">' + esc(e.status) + "</td><td>" + (used[e.id] ? fmt(used[e.id]) : "") + "</td></tr>").join("") + "</tbody></table>"
+    : '<div class="sub">No equipment yet. Add your machines, or start from the asset ledgers found in Tally below.</div>';
+  const have = {}; S.equip.forEach(e => { have[norm(e.name)] = 1; String(e.words || "").split(",").forEach(w => { if (w.trim()) have[norm(w)] = 1; }); });
+  const A = {}; S.tally.forEach(t => { if (/\b(RIG|MAIT|JCB|EXCAVATOR|COMPRESSOR|GENERATOR|HYDRA|POCLAIN|LOADER|TIPPER|TRAILER)\b|\bHR\s?\d{3}\b/i.test(t.party) && !/SERVICE|INDUSTR|PVT|LTD|LIMITED|LLP|EQUIPMENT|SPARES|ENGINEERING|DRILLING\b(?! RIG)/i.test(t.party)) (A[t.party] = A[t.party] || []).push(t); });
+  const sug = Object.keys(A).filter(n => !have[norm(n)]).sort();
+  $("#eqSug").innerHTML = sug.length ? '<div class="sub" style="margin-bottom:4px">Asset ledgers in Tally that look like machines:</div>' + sug.map(n => '<span class="alias">' + esc(n) + '<button data-act="eqfrom" data-id="' + esc(n) + '">Add</button></span>').join("") : "";
+}
+function openEquip(id, fromName) {
+  const e = S.equip.filter(x => x.id === id)[0] || { id: "", name: fromName || "", kind: /RIG|MAIT/i.test(fromName || "") ? "Piling rig" : "", make: (String(fromName || "").match(/^(SANY|MAIT|JCB|BAUER|SOILMEC|CASAGRANDE|XCMG|TATA|ACE)\b/i) || [""])[0].toUpperCase(), model: "", serial: (String(fromName || "").match(/\b[A-Z]{2}\d{4}[A-Z]{2}\d{4}\b/) || [""])[0], words: fromName || "", project: "", status: "Working", note: "" };
+  const opt = (a, sel) => a.map(x => "<option" + (x === sel ? " selected" : "") + ">" + x + "</option>").join("");
+  openModal("<h2>" + (e.id ? esc(e.id) : "New equipment") + '</h2><div class="form">' +
+    '<label>Code<input type="text" id="qId" value="' + esc(e.id) + '" placeholder="e.g. RIG-SANY-1"></label><label>Name<input type="text" id="qName" value="' + esc(e.name) + '"></label>' +
+    '<label>Kind<input type="text" id="qKind" list="qKinds" value="' + esc(e.kind) + '"></label><datalist id="qKinds">' + uniq(["Piling rig", "Crane", "Excavator", "JCB / backhoe", "Compressor", "DG set", "Vehicle", "Welding set", "Other"].concat(S.equip.map(x => x.kind))).map(k => '<option value="' + esc(k) + '">').join("") + "</datalist>" +
+    '<label>Make<input type="text" id="qMake" value="' + esc(e.make) + '"></label><label>Model<input type="text" id="qModel" value="' + esc(e.model) + '"></label><label>Serial / reg. no.<input type="text" id="qSerial" value="' + esc(e.serial) + '"></label>' +
+    '<label>Now at<select id="qProj">' + projOpts(e.project, "Not set") + '</select></label><label>Status<select id="qStatus">' + opt(["Working", "Idle", "Under repair", "Sold"], e.status) + "</select></label>" +
+    '<label style="grid-column:1/-1">Words (comma separated)<input type="text" id="qWords" value="' + esc(e.words) + '" placeholder="spellings in bank text, bills or Tally"></label>' +
+    '<label style="grid-column:1/-1">Note<input type="text" id="qNote" value="' + esc(e.note) + '"></label></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px">' + (e.id ? '<button class="danger" data-act="eqdel" data-id="' + esc(e.id) + '">Delete</button>' : "") + '<span style="flex:1"></span><button data-act="mclose">Cancel</button><button class="primary" data-act="eqsave" data-id="' + esc(e.id) + '">Save</button></div>', true);
+}
+function eqSave(old) {
+  const code = $("#qId").value.trim().toUpperCase(), name = $("#qName").value.trim();
+  if (!code) { $("#qId").classList.add("bad"); return; }
+  if (code !== old && S.equip.some(x => x.id === code)) { $("#qId").classList.add("bad"); toast("That code is already used"); return; }
+  let e = S.equip.filter(x => x.id === old)[0];
+  if (old && code !== old) S.lines.concat(S.pays, S.docs, S.tally).forEach(x => { if (x.equip === old) x.equip = code; });
+  if (!e) { e = { id: code }; S.equip.push(e); }
+  Object.assign(e, { id: code, name: name || code, kind: $("#qKind").value.trim(), make: $("#qMake").value.trim(), model: $("#qModel").value.trim(), serial: $("#qSerial").value.trim(), words: $("#qWords").value.trim(), project: $("#qProj").value, status: $("#qStatus").value, note: $("#qNote").value.trim() });
+  closeModal(); persist(); renderAll(); toast("Equipment saved");
+}
+function eqDel(id) {
+  const n = S.lines.concat(S.pays, S.docs, S.tally).filter(x => x.equip === id).length;
+  if (n) { toast(n + " entries are tagged to " + id + ". Change them first, or set the status to Sold."); return; }
+  S.equip = S.equip.filter(x => x.id !== id); closeModal(); persist(); renderAll(); toast("Equipment deleted");
+}
+function renderTagTotals() {
+  const srcs = Object.keys(TG_SRC_L).filter(k => TG_SRC[k]);
+  const tbl = (field, label, name) => {
+    const m = {}; TG_E.forEach(e => { const k = e.rec[field] || ""; const r = m[k] || (m[k] = {}); r[e.src] = (r[e.src] || 0) + e.amt; });
+    const keys = Object.keys(m).sort((a, b) => (a === "") - (b === "") || String(name(a)).localeCompare(String(name(b))));
+    return '<table><thead><tr><th class="l">' + label + "</th>" + srcs.map(k => "<th>" + TG_SRC_L[k] + "</th>").join("") + "</tr></thead><tbody>" +
+      keys.map(k => "<tr><td class=\"l\">" + (k ? esc(name(k)) : "<b>Not tagged</b>") + "</td>" + srcs.map(s => "<td>" + (m[k][s] ? fmt(m[k][s]) : "") + "</td>").join("") + "</tr>").join("") + "</tbody></table>";
+  };
+  const E = EBY();
+  $("#tgProj").innerHTML = TG_E.length ? tbl("project", "Project", projName) : '<div class="sub">Nothing to show yet.</div>';
+  $("#tgEq").innerHTML = TG_E.length ? tbl("equip", "Equipment", k => (E[k] || {}).name || k) : "";
+}
+function tgCsv() {
+  const E = EBY();
+  exportCsv("project_tags_" + today() + ".csv", ["Source", "Date", "Party", "Detail", "Amount", "Project code", "Project", "Equipment code", "Equipment"],
+    tgEntries().sort((a, b) => (a.date < b.date ? -1 : 1)).map(e => [TG_SRC_L[e.src], e.date, e.party, e.detail, e.amt, e.rec.project || "", e.rec.project ? projName(e.rec.project) : "", e.rec.equip || "", e.rec.equip ? (E[e.rec.equip] || {}).name || "" : ""]));
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "classify", "payments", "chat", "books", "tally", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  if (name === "tag") setTimeout(renderTag, 0);
+  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
@@ -1911,6 +2119,13 @@ function wire() {
   $("#tkSearch").oninput = () => { TK_SHOW = 100; renderTally(); };
   ["bkBook", "bkKind", "bkChgSt"].forEach(id => { $("#" + id).onchange = () => { BK_SHOW = 150; renderBooks(); }; });
   $("#bkSearch").oninput = () => { BK_SHOW = 150; renderBooks(); };
+  $("#tgSearch").oninput = renderTagQueue;
+  $("#tgDone").onchange = renderTagQueue;
+  document.addEventListener("change", e => {
+    if (!e.target.classList.contains("tgOne")) return;
+    const x = TG_IDX[e.target.dataset.id]; if (!x) return;
+    x.rec[e.target.dataset.f] = e.target.value; persist(); renderAll(); toast("Saved");
+  });
   $("#sfFile").onchange = e => { const f = e.target.files[0]; if (f) onFloatFile(f); e.target.value = ""; };
   $("#sfPayee").onchange = e => { S.settings.floatPayee = e.target.value.trim(); persist(); };
   $("#cdFile").onchange = e => { const f = e.target.files[0]; if (f) onChatFile(f); e.target.value = ""; };
@@ -1955,6 +2170,19 @@ function wire() {
     else if (act === "bksnap") bkSnapshot();
     else if (act === "bksnapdl") bkSnapCsv();
     else if (act === "bkchgcsv") bkChgCsv();
+    else if (act === "tgstep") { TG_STEP = id; renderTag(); }
+    else if (act === "tgsrc") { TG_SRC[id] = t.checked ? 1 : 0; TG_CUR = ""; renderTag(); }
+    else if (act === "tgparty") { TG_CUR = id; TG_SEL = {}; renderTagQueue(); }
+    else if (act === "tgsel") TG_SEL[id] = t.checked;
+    else if (act === "tgselall") $$("#tgParty [data-act=tgsel]").forEach(c => { c.checked = t.checked; TG_SEL[c.dataset.id] = t.checked; });
+    else if (act === "tgapply") tgApply(false);
+    else if (act === "tgnext") tgApply(true);
+    else if (act === "tgcsv") tgCsv();
+    else if (act === "eqnew") openEquip(null);
+    else if (act === "eqedit") openEquip(id);
+    else if (act === "eqfrom") openEquip(null, id);
+    else if (act === "eqsave") eqSave(id);
+    else if (act === "eqdel") eqDel(id);
     else if (act === "tkgo") { $("#tkList").value = t.dataset.l; $("#tkMonth").value = id; TK_SHOW = 100; renderTally(); }
     else if (act === "cdmore") { CD_SHOW += 100; renderChat(); }
     else if (act === "cdmon") { $("#cdMonth").value = id; CD_SHOW = 100; renderChat(); }
