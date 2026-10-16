@@ -223,6 +223,10 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
 .cdtbl tr.rp td{opacity:.55}
 #modal.review{width:min(1180px,100%)}
 #modal.ledger{width:min(980px,100%)}
+h2.fold{cursor:pointer;user-select:none}
+h2.fold::before{content:"▾";display:inline-block;width:1.1em;color:var(--muted);transition:transform .15s}
+.shut h2.fold::before{transform:rotate(-90deg)}
+.shut > :not(.toolbar){display:none !important}
 .tgbar{height:10px;border-radius:99px;background:var(--surface2);overflow:hidden}
 .tgbar i{display:block;height:100%;background:var(--cred)}
 .tgsrc{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px;margin-top:10px;font-size:13px}
@@ -414,23 +418,23 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
   </section>
 
   <section id="tab-tag" class="hide">
-    <div class="card" style="margin-bottom:12px">
-      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tie every entry to a project and equipment</h2><span style="flex:1"></span><span class="sub" id="tgTot"></span></div>
+    <div class="card" id="tgTop" style="margin-bottom:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Tie every entry to a project and equipment</h2><span style="flex:1"></span><span class="sub" id="tgTot"></span></div>
       <div class="tgbar"><i id="tgBar" style="width:0"></i></div>
       <div class="tgsrc" id="tgSrc"></div>
     </div>
     <div class="tgsteps"><button data-act="tgstep" data-id="1" class="on">1 · Classify the raw data</button><button data-act="tgstep" data-id="2">2 · Tie bills to entries</button><button data-act="tgstep" data-id="3">3 · Equipment list</button><button data-act="tgstep" data-id="4">4 · Projects and equipment</button><button data-act="tgstep" data-id="5">5 · Check the totals</button></div>
     <div id="tgStep1">
-      <div class="card" style="margin-bottom:12px">
-        <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Site float book (petty expenses)</h2><span class="sub" id="rwPcSum"></span><span style="flex:1"></span>
+      <div class="card" id="rwPcCard" style="margin-bottom:12px">
+        <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Site float book (petty expenses)</h2><span class="sub" id="rwPcSum"></span><span style="flex:1"></span>
           <select id="rwPcShow"><option value="open">Not classified</option><option value="noproj">Without a project</option><option value="">All lines</option></select></div>
         <div class="tgbar"><i id="rwPcBar" style="width:0"></i></div>
         <div class="help" style="margin-top:8px">Each line from the site float book: who was paid (pick a vendor or type the name), what for, and the project (suggested from site names in the line), then Save (or Enter). Tick several lines to give them one project at once. A WhatsApp bill tied to the line later takes the same project.</div>
         <div class="selbar" id="rwPcBulk"><span id="rwPcSel">Tick lines to set them together</span><select id="rwPcBP"></select><button class="small primary" data-act="rwpcbulk">Set project for ticked</button></div>
         <div class="tblwrap" id="rwPcTbl"></div>
       </div>
-      <div class="card">
-        <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">WhatsApp documents</h2><span class="sub" id="rwDocSum"></span><span style="flex:1"></span>
+      <div class="card" id="rwDocCard">
+        <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">WhatsApp documents</h2><span class="sub" id="rwDocSum"></span><span style="flex:1"></span>
           <select id="rwDocKind"><option value="">All documents</option><option value="bill">Bills</option><option value="pay">Payment proofs</option><option value="other">Other papers</option></select></div>
         <div class="tgbar"><i id="rwDocBar" style="width:0"></i></div>
         <div class="help" style="margin-top:8px">Open each document beside what was read from it: correct the type, vendor, bill no., date and amounts (Save and next, or Ctrl+Enter), or mark it not a bill. A document counts as classified once it is reviewed or set aside.</div>
@@ -438,14 +442,14 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       </div>
     </div>
     <div class="card hide" id="tgStep2">
-      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Tie each bill to its payment and its Tally voucher</h2><span class="sub" id="tiSum"></span><span style="flex:1"></span>
+      <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Tie each bill to its payment and its Tally voucher</h2><span class="sub" id="tiSum"></span><span style="flex:1"></span>
         <select id="tiPayer"><option value="">Paid by anyone</option></select> <select id="tiShow"><option value="open">Not tied yet</option><option value="done">Tied</option><option value="">All</option></select></div>
       <div class="tgbar"><i id="tiBar" style="width:0"></i></div>
       <div class="help" style="margin-top:8px">Each WhatsApp bill or payment proof with the entries it most likely belongs to: the bank debit (same amount, the UPI reference or the vendor's name), the Tally purchase voucher (same total, or the same bill no.) and the site float line (same amount within a few days). Tie the right ones. A tied bill and its entries then move together when you set the project and equipment in step 4.</div>
       <div class="tblwrap" id="tiTbl"></div>
     </div>
     <div class="card hide" id="tgStep3">
-      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Equipment</h2><span class="sub" id="eqSum"></span><span style="flex:1"></span><button class="primary small" data-act="eqnew">+ Equipment</button></div>
+      <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Equipment</h2><span class="sub" id="eqSum"></span><span style="flex:1"></span><button class="primary small" data-act="eqnew">+ Equipment</button></div>
       <div class="help">Rigs, cranes, vehicles and other machines that costs are booked against. Words are spellings that appear in bank narrations, bills or Tally ledgers for that machine (a serial number, a short name); entries that contain one are suggested for it.</div>
       <div class="tblwrap" id="eqTbl"></div>
       <div id="eqSug" style="margin-top:12px"></div>
@@ -460,10 +464,10 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       </div>
     </div>
     <div class="card hide" id="tgStep5">
-      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Totals by project and equipment</h2><span style="flex:1"></span><button class="small" data-act="tgcsv">Download all entries</button></div>
+      <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Totals by project and equipment</h2><span style="flex:1"></span><button class="small" data-act="tgcsv">Download all entries</button></div>
       <div class="help">The same cost can show in more than one source (a bill on WhatsApp, its bank payment and its Tally voucher), so read each column on its own rather than adding across.</div>
-      <div class="tblwrap" id="tgProj"></div>
-      <div class="tblwrap" id="tgEq" style="margin-top:12px"></div>
+      <div id="tgProjBox"><div class="toolbar" style="margin:8px 0 4px"><h2 class="fold" title="Click to fold or unfold" style="margin:0;font-size:14px">By project</h2></div><div class="tblwrap" id="tgProj"></div></div>
+      <div id="tgEqBox"><div class="toolbar" style="margin:12px 0 4px"><h2 class="fold" title="Click to fold or unfold" style="margin:0;font-size:14px">By equipment</h2></div><div class="tblwrap" id="tgEq"></div></div>
     </div>
   </section>
 
@@ -1978,6 +1982,12 @@ const rwDocs = () => S.docs.filter(d => !d.repostOf);
 const rwDone = d => !!d.reviewedOn || d.status === "ignore";
 const rwFloat = () => S.pays.filter(p => p.source === "Site float");
 let RW_SHOW = 100, TI_SHOW = 60, RW_SEL = {};
+let TG_FOLD = {}; try { TG_FOLD = JSON.parse(localStorage.getItem("pay_tg_fold") || "{}") || {}; } catch (e) {}   // folded boxes, per browser
+function tgFold(h) {
+  const box = h.closest(".toolbar").parentElement; if (!box || !box.id) return;
+  const shut = !box.classList.contains("shut"); box.classList.toggle("shut", shut); TG_FOLD[box.id] = shut ? 1 : 0;
+  try { localStorage.setItem("pay_tg_fold", JSON.stringify(TG_FOLD)); } catch (e) {}
+}
 function bar(el, n, of) { $(el).style.width = (of ? Math.round(n / of * 100) : 0) + "%"; }
 function renderRaw() {
   const all = rwDocs(), k = $("#rwDocKind").value, done = all.filter(rwDone);
@@ -2164,7 +2174,8 @@ function renderTagParty() {
   const sg = tgSuggest(g), L = g.list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)), E = EBY();
   const bySrc = {}; L.forEach(e => { bySrc[e.src] = (bySrc[e.src] || 0) + 1; });
   const ds = L.map(e => e.date).filter(Boolean);
-  $("#tgParty").innerHTML = '<div class="toolbar" style="margin-bottom:4px"><h2 style="margin:0">' + esc(g.party) + '</h2><span class="sub">' + g.n + " entries · " + fmt(g.amt) + " · " + Object.keys(bySrc).map(k => bySrc[k] + " " + TG_SRC_L[k].toLowerCase()).join(", ") + "</span></div>" +
+  $("#tgParty").classList.toggle("shut", !!TG_FOLD.tgParty);
+  $("#tgParty").innerHTML = '<div class="toolbar" style="margin-bottom:4px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">' + esc(g.party) + '</h2><span class="sub">' + g.n + " entries · " + fmt(g.amt) + " · " + Object.keys(bySrc).map(k => bySrc[k] + " " + TG_SRC_L[k].toLowerCase()).join(", ") + "</span></div>" +
     (sg.p || sg.q ? '<div class="help">Suggested: ' + (sg.p ? "<b>" + esc(projName(sg.p)) + "</b> (" + sg.why + ")" : "") + (sg.p && sg.q ? ", " : "") + (sg.q ? "<b>" + esc((E[sg.q] || {}).name || sg.q) + "</b> (" + sg.qwhy + ")" : "") + "</div>" : "") +
     '<div class="form" id="tgForm" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end">' +
     '<label>Project<select id="tgP">' + tgProjOpts(sg.p, "Keep as is") + "</select></label>" +
@@ -2283,6 +2294,8 @@ function wire() {
   $("#bkSearch").oninput = () => { BK_SHOW = 150; renderBooks(); };
   $("#tgSearch").oninput = renderTagQueue;
   $("#rwDocKind").onchange = () => { RW_SHOW = 100; renderRaw(); };
+  Object.keys(TG_FOLD).forEach(k => { if (TG_FOLD[k] && $("#" + k)) $("#" + k).classList.add("shut"); });
+  $("#tab-tag").addEventListener("click", e => { const h = e.target.closest("h2.fold"); if (h) tgFold(h); });
   $("#rwPcShow").onchange = () => { RW_SHOW = 100; RW_SEL = {}; renderRaw(); };
   $("#rwPcTbl").addEventListener("change", e => { if (e.target.classList.contains("rwPcChk")) { RW_SEL[e.target.closest("tr").dataset.id] = e.target.checked; $("#rwPcSel").textContent = Object.keys(RW_SEL).filter(k => RW_SEL[k]).length + " ticked"; } });
   $("#tiShow").onchange = () => { TI_SHOW = 60; renderTie(); };
