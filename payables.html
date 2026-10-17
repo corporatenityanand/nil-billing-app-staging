@@ -264,6 +264,11 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
 .imprev{margin-top:10px}
 .bars .crow{grid-template-columns:minmax(120px,240px) minmax(0,1fr) 120px}
 .chk1{width:auto}
+.tgpos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:6px 0}
+.tgpos>div{background:var(--surface2);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tgpos b{font-size:16px}
+.tgtbl tr.tgref td:not(:first-child):not(:nth-last-child(-n+2)){opacity:.55}
+.tgtbl td.bal{font-weight:600;white-space:nowrap}
 .selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;background:var(--surface2);border-radius:9px;font-size:13px}
 .alias{display:inline-flex;align-items:center;gap:4px;margin:2px 4px 2px 0}
 .alias button{padding:0 6px;font-size:11px;line-height:16px}
@@ -2121,17 +2126,17 @@ let TG_KC = {};
 function tgKey(name) { const s0 = String(name || "").trim(); if (TG_KC[s0]) return TG_KC[s0]; const v = vendorByName(s0); return (TG_KC[s0] = v ? ["v:" + v.id, v.name] : ["n:" + norm(s0), s0]); }
 function tgEntries() {
   const out = []; TG_IDX = {}; TG_KC = {};
-  const add = (src, rec, date, name, amt, detail, where, hint) => {
+  const add = (src, rec, date, name, amt, detail, where, hint, side) => {   // side: "dr" = paid to the party, "cr" = billed by the party (or received from it)
     if (!(amt > 0)) return;
-    const k = tgKey(name), e = { src: src, id: rec.id, rec: rec, date: date || "", key: k[0], party: k[1] || "(no name)", amt: amt, detail: detail, where: where, hint: hint || "" };
+    const k = tgKey(name), e = { src: src, id: rec.id, rec: rec, date: date || "", key: k[0], party: k[1] || "(no name)", amt: amt, detail: detail, where: where, hint: hint || "", side: side || "dr" };
     out.push(e); TG_IDX[src + "|" + rec.id] = e;
   };
   ROWS.forEach(r => { if (OUT[r.cat]) return;
-    add(r.kind === "bank" ? "bank" : "pay", r.rec, r.date, r.v ? r.v.name : r.payee, r.amt, r.kind === "bank" ? r.narration : r.note, r.source, (r.project && !r.rec.project ? r.project : "") ); });
+    add(r.kind === "bank" ? "bank" : "pay", r.rec, r.date, r.v ? r.v.name : r.payee, r.amt, r.kind === "bank" ? r.narration : r.note, r.source, (r.project && !r.rec.project ? r.project : ""), r.kind === "bank" && +r.rec.credit > 0 && !(+r.rec.debit > 0) ? "cr" : "dr"); });
   S.docs.forEach(d => { if (d.repostOf || d.status === "ignore") return; const k = cdKind(d); if (k !== "bill" && !(k === "pay" && d.status === "outside")) return;
-    add("doc", d, cdDate(d), d.vendor || d.who, cdAmt(d), [d.type, d.docNo, d.items].filter(Boolean).join(" · "), "WhatsApp " + (d.chat || ""), ""); });
+    add("doc", d, cdDate(d), d.vendor || d.who, cdAmt(d), [d.type, d.docNo, d.items].filter(Boolean).join(" · "), "WhatsApp " + (d.chat || ""), "", k === "bill" ? "cr" : "dr"); });
   S.tally.forEach(t => { if (t.gone) return; const src = t.book === "Piling" ? "tp" : "tm";
-    add(src, t, t.date, t.party, Math.max(+t.dr || 0, +t.cr || 0), t.type + (t.no ? " " + t.no : "") + (t.dr ? " · Dr" : " · Cr"), "Tally " + t.book, ""); });
+    add(src, t, t.date, t.party, Math.max(+t.dr || 0, +t.cr || 0), t.type + (t.no ? " " + t.no : ""), "Tally " + t.book, "", +t.dr > 0 ? "dr" : "cr"); });
   return out;
 }
 function tgGroups(E) {
@@ -2183,6 +2188,16 @@ function renderTagParty() {
   const sg = tgSuggest(g), L = g.list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)), E = EBY();
   const bySrc = {}; L.forEach(e => { bySrc[e.src] = (bySrc[e.src] || 0) + 1; });
   const ds = L.map(e => e.date).filter(Boolean);
+  // running balance from the Tally entries only (the books); bank, float and WhatsApp rows are the same money seen elsewhere, so they are shown but not added again
+  const isT = e => e.src === "tp" || e.src === "tm", hasT = L.some(isT), inBal = e => hasT ? isT(e) : true;
+  const sum = (f) => L.filter(f).reduce((a, e) => a + e.amt, 0);
+  const crT = sum(e => inBal(e) && e.side === "cr"), drT = sum(e => inBal(e) && e.side === "dr");
+  const balTxt = v => Math.abs(v) < 0.5 ? "nil" : fmt(Math.abs(v)) + (v > 0 ? " Cr" : " Dr");
+  let run = 0; const RUN = {}; L.forEach(e => { if (inBal(e)) { run += e.side === "cr" ? e.amt : -e.amt; RUN[e.src + "|" + e.id] = run; } });
+  const bankDr = sum(e => e.src === "bank" && e.side === "dr"), bankCr = sum(e => e.src === "bank" && e.side === "cr"), docCr = sum(e => e.src === "doc" && e.side === "cr"), payDr = sum(e => e.src === "pay" || (e.src === "doc" && e.side === "dr"));
+  const pos = '<div class="tgpos"><div><span class="sub">' + (hasT ? "Billed in Tally (Cr)" : "Billed (Cr)") + "</span><b>" + fmt(crT) + '</b></div><div><span class="sub">' + (hasT ? "Paid in Tally (Dr)" : "Paid (Dr)") + "</span><b>" + fmt(drT) + '</b></div><div><span class="sub">Balance</span><b>' + balTxt(crT - drT) + '</b><span class="sub">' + (crT - drT > 0.5 ? "payable to the party" : crT - drT < -0.5 ? "advance with the party" : "") + "</span></div>" +
+    (hasT ? '<div><span class="sub">Seen elsewhere</span><span class="nar">' + [bankDr ? "bank paid " + fmt(bankDr) : "", bankCr ? "bank received " + fmt(bankCr) : "", docCr ? "WhatsApp bills " + fmt(docCr) : "", payDr ? "float / outside " + fmt(payDr) : ""].filter(Boolean).join(" · ") + "</span></div>" : "") + "</div>" +
+    '<div class="help">' + (hasT ? "Balance runs on the Tally entries (Cr = bill booked, Dr = payment). Bank, site float and WhatsApp rows are the same money seen in other sources, shown in grey and not added again." : "No Tally entries for this party: balance runs on bills (Cr) and payments (Dr) from the other sources.") + " Tally starts 1 Apr 2025 with no opening balance.</div>";
   $("#tgParty").classList.toggle("shut", !!TG_FOLD.tgParty);
   $("#tgParty").innerHTML = '<div class="toolbar" style="margin-bottom:4px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">' + esc(g.party) + '</h2><span class="sub">' + g.n + " entries · " + fmt(g.amt) + " · " + Object.keys(bySrc).map(k => bySrc[k] + " " + TG_SRC_L[k].toLowerCase()).join(", ") + "</span></div>" +
     (sg.p || sg.q ? '<div class="help">Suggested: ' + (sg.p ? "<b>" + esc(projName(sg.p)) + "</b> (" + sg.why + ")" : "") + (sg.p && sg.q ? ", " : "") + (sg.q ? "<b>" + esc((E[sg.q] || {}).name || sg.q) + "</b> (" + sg.qwhy + ")" : "") + "</div>" : "") +
@@ -2192,9 +2207,9 @@ function renderTagParty() {
     '<label>Apply to<select id="tgScope"><option value="open">Untagged entries (' + g.open + ')</option><option value="sel">Ticked entries</option><option value="all">All ' + g.n + " entries</option></select></label>" +
     '<label>From<input type="date" id="tgFrom" value="' + (ds[0] || "") + '"></label><label>To<input type="date" id="tgTo" value="' + (ds[ds.length - 1] || "") + '"></label>' +
     '<div class="toolbar" style="gap:6px"><button class="primary" data-act="tgapply">Apply</button><button data-act="tgnext">Apply and next party</button></div></div>' +
-    '<div class="tblwrap" style="margin-top:10px;max-height:58vh"><table class="tgtbl"><colgroup><col style="width:4%"><col style="width:10%"><col style="width:14%"><col style="width:30%"><col style="width:12%"><col style="width:16%"><col style="width:14%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="tgselall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
-    L.map(e => { const k = e.src + "|" + e.id;
-      return '<tr><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (tgLinked(e.rec).length > 1 ? '<span class="pill ok">tied</span>' : "") + "</td><td>" + fmt(e.amt) +
+    pos + '<div class="tblwrap" style="margin-top:10px;max-height:58vh"><table class="tgtbl" style="min-width:1050px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:11%"><col style="width:24%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:14%"><col style="width:12%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="tgselall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Detail</th><th title="Paid to the party">Debit</th><th title="Billed by the party">Credit</th><th>Balance</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
+    L.map(e => { const k = e.src + "|" + e.id, b = inBal(e);
+      return '<tr' + (b ? "" : ' class="tgref"') + '><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (tgLinked(e.rec).length > 1 ? '<span class="pill ok">tied</span>' : "") + "</td><td>" + (e.side === "dr" ? fmt(e.amt) : "") + "</td><td>" + (e.side === "cr" ? fmt(e.amt) : "") + '</td><td class="bal">' + (b ? balTxt(RUN[k]) : "") +
         '</td><td class="l"><select class="tgOne" data-f="project" data-id="' + esc(k) + '">' + tgProjOpts(e.rec.project || "", "Not tagged") + '</select></td><td class="l"><select class="tgOne" data-f="equip" data-id="' + esc(k) + '">' + eqOpts(e.rec.equip || "", "None") + "</select></td></tr>"; }).join("") +
     "</tbody></table></div>";
 }
@@ -2266,8 +2281,8 @@ function renderTagTotals() {
 }
 function tgCsv() {
   const E = EBY();
-  exportCsv("project_tags_" + today() + ".csv", ["Source", "Date", "Party", "Detail", "Amount", "Project code", "Project", "Equipment code", "Equipment"],
-    tgEntries().sort((a, b) => (a.date < b.date ? -1 : 1)).map(e => [TG_SRC_L[e.src], e.date, e.party, e.detail, e.amt, e.rec.project || "", e.rec.project ? projName(e.rec.project) : "", e.rec.equip || "", e.rec.equip ? (E[e.rec.equip] || {}).name || "" : ""]));
+  exportCsv("project_tags_" + today() + ".csv", ["Source", "Date", "Party", "Detail", "Dr / Cr", "Amount", "Project code", "Project", "Equipment code", "Equipment"],
+    tgEntries().sort((a, b) => (a.date < b.date ? -1 : 1)).map(e => [TG_SRC_L[e.src], e.date, e.party, e.detail, e.side === "cr" ? "Cr" : "Dr", e.amt, e.rec.project || "", e.rec.project ? projName(e.rec.project) : "", e.rec.equip || "", e.rec.equip ? (E[e.rec.equip] || {}).name || "" : ""]));
 }
 
 /* ---------- wiring ---------- */
