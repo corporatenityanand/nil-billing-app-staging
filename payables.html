@@ -435,9 +435,11 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       </div>
       <div class="card" id="rwDocCard">
         <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">WhatsApp documents</h2><span class="sub" id="rwDocSum"></span><span style="flex:1"></span>
+          <select id="rwDocShow"><option value="open">Not classified</option><option value="notag">Without project or equipment</option><option value="">All documents</option></select>
           <select id="rwDocKind"><option value="">All documents</option><option value="bill">Bills</option><option value="pay">Payment proofs</option><option value="other">Other papers</option></select></div>
         <div class="tgbar"><i id="rwDocBar" style="width:0"></i></div>
         <div class="help" style="margin-top:8px">Open each document beside what was read from it: correct the type, vendor, bill no., date and amounts (Save and next, or Ctrl+Enter), or mark it not a bill. A document counts as classified once it is reviewed or set aside.</div>
+        <div class="selbar"><span id="rwDocSel">Tick documents to set them together</span><select id="rwDocBP"></select><select id="rwDocBE"></select><select id="rwDocBC"></select><button class="small primary" data-act="rwdocbulk">Set for ticked</button></div>
         <div class="tblwrap" id="rwDocTbl"></div>
       </div>
     </div>
@@ -636,7 +638,7 @@ const TABS = {
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy", "equip"],
   payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip", "checkedBy", "checkedOn"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
-  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip", "tallyId", "payId"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip", "tallyId", "payId", "cat"],
   tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone", "project", "equip"],
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
@@ -1560,7 +1562,7 @@ function cdPick(id) {
     '<div style="margin-top:10px;text-align:right"><button data-act="mclose">Close</button></div>', true);
 }
 /* review panel: the bill beside its extracted fields; corrections and the project are saved, and the row is marked reviewed */
-const RV_F = [["type", "Document type", "sel"], ["vendor", "Vendor"], ["gstin", "Vendor GSTIN"], ["docNo", "Bill no."], ["docDate", "Bill date", "date"], ["site", "Site"],
+const RV_F = [["type", "Document type", "sel"], ["cat", "Purchase type", "cat"], ["vendor", "Vendor"], ["gstin", "Vendor GSTIN"], ["docNo", "Bill no."], ["docDate", "Bill date", "date"], ["site", "Site"],
   ["taxable", "Taxable value (&#8377;)", "num"], ["gst", "GST (&#8377;)", "num"], ["total", "Bill total (&#8377;)", "num"], ["paid", "Amount paid (&#8377;)", "num"],
   ["txn", "UPI / UTR reference"], ["paidFrom", "Paid from", "payer"], ["items", "Items", "wide"], ["note", "Note", "wide"]];
 const RV_TYPES = ["tax invoice", "bill / memo", "fuel slip / pump bill", "voucher / handwritten", "payment screenshot", "bank payment list", "quotation / estimate", "delivery challan / e-way bill", "purchase order", "statement / ledger", "fastag / toll", "other document", "not a document", "photo, no text read"];
@@ -1572,13 +1574,14 @@ function cdReview(id, list) {
   const fld = f => {
     const v = d[f[0]] == null ? "" : d[f[0]];
     if (f[2] === "payer") { const cur = payerOf(v); return '<label>' + f[1] + '<select data-f="' + f[0] + '"><option value="">Not known</option>' + uniq(payerList().concat([cur])).filter(Boolean).map(o => '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>"; }
+    if (f[2] === "cat") { const g = v || ((vendorByName(d.vendor) || {}).cat) || (/fuel|pump/i.test(d.type || "") ? "fuel" : ""); return '<label>' + f[1] + '<select data-f="' + f[0] + '">' + catOpts(g, "Not set") + "</select></label>"; }
     if (f[2] === "sel") return '<label>' + f[1] + '<select data-f="' + f[0] + '">' + uniq(RV_TYPES.concat([String(v)])).filter(Boolean).map(o => "<option" + (o === v ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>";
     return '<label' + (f[2] === "wide" ? ' class="w"' : "") + ">" + f[1] + '<input type="' + (f[2] === "date" ? "date" : "text") + '"' + (f[2] === "num" ? ' inputmode="decimal"' : "") + ' data-f="' + f[0] + '" value="' + esc(f[2] === "num" ? (v === "" || v === 0 ? "" : v) : v) + '"></label>';
   };
   openModal('<h2>Review ' + esc(d.type || "document") + ' <span class="sub">' + (pos + 1) + " of " + RV_LIST.length + " in this list</span></h2>" +
     '<div class="rvgrid"><div class="rvdoc">' + (url ? '<iframe src="' + esc(url) + '" title="The bill" allow="autoplay"></iframe>' : '<div class="help" style="padding:12px">No Drive copy of this file.</div>') + "</div>" +
     '<div><div class="help">' + esc(d.who || "") + (d.posted ? " posted it on " + esc(dmy(d.posted)) : "") + (d.caption ? ": " + esc(d.caption) : "") + (url ? ' · <a href="' + esc(url.replace(/\/preview$/, "/view")) + '" target="_blank" rel="noopener">Open in Drive</a>' : "") + "</div>" +
-    '<div class="form" id="rvForm"><label class="w">Project<select data-f="project">' + projOpts(d.project || "", "No project yet") + "</select></label>" + RV_F.map(fld).join("") + "</div>" +
+    '<div class="form" id="rvForm"><label>Project<select data-f="project">' + tgProjOpts(d.project || "", "No project yet") + '</select></label><label>Equipment<select data-f="equip">' + eqOpts(d.equip || "", "No equipment") + "</select></label>" + RV_F.map(fld).join("") + "</div>" +
     (d.reviewedOn ? '<div class="sub" style="margin-top:6px">Reviewed by ' + esc(d.reviewedBy) + " on " + esc(dmy(d.reviewedOn)) + "</div>" : "") +
     '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button>' +
     (pos > 0 ? '<button data-act="rvsave" data-go="-1">Save, previous</button>' : "") + '<button data-act="rvsave" data-go="0">Save</button>' +
@@ -1598,6 +1601,8 @@ function rvSave(go) {
   if (bad) { toast("Check the amounts"); return; }
   if (d.docDate) d.month = d.docDate.slice(0, 7);
   d.reviewedBy = USER ? USER.email : ""; d.reviewedOn = today();
+  if (d.project) tgSetField(d, "project", d.project); if (d.equip) tgSetField(d, "equip", d.equip);   // tied bank line, Tally voucher and float line follow
+  if (d.cat) tgLinked(d).forEach(x => { if (x !== d && "cat" in x && !x.cat) x.cat = d.cat; });   // tied bank or float line takes the purchase type when it has none
   persist(); renderChat(); renderTag();
   const i = RV_LIST.indexOf(id), nx = +go ? RV_LIST[i + +go] : null;
   if (nx) cdReview(nx); else { closeModal(); toast(+go > 0 ? "Saved. That was the last one in this list." : "Saved"); }
@@ -1981,7 +1986,7 @@ function bkChgCsv() {
 const rwDocs = () => S.docs.filter(d => !d.repostOf);
 const rwDone = d => !!d.reviewedOn || d.status === "ignore";
 const rwFloat = () => S.pays.filter(p => p.source === "Site float");
-let RW_SHOW = 100, TI_SHOW = 60, RW_SEL = {};
+let RW_SHOW = 100, TI_SHOW = 60, RW_SEL = {}, RW_DSEL = {};
 let TG_FOLD = {}; try { TG_FOLD = JSON.parse(localStorage.getItem("pay_tg_fold") || "{}") || {}; } catch (e) {}   // folded boxes, per browser
 function tgFold(h) {
   const box = h.closest(".toolbar").parentElement; if (!box || !box.id) return;
@@ -1990,14 +1995,18 @@ function tgFold(h) {
 }
 function bar(el, n, of) { $(el).style.width = (of ? Math.round(n / of * 100) : 0) + "%"; }
 function renderRaw() {
-  const all = rwDocs(), k = $("#rwDocKind").value, done = all.filter(rwDone);
-  $("#rwDocSum").textContent = done.length.toLocaleString("en-IN") + " of " + all.length.toLocaleString("en-IN") + " classified"; bar("#rwDocBar", done.length, all.length);
-  const open = all.filter(d => !rwDone(d) && (!k || cdKind(d) === k)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0));
-  $("#rwDocTbl").innerHTML = open.length ? '<table class="tgtbl"><colgroup><col style="width:11%"><col style="width:17%"><col style="width:26%"><col style="width:30%"><col style="width:16%"></colgroup><thead><tr><th class="l">Date</th><th class="l">Read as</th><th class="l">Vendor</th><th class="l">Detail</th><th>Amount</th></tr></thead><tbody>' +
-    open.slice(0, RW_SHOW).map(d => '<tr><td class="l">' + dmy(cdDate(d)) + '</td><td class="l">' + esc(d.type || "") + '</td><td class="l">' + esc(d.vendor || d.who || "") + '</td><td class="l"><div class="nar">' + esc([d.docNo, d.items, d.caption].filter(Boolean).join(" · ")) + "</div></td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") +
-      '<div class="acts" style="justify-content:flex-end;margin-top:3px"><button class="small primary" data-act="rwrev" data-id="' + esc(d.id) + '">Review</button><button class="small" data-act="rwnot" data-id="' + esc(d.id) + '">Not a bill</button></div></td></tr>').join("") + "</tbody></table>" +
+  const all = rwDocs(), k = $("#rwDocKind").value, sh0 = $("#rwDocShow").value, done = all.filter(rwDone), live = all.filter(d => d.status !== "ignore"), tagged = live.filter(d => d.project || d.equip);
+  $("#rwDocSum").textContent = done.length.toLocaleString("en-IN") + " of " + all.length.toLocaleString("en-IN") + " classified · " + tagged.length.toLocaleString("en-IN") + " of " + live.length.toLocaleString("en-IN") + " tied to a project or equipment"; bar("#rwDocBar", tagged.length, live.length);
+  $("#rwDocBP").innerHTML = tgProjOpts("", "Project: keep"); $("#rwDocBE").innerHTML = eqOpts("", "Equipment: keep"); $("#rwDocBC").innerHTML = catOpts("", "Purchase type: keep");
+  const dSug = d => d.project || wordsProject([d.site, d.caption, d.items, d.vendor].join(" ")) || (tgLinked(d).filter(x => x !== d && x.project)[0] || {}).project || "";
+  const open = all.filter(d => (!k || cdKind(d) === k) && (sh0 === "open" ? !rwDone(d) : sh0 === "notag" ? d.status !== "ignore" && !d.project && !d.equip : true)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0));
+  $("#rwDocTbl").innerHTML = open.length ? '<table class="tgtbl" style="min-width:1000px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:12%"><col style="width:15%"><col style="width:20%"><col style="width:11%"><col style="width:16%"><col style="width:15%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="rwdocall"></th><th class="l">Date</th><th class="l">Read as</th><th class="l">Vendor</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
+    open.slice(0, RW_SHOW).map(d => { const sg = dSug(d); return '<tr data-id="' + esc(d.id) + '"><td><input type="checkbox" class="chk1 rwDocChk"' + (RW_DSEL[d.id] ? " checked" : "") + '></td><td class="l">' + dmy(cdDate(d)) + '</td><td class="l">' + esc(d.type || "") + (d.cat && CAT[d.cat] ? '<div class="nar">' + esc(CAT[d.cat]) + "</div>" : "") + (rwDone(d) ? '<br><span class="pill ok">' + (d.status === "ignore" ? "not a bill" : "reviewed") + "</span>" : "") + '</td><td class="l">' + esc(d.vendor || d.who || "") + '</td><td class="l"><div class="nar">' + esc([d.site ? "site: " + d.site : "", d.docNo, d.items, d.caption].filter(Boolean).join(" · ")) + "</div></td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") +
+      '<div class="acts" style="justify-content:flex-end;margin-top:3px"><button class="small primary" data-act="rwrev" data-id="' + esc(d.id) + '">Review</button>' + (d.status === "ignore" ? "" : '<button class="small" data-act="rwnot" data-id="' + esc(d.id) + '">Not a bill</button>') + '</div></td><td class="l"><select class="rwDP" style="width:100%">' + tgProjOpts(sg, "No project") + "</select>" + (sg && !d.project ? '<div class="nar">suggested: pick to confirm</div>' : "") +
+      '</td><td class="l"><select class="rwDE" style="width:100%">' + eqOpts(d.equip || "", "No equipment") + "</select></td></tr>"; }).join("") + "</tbody></table>" +
     (open.length > RW_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="rwmore">Show ' + Math.min(100, open.length - RW_SHOW) + " more</button></div>" : "")
-    : '<div class="sub">' + (all.length ? "Every document is classified." : "No WhatsApp documents imported yet (Import tab).") + "</div>";
+    : '<div class="sub">' + (all.length ? "Nothing in this list." : "No WhatsApp documents imported yet (Import tab).") + "</div>";
+  $("#rwDocSel").textContent = Object.keys(RW_DSEL).filter(x => RW_DSEL[x]).length ? Object.keys(RW_DSEL).filter(x => RW_DSEL[x]).length + " ticked" : "Tick documents to set them together";
   const fl = rwFloat(), fd = fl.filter(p => p.checkedOn && p.project), sh = $("#rwPcShow").value;
   const fo = fl.filter(p => (sh === "open" ? !p.checkedOn : sh === "noproj" ? !p.project : true)).sort((a, b) => (a.date < b.date ? -1 : 1));
   $("#rwPcSum").textContent = fd.length.toLocaleString("en-IN") + " of " + fl.length.toLocaleString("en-IN") + " classified with a project · " + fmt(fd.reduce((x, p) => x + p.amt, 0)) + " of " + fmt(fl.reduce((x, p) => x + p.amt, 0)); bar("#rwPcBar", fd.length, fl.length);
@@ -2294,6 +2303,12 @@ function wire() {
   $("#bkSearch").oninput = () => { BK_SHOW = 150; renderBooks(); };
   $("#tgSearch").oninput = renderTagQueue;
   $("#rwDocKind").onchange = () => { RW_SHOW = 100; renderRaw(); };
+  $("#rwDocShow").onchange = () => { RW_SHOW = 100; RW_DSEL = {}; renderRaw(); };
+  $("#rwDocTbl").addEventListener("change", e => {
+    const tr = e.target.closest("tr"), d = tr && S.docs.filter(x => x.id === tr.dataset.id)[0]; if (!d) return;
+    if (e.target.classList.contains("rwDocChk")) { RW_DSEL[d.id] = e.target.checked; $("#rwDocSel").textContent = Object.keys(RW_DSEL).filter(x => RW_DSEL[x]).length + " ticked"; return; }
+    if (e.target.classList.contains("rwDP") || e.target.classList.contains("rwDE")) { const k = tgSetField(d, e.target.classList.contains("rwDP") ? "project" : "equip", e.target.value); persist(); renderAll(); toast(k > 1 ? "Saved, with " + (k - 1) + " tied entries" : "Saved"); }
+  });
   Object.keys(TG_FOLD).forEach(k => { if (TG_FOLD[k] && $("#" + k)) $("#" + k).classList.add("shut"); });
   $("#tab-tag").addEventListener("click", e => { const h = e.target.closest("h2.fold"); if (h) tgFold(h); });
   $("#rwPcShow").onchange = () => { RW_SHOW = 100; RW_SEL = {}; renderRaw(); };
@@ -2358,6 +2373,13 @@ function wire() {
     else if (act === "rwnot") cdSet(id, "ignore");
     else if (act === "rwmore") { RW_SHOW += 100; renderRaw(); }
     else if (act === "rwpc") rwPcSave(t.closest("tr"));
+    else if (act === "rwdocall") { $$("#rwDocTbl .rwDocChk").forEach(c => { c.checked = t.checked; RW_DSEL[c.closest("tr").dataset.id] = t.checked; }); $("#rwDocSel").textContent = Object.keys(RW_DSEL).filter(x => RW_DSEL[x]).length + " ticked"; }
+    else if (act === "rwdocbulk") {
+      const pj = $("#rwDocBP").value, eq = $("#rwDocBE").value, ct = $("#rwDocBC").value, ids = Object.keys(RW_DSEL).filter(x => RW_DSEL[x]);
+      if (!ids.length || (!pj && !eq && !ct)) { toast(ids.length ? "Pick a project, equipment or purchase type first" : "Tick the documents first"); return; }
+      S.docs.filter(d => RW_DSEL[d.id]).forEach(d => { if (pj) tgSetField(d, "project", pj); if (eq) tgSetField(d, "equip", eq); if (ct) d.cat = ct; });
+      RW_DSEL = {}; persist(); renderAll(); toast(ids.length + " documents set");
+    }
     else if (act === "rwpcall") { $$("#rwPcTbl .rwPcChk").forEach(c => { c.checked = t.checked; RW_SEL[c.closest("tr").dataset.id] = t.checked; }); $("#rwPcSel").textContent = Object.keys(RW_SEL).filter(k => RW_SEL[k]).length + " ticked"; }
     else if (act === "rwpcbulk") {
       const pj = $("#rwPcBP").value, ids = Object.keys(RW_SEL).filter(k => RW_SEL[k]);
