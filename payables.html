@@ -352,9 +352,9 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <div class="card">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Payees to classify</h2><span class="sub" id="clSum"></span><span style="flex:1"></span>
         <label class="sub">Show <select id="clMin"><option value="20000">payees paid &#8377;20,000 or more</option><option value="0">every payee</option></select></label>
-        <label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="clGroup" class="chk1" checked> Group similar spellings</label>
         <input type="text" id="clSearch" placeholder="Search payee or note"></div>
-      <div class="help">Each row is one name as the bank wrote it. Pick or type the vendor, its usual category and project, and Save (or press Enter; the cursor moves on to the next payee): every payment to that name, past and future, follows. Typing a vendor that already exists adds this spelling to it. Mark DG set to leave the payee out of piling payables.</div>
+      <div class="help">Each row is one name as the bank wrote it. If one vendor shows under several spellings, tick them and use Save ticked as one vendor. Pick or type the vendor, its usual category and project, and Save (or press Enter; the cursor moves on to the next payee): every payment to that name, past and future, follows. Typing a vendor that already exists adds this spelling to it. Mark DG set to leave the payee out of piling payables.</div>
+      <div class="selbar"><span id="clSel">Same vendor under different spellings? Tick them (search helps), then save them as one vendor.</span><input type="text" id="clBV" list="vendorList" placeholder="Vendor name" style="min-width:180px"><select id="clBC"></select><select id="clBP"></select><button class="small primary" data-act="clbulk">Save ticked as one vendor</button><button class="small" data-act="clclear">Clear ticks</button></div>
       <div class="tblwrap" id="clTbl"></div>
     </div>
   </section>
@@ -1083,21 +1083,23 @@ function renderOverview() {
   $("#byMonth").innerHTML = bm.length ? '<table><thead><tr><th>Month</th><th>Paid out</th><th>Not classified</th></tr></thead><tbody>' + bm.map(x => "<tr><td>" + x[0] + "</td><td>" + fmt(x[1]) + "</td><td>" + fmt(sum(open.filter(r => r.date.slice(0, 7) === x[0]))) + "</td></tr>").join("") + "</tbody></table>" : '<div class="sub">Import a bank statement to start.</div>';
 }
 
-let CL_SHOW = 60;
+let CL_SHOW = 60, CL_SEL = {};   // CL_SEL: ticked bank spellings (by name key) to save as one vendor
 function renderClassify() {
   const min = +$("#clMin").value || 0, q = $("#clSearch").value.trim().toUpperCase();
-  const g = {}; OPEN.forEach(r => { const x = g[r.key] || (g[r.key] = { key: r.key, keys: [r.key], payee: r.payee, n: 0, amt: 0, first: r.date, last: r.date, notes: [], proj: {} }); x.n++; x.amt += r.amt; if (r.date < x.first) x.first = r.date; if (r.date > x.last) x.last = r.date; if (r.note && x.notes.length < 4 && x.notes.indexOf(r.note) < 0) x.notes.push(r.note); if (r.project) x.proj[r.project] = (x.proj[r.project] || 0) + 1; });
+  const g = {}; OPEN.forEach(r => { const x = g[r.key] || (g[r.key] = { key: r.key, payee: r.payee, n: 0, amt: 0, first: r.date, last: r.date, notes: [], proj: {} }); x.n++; x.amt += r.amt; if (r.date < x.first) x.first = r.date; if (r.date > x.last) x.last = r.date; if (r.note && x.notes.length < 4 && x.notes.indexOf(r.note) < 0) x.notes.push(r.note); if (r.project) x.proj[r.project] = (x.proj[r.project] || 0) + 1; });
   let list = Object.keys(g).map(k => g[k]);
-  if ($("#clGroup").checked) list = clGroupSimilar(list);
   list.sort((a, b) => b.amt - a.amt);
   const all = list.length, allAmt = list.reduce((s, x) => s + x.amt, 0);
   list = list.filter(x => x.amt >= min && (!q || x.payee.toUpperCase().indexOf(q) >= 0 || x.notes.join(" ").toUpperCase().indexOf(q) >= 0));
   $("#clSum").textContent = all ? all + " names, " + cmp(allAmt) + (list.length < all ? " · showing " + list.length : "") : "";
   if (!all) { $("#clTbl").innerHTML = '<div class="sub">' + (S.lines.length ? "Every bank payment has a vendor or category." : "Import a bank statement first (Import tab).") + "</div>"; return; }
   const shown = list.slice(0, CL_SHOW);
-  $("#clTbl").innerHTML = '<table class="cltbl"><colgroup><col style="width:29%"><col style="width:13%"><col style="width:20%"><col style="width:15%"><col style="width:14%"><col style="width:9%"></colgroup><thead><tr><th>Name in the bank</th><th>Payments</th><th class="l">Vendor</th><th class="l">Category</th><th class="l">Project</th><th></th></tr></thead><tbody>' + shown.map(x => {
+  const sel = Object.keys(CL_SEL).filter(k => CL_SEL[k] && g[k]);
+  $("#clSel").textContent = sel.length ? sel.length + " ticked: " + sel.map(k => g[k].payee).join(" · ") + " (" + fmt(sel.reduce((a, k) => a + g[k].amt, 0)) + ")" : "Same vendor under different spellings? Tick them (search helps), then save them as one vendor.";
+  if (!$("#clBC").options.length) { $("#clBC").innerHTML = catOpts("", "Category…"); $("#clBP").innerHTML = projOpts("", "Project: varies / not set"); }
+  $("#clTbl").innerHTML = '<table class="cltbl"><colgroup><col style="width:4%"><col style="width:27%"><col style="width:12%"><col style="width:19%"><col style="width:15%"><col style="width:14%"><col style="width:9%"></colgroup><thead><tr><th></th><th>Name in the bank</th><th>Payments</th><th class="l">Vendor</th><th class="l">Category</th><th class="l">Project</th><th></th></tr></thead><tbody>' + shown.map(x => {
     const pj = Object.keys(x.proj).sort((a, b) => x.proj[b] - x.proj[a])[0] || "";
-    return '<tr data-key="' + esc(x.keys.join("|")) + '"><td class="l"><b>' + esc(x.payee) + "</b>" + (x.members ? '<div class="sub">' + x.members.length + " spellings: " + x.members.map(m => esc(m.payee) + " (" + fmt(m.amt) + ")").join(" · ") + "</div>" : "") + '<div class="nar" title="' + esc(x.notes.join(" · ")) + '">' + esc(x.notes.join(" · ")) + "</div></td>" +
+    return '<tr data-key="' + esc(x.key) + '"><td><input type="checkbox" class="chk1 clChk"' + (CL_SEL[x.key] ? " checked" : "") + '></td><td class="l"><b>' + esc(x.payee) + "</b>" + '<div class="nar" title="' + esc(x.notes.join(" · ")) + '">' + esc(x.notes.join(" · ")) + "</div></td>" +
       "<td>" + fmt(x.amt) + '<div class="sub">' + x.n + " · " + dmy(x.first) + (x.first !== x.last ? " to " + dmy(x.last) : "") + "</div></td>" +
       '<td class="l"><input type="text" class="clV" list="vendorList" value="' + esc(titleCase(x.payee)) + '"></td>' +
       '<td class="l"><select class="clC">' + catOpts("", "Pick…") + "</select></td>" +
@@ -1114,39 +1116,31 @@ function ensureVendor(name, alias, patch) {
   Object.keys(patch || {}).forEach(k => { if (patch[k] !== undefined && patch[k] !== "") v[k] = patch[k]; });
   return v;
 }
-/* near-duplicate bank spellings of one payee: same words once Shree/Sri/Shri and plurals are evened out, the same letters without spaces,
-   the same first two words, a cut-off name (two words or more) that starts another, or a typo (two letters at most, same first word).
-   One-word names only join an exact match. */
-function clGroupSimilar(list) {
-  const fz = k => k.split(" ").map(w => /^(SHREE|SHRI|SRI|SREE)$/.test(w) ? "SHRI" : w.length > 3 ? w.replace(/(IES)$/, "Y").replace(/S$/, "") : w).filter(Boolean);
-  const par = list.map((x, i) => i), find = i => (par[i] === i ? i : (par[i] = find(par[i]))), join = (a, b) => { a = find(a); b = find(b); if (a !== b) par[b] = a; };
-  const W = list.map(x => fz(x.key)), by = {};
-  W.forEach((w, i) => { [w.join(" "), w.join(""), w.length >= 2 ? "2:" + w[0] + " " + w[1] : ""].filter(Boolean).forEach(k => { if (k in by) join(by[k], i); else by[k] = i; }); });
-  const order = W.map((w, i) => i).filter(i => W[i].length >= 2).sort((a, b) => W[a].join(" ").length - W[b].join(" ").length);
-  order.forEach((i, n) => { const a = W[i].join(" ") + " "; for (let m = n + 1; m < order.length; m++) { const j = order[m]; if ((W[j].join(" ") + " ").indexOf(a) === 0) join(i, j); } });
-  const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; let p = []; for (let j = 0; j <= b.length; j++) p[j] = j;
-    for (let i = 1; i <= a.length; i++) { const c = [i]; for (let j = 1; j <= b.length; j++) c[j] = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); p = c; } return p[b.length]; };
-  const first = {}; W.forEach((w, i) => { const s = w.join(" "); if (w.length >= 2 && s.length >= 12) (first[w[0]] || (first[w[0]] = [])).push(i); });   // one or two letters off, same first word
-  Object.keys(first).forEach(k => { const L = first[k]; if (L.length > 200) return; for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) if (find(L[a]) !== find(L[b]) && lev(W[L[a]].join(" "), W[L[b]].join(" ")) <= 2) join(L[a], L[b]); });
-  const G = {}; list.forEach((x, i) => { (G[find(i)] || (G[find(i)] = [])).push(x); });
-  return Object.keys(G).map(k => { const L = G[k].sort((a, b) => b.amt - a.amt); if (L.length === 1) return L[0];
-    const o = { key: L[0].key, keys: L.map(x => x.key), payee: L[0].payee, members: L, n: 0, amt: 0, first: L[0].first, last: L[0].last, notes: [], proj: {} };
-    L.forEach(x => { o.n += x.n; o.amt += x.amt; if (x.first < o.first) o.first = x.first; if (x.last > o.last) o.last = x.last; x.notes.forEach(t => { if (o.notes.length < 4 && o.notes.indexOf(t) < 0) o.notes.push(t); }); Object.keys(x.proj).forEach(p => { o.proj[p] = (o.proj[p] || 0) + x.proj[p]; }); });
-    return o; });
+function clBulk() {   // the ticked spellings become one vendor: the first spelling creates or finds it, the rest are added as its aliases
+  const keys = Object.keys(CL_SEL).filter(k => CL_SEL[k]), R = keys.map(k => OPEN.filter(r => r.key === k)[0]).filter(Boolean);
+  const name = $("#clBV").value.trim(), cat = $("#clBC").value, proj = $("#clBP").value;
+  if (R.length < 1) { toast("Tick the spellings first"); return; }
+  if (!name) { $("#clBV").classList.add("bad"); $("#clBV").focus(); toast("Type the vendor name"); return; }
+  if (!cat) { $("#clBC").classList.add("bad"); toast("Pick a category"); return; }
+  $("#clBV").classList.remove("bad"); $("#clBC").classList.remove("bad");
+  const v = ensureVendor(name, R[0].payee, { cat: cat, project: proj });
+  R.slice(1).forEach(r => ensureVendor(v.name, r.payee));
+  if (!v.cat) v.cat = cat;
+  CL_SEL = {}; $("#clBV").value = ""; persist(); renderAll(); toast(R.length + " spellings saved as " + v.name);
 }
 function clSave(tr, dg) {
-  const keys = tr.dataset.key.split("|"), key = keys[0], r0 = OPEN.filter(r => r.key === key)[0]; if (!r0) return;
+  const key = tr.dataset.key, r0 = OPEN.filter(r => r.key === key)[0]; if (!r0) return;
   const name = $(".clV", tr).value.trim(), cat = dg ? "dg" : $(".clC", tr).value, proj = $(".clP", tr).value;
   if (!name) { $(".clV", tr).classList.add("bad"); return; }
   if (!cat) { $(".clC", tr).classList.add("bad"); toast("Pick a category, or DG set"); return; }
   const v = ensureVendor(name, r0.payee, { cat: dg ? "" : cat, project: proj, unit: dg ? "DG" : undefined });
-  keys.slice(1).forEach(k => { const r = OPEN.filter(x => x.key === k)[0]; if (r) ensureVendor(v.name, r.payee); });   // every grouped spelling becomes an alias
   if (!v.cat && !dg) v.cat = cat;
   const idx = [].indexOf.call(tr.parentNode.children, tr);
   persist(); renderAll();
   // the saved row drops out of the list: put the cursor on the next payee's category, so each one is a pick and Enter
   const rows = $$("#clTbl tbody tr"), next = rows[idx] || rows[rows.length - 1]; if (next) $(".clC", next).focus();
-  toast(r0.payee + (keys.length > 1 ? " and " + (keys.length - 1) + " similar" : "") + (dg ? " marked DG set" : " → " + v.name));
+  delete CL_SEL[key];
+  toast(r0.payee + (dg ? " marked DG set" : " → " + v.name));
 }
 
 let P_SHOW = 200, P_SEL = {};
@@ -2435,7 +2429,9 @@ function wire() {
   $("#pSelClear").onclick = () => { P_SEL = {}; renderPayments(); };
   $("#clMin").onchange = () => { CL_SHOW = 60; renderClassify(); };
   $("#clSearch").oninput = () => { CL_SHOW = 60; renderClassify(); };
-  $("#clGroup").onchange = () => { CL_SHOW = 60; renderClassify(); };
+  $("#clTbl").addEventListener("change", e => { if (!e.target.classList.contains("clChk")) return; const k = e.target.closest("tr").dataset.key; CL_SEL[k] = e.target.checked;
+    if (e.target.checked && !$("#clBV").value) $("#clBV").value = $(".clV", e.target.closest("tr")).value;   // first tick suggests its name
+    renderClassify(); });
   $("#clTbl").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".clV,.clC,.clP")) { e.preventDefault(); clSave(e.target.closest("tr")); } });
   $("#vSearch").oninput = renderVendors;
   ["cdMonth", "cdKind", "cdState"].forEach(id => { $("#" + id).onchange = () => { CD_SHOW = 100; renderChat(); }; });
@@ -2499,6 +2495,8 @@ function wire() {
     else if (act === "psel") { P_SEL[id] = t.checked; renderPayments(); }
     else if (act === "pselall") { payFilter().slice(0, P_SHOW).forEach(r => { P_SEL[r.id] = t.checked; }); renderPayments(); }
     else if (act === "clsave") clSave(t.closest("tr"));
+    else if (act === "clbulk") clBulk();
+    else if (act === "clclear") { CL_SEL = {}; $("#clBV").value = ""; renderClassify(); }
     else if (act === "cldg") clSave(t.closest("tr"), true);
     else if (act === "clmore") { CL_SHOW += 60; renderClassify(); }
     else if (act === "tkmore") { TK_SHOW += 100; renderTally(); }
