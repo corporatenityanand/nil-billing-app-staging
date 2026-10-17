@@ -51,6 +51,10 @@ button.danger{color:var(--bad)}
 #shelf>.cwrap>button{padding:10px 18px;border-radius:99px;box-shadow:0 6px 18px rgba(0,0,0,.22);font-weight:600}
 nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;padding-top:4px}
 nav button{border:none;background:none;border-bottom:3px solid transparent;border-radius:0;padding:9px 12px;color:var(--muted)}
+body.focus #tabs .dx,body.focus .viewbar,body.focus #shelf,body:not(.focus) #tabs .fx,body:not(.focus) .fxonly{display:none !important}
+.fxtop{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+.fxtop>div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.fxtop b{display:block;font-size:20px;margin:2px 0 6px}
 nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
 .grid{display:grid;gap:12px}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:16px}
@@ -305,17 +309,26 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
   <div id="shelf"><button class="primary" data-act="newpay">+ Log payment</button></div>
 
   <nav id="tabs">
-    <button data-tab="overview" class="on">Overview</button>
-    <button data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
-    <button data-tab="payments">Payments</button>
-    <button data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
-    <button data-tab="books">Books <span class="cnt" id="bkCnt"></span></button>
-    <button data-tab="tally">Tally check</button>
-    <button data-tab="tag">Project tags <span class="cnt" id="tgCnt"></span></button>
-    <button data-tab="vendors">Vendors</button>
-    <button data-tab="projects">Projects</button>
-    <button data-tab="masters">Masters</button>
-    <button data-tab="import">Import</button>
+    <button data-tab="ffloat" class="fx">Site float <span class="cnt" id="fxFlCnt"></span></button>
+    <button data-tab="fdocs" class="fx">WhatsApp documents <span class="cnt" id="fxDocCnt"></span></button>
+    <button data-tab="fcheck" class="fx">Check tags <span class="cnt" id="fxChkCnt"></span></button>
+    <span class="fx" style="flex:1"></span>
+    <span class="cwrap fx"><button data-act="cmenu" aria-haspopup="true" title="Every table, imports and settings">All data &#9662;</button><div class="cmenu hide" role="menu" style="width:230px">
+      <div class="umenu-h"><span class="sub">Full data view: every source, imports, books and settings</span></div><hr>
+      <button data-act="dump" data-id="overview">Overview</button><button data-act="dump" data-id="payments">Payments</button><button data-act="dump" data-id="chat">WhatsApp bills</button><button data-act="dump" data-id="books">Books</button><button data-act="dump" data-id="tally">Tally check</button><button data-act="dump" data-id="tag">Project tags</button><button data-act="dump" data-id="vendors">Vendors</button><button data-act="dump" data-id="projects">Projects</button><button data-act="dump" data-id="masters">Masters</button><button data-act="dump" data-id="import">Import</button>
+    </div></span>
+    <button class="dx" data-act="focusmode" title="Back to classifying and checking">&#9666; Focus view</button>
+    <button data-tab="overview" class="on dx">Overview</button>
+    <button class="dx" data-tab="classify">To classify <span class="cnt" id="clCnt"></span></button>
+    <button class="dx" data-tab="payments">Payments</button>
+    <button class="dx" data-tab="chat">WhatsApp bills <span class="cnt" id="cdCnt"></span></button>
+    <button class="dx" data-tab="books">Books <span class="cnt" id="bkCnt"></span></button>
+    <button class="dx" data-tab="tally">Tally check</button>
+    <button class="dx" data-tab="tag">Project tags <span class="cnt" id="tgCnt"></span></button>
+    <button class="dx" data-tab="vendors">Vendors</button>
+    <button class="dx" data-tab="projects">Projects</button>
+    <button class="dx" data-tab="masters">Masters</button>
+    <button class="dx" data-tab="import">Import</button>
   </nav>
 
   <div class="viewbar" role="group" aria-label="Period">
@@ -422,6 +435,22 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     </div>
   </section>
 
+  <div class="fxtop fxonly" id="fxTop"></div>
+  <section id="tab-ffloat" class="hide"></section>
+  <section id="tab-fdocs" class="hide"></section>
+  <section id="tab-fcheck" class="hide">
+    <div class="card" id="ckCard">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Check the project and equipment tags</h2><span class="sub" id="ckSum"></span><span style="flex:1"></span>
+        <select id="ckShow"><option value="todo">To check</option><option value="ok">Checked</option><option value="">All tagged</option></select>
+        <select id="ckSrc"><option value="">Site float and WhatsApp</option><option value="pay">Site float only</option><option value="doc">WhatsApp only</option></select>
+        <select id="ckProj"></select><select id="ckBy"></select></div>
+      <div class="tgbar"><i id="ckBar" style="width:0"></i></div>
+      <div class="help" style="margin-top:8px">Every site float line and WhatsApp document that has a project or equipment. Read the line, then Correct if the tag is right, or pick the right project or equipment (that also counts as checked). A tag changed later comes back here to be checked again. Best checked by someone other than the person who tagged it.</div>
+      <div class="tblwrap" id="ckProjTbl" style="margin-bottom:10px"></div>
+      <div class="selbar"><span id="ckSel">Tick lines to mark them together</span><button class="small primary" data-act="ckbulk">Mark ticked correct</button></div>
+      <div class="tblwrap" id="ckTbl"></div>
+    </div>
+  </section>
   <section id="tab-tag" class="hide">
     <div class="card" id="tgTop" style="margin-bottom:12px">
       <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Tie every entry to a project and equipment</h2><span style="flex:1"></span><span class="sub" id="tgTot"></span></div>
@@ -435,7 +464,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
           <select id="rwPcShow"><option value="open">Not classified</option><option value="noproj">Without a project</option><option value="">All lines</option></select></div>
         <div class="tgbar"><i id="rwPcBar" style="width:0"></i></div>
         <div class="help" style="margin-top:8px">Each line from the site float book: who was paid (pick a vendor or type the name), what for, and the project (suggested from site names in the line), then Save (or Enter). Tick several lines to give them one project at once. A WhatsApp bill tied to the line later takes the same project.</div>
-        <div class="selbar" id="rwPcBulk"><span id="rwPcSel">Tick lines to set them together</span><select id="rwPcBP"></select><button class="small primary" data-act="rwpcbulk">Set project for ticked</button></div>
+        <div class="selbar" id="rwPcBulk"><span id="rwPcSel">Tick lines to set them together</span><select id="rwPcBP"></select><select id="rwPcBE"></select><button class="small primary" data-act="rwpcbulk">Set for ticked</button></div>
         <div class="tblwrap" id="rwPcTbl"></div>
       </div>
       <div class="card" id="rwDocCard">
@@ -641,9 +670,9 @@ const TABS = {
   vendors: ["id", "name", "aliases", "unit", "cat", "project", "pan", "gstin", "tdsPct", "phone", "note", "addedBy", "addedOn"],
   projects: ["id", "name", "clientGroup", "client", "site", "unit", "woNo", "start", "end", "status", "incharge", "words", "note"],
   bank_lines: ["id", "acct", "date", "narration", "ref", "debit", "credit", "balance", "vendorId", "cat", "project", "adv", "dupOk", "note", "importedOn", "importedBy", "equip"],
-  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip", "checkedBy", "checkedOn"],
+  payments: ["id", "date", "source", "vendorId", "payee", "amt", "cat", "project", "adv", "dupOk", "ref", "note", "by", "on", "equip", "checkedBy", "checkedOn", "tagBy", "tagOkBy", "tagOkOn"],
   categories: ["id", "name", "leftOut", "noProject", "hidden", "sort"],
-  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip", "tallyId", "payId", "cat"],
+  chat_docs: ["id", "chat", "month", "post", "posted", "who", "type", "vendor", "gstin", "docNo", "docDate", "site", "items", "taxable", "gst", "total", "paid", "upi", "txn", "paidFrom", "conf", "note", "caption", "file", "driveId", "repostOf", "lineId", "status", "checkedBy", "checkedOn", "project", "reviewedBy", "reviewedOn", "equip", "tallyId", "payId", "cat", "tagBy", "tagOkBy", "tagOkOn"],
   tally: ["id", "book", "date", "party", "type", "no", "dr", "cr", "importedOn", "snap", "gone", "project", "equip"],
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
@@ -655,7 +684,7 @@ const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", pa
 const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "settings"];
 const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
-const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
@@ -1025,7 +1054,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderTag(); renderVendors(); renderProjects(); renderImport(); renderMasters();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderTag(); renderVendors(); renderProjects(); renderImport(); renderMasters(); renderFocus();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1549,7 +1578,7 @@ function cdSet(id, status, lineId) {
   d.status = status || ""; d.lineId = status === "ok" ? lineId || "" : "";
   d.checkedBy = status ? (USER ? USER.email : "") : ""; d.checkedOn = status ? today() : "";
   if (status === "ok") tgCarry(d);
-  closeModal(); persist(); renderChat(); renderTag();
+  closeModal(); persist(); renderChat(); renderTag(); renderFocus();
   toast(status === "ok" ? "Matched to the bank line" : status ? CD_LBL[status] : "Back to check");
 }
 /* pick a bank line by hand: debits of about this amount first, any date */
@@ -1608,7 +1637,7 @@ function rvSave(go) {
   d.reviewedBy = USER ? USER.email : ""; d.reviewedOn = today();
   if (d.project) tgSetField(d, "project", d.project); if (d.equip) tgSetField(d, "equip", d.equip);   // tied bank line, Tally voucher and float line follow
   if (d.cat) tgLinked(d).forEach(x => { if (x !== d && "cat" in x && !x.cat) x.cat = d.cat; });   // tied bank or float line takes the purchase type when it has none
-  persist(); renderChat(); renderTag();
+  persist(); renderChat(); renderTag(); renderFocus();
   const i = RV_LIST.indexOf(id), nx = +go ? RV_LIST[i + +go] : null;
   if (nx) cdReview(nx); else { closeModal(); toast(+go > 0 ? "Saved. That was the last one in this list." : "Saved"); }
 }
@@ -2015,11 +2044,11 @@ function renderRaw() {
   const fl = rwFloat(), fd = fl.filter(p => p.checkedOn && p.project), sh = $("#rwPcShow").value;
   const fo = fl.filter(p => (sh === "open" ? !p.checkedOn : sh === "noproj" ? !p.project : true)).sort((a, b) => (a.date < b.date ? -1 : 1));
   $("#rwPcSum").textContent = fd.length.toLocaleString("en-IN") + " of " + fl.length.toLocaleString("en-IN") + " classified with a project · " + fmt(fd.reduce((x, p) => x + p.amt, 0)) + " of " + fmt(fl.reduce((x, p) => x + p.amt, 0)); bar("#rwPcBar", fd.length, fl.length);
-  $("#rwPcBP").innerHTML = tgProjOpts("", "Pick a project");
+  $("#rwPcBP").innerHTML = tgProjOpts("", "Project: keep"); $("#rwPcBE").innerHTML = eqOpts("", "Equipment: keep");
   const pSug = p => p.project || wordsProject([p.payee, p.note, p.ref].join(" ")) || (S.docs.filter(d => d.payId === p.id && d.project)[0] || {}).project || "";
-  $("#rwPcTbl").innerHTML = fo.length ? '<table class="tgtbl" style="min-width:900px"><colgroup><col style="width:4%"><col style="width:9%"><col style="width:23%"><col style="width:10%"><col style="width:17%"><col style="width:15%"><col style="width:22%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="rwpcall"></th><th class="l">Date</th><th class="l">Book says</th><th>Amount</th><th class="l">Paid to</th><th class="l">What for</th><th class="l">Project</th></tr></thead><tbody>' +
+  $("#rwPcTbl").innerHTML = fo.length ? '<table class="tgtbl" style="min-width:1050px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:20%"><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="rwpcall"></th><th class="l">Date</th><th class="l">Book says</th><th>Amount</th><th class="l">Paid to</th><th class="l">What for</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
     fo.slice(0, RW_SHOW).map(p => { const sg = pSug(p); return '<tr data-id="' + esc(p.id) + '"><td><input type="checkbox" class="chk1 rwPcChk"' + (RW_SEL[p.id] ? " checked" : "") + '></td><td class="l">' + dmy(p.date) + '</td><td class="l"><div class="nar">' + esc([p.payee, p.note].filter(Boolean).join(" · ")) + "</div>" + (p.checkedOn ? '<span class="pill ok">classified</span>' : "") + "</td><td>" + fmt(p.amt) +
-      '</td><td class="l"><input type="text" class="rwPay" list="vendorList" value="' + esc(VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "") + '" style="width:100%"></td><td class="l"><select class="rwCat" style="width:100%">' + catOpts(p.cat || "site") + '</select></td><td class="l"><div style="display:flex;gap:4px"><select class="rwProj" style="flex:1;min-width:0">' + tgProjOpts(sg, "No project yet") + '</select><button class="small primary" data-act="rwpc" data-id="' + esc(p.id) + '">Save</button></div>' + (sg && !p.project ? '<div class="nar">suggested</div>' : "") + "</td></tr>"; }).join("") + "</tbody></table>" +
+      '</td><td class="l"><input type="text" class="rwPay" list="vendorList" value="' + esc(VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "") + '" style="width:100%"></td><td class="l"><select class="rwCat" style="width:100%">' + catOpts(p.cat || "site") + '</select></td><td class="l"><select class="rwProj" style="width:100%">' + tgProjOpts(sg, "No project yet") + "</select>" + (sg && !p.project ? '<div class="nar">suggested</div>' : "") + '</td><td class="l"><div style="display:flex;gap:4px"><select class="rwEq" style="flex:1;min-width:0">' + eqOpts(p.equip || "", "No equipment") + '</select><button class="small primary" data-act="rwpc" data-id="' + esc(p.id) + '">Save</button></div></td></tr>'; }).join("") + "</tbody></table>" +
     (fo.length > RW_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="rwmore">Show ' + Math.min(100, fo.length - RW_SHOW) + " more</button></div>" : "")
     : '<div class="sub">' + (fl.length ? "Nothing in this list." : "No site float book imported yet (Import tab).") + "</div>";
   $("#rwPcSel").textContent = Object.keys(RW_SEL).filter(k => RW_SEL[k]).length ? Object.keys(RW_SEL).filter(k => RW_SEL[k]).length + " ticked" : "Tick lines to set them together";
@@ -2029,7 +2058,7 @@ function rwPcSave(tr) {
   const name = tr.querySelector(".rwPay").value.trim(), v = name ? vendorByName(name) : null;
   if (!name) { tr.querySelector(".rwPay").classList.add("bad"); return; }
   p.payee = v ? v.name : name; p.vendorId = v ? v.id : ""; p.cat = tr.querySelector(".rwCat").value;
-  const pj = tr.querySelector(".rwProj").value; if (pj) tgSetField(p, "project", pj);
+  const pj = tr.querySelector(".rwProj").value, eq = tr.querySelector(".rwEq").value; if (pj) tgSetField(p, "project", pj); if (eq !== (p.equip || "")) tgSetField(p, "equip", eq);
   p.checkedBy = USER ? USER.email : ""; p.checkedOn = today();
   const nx = tr.nextElementSibling ? tr.nextElementSibling.dataset.id : "";
   persist(); renderAll();
@@ -2114,7 +2143,59 @@ function tgCarry(d) {
   const L = tgLinked(d), p = L.map(x => x.project).filter(Boolean)[0] || "", q = L.map(x => x.equip).filter(Boolean)[0] || "";
   L.forEach(x => { if (p && !x.project) x.project = p; if (q && !x.equip) x.equip = q; });
 }
-function tgSetField(rec, f, v) { const L = tgLinked(rec); L.forEach(x => { x[f] = v; }); return L.length; }
+let CK_ON = false;   // true while the checker sets a tag: the change counts as checked
+function tgSetField(rec, f, v) {
+  const L = tgLinked(rec), me = USER ? USER.email : "", tag = f === "project" || f === "equip";
+  L.forEach(x => { if (String(x[f] || "") === String(v || "")) return; x[f] = v; if (tag) { x.tagBy = me; if (CK_ON) { x.tagOkBy = me; x.tagOkOn = today(); } else { x.tagOkBy = ""; x.tagOkOn = ""; } } });
+  return L.length;
+}
+
+/* ---------- Focus view: the team classifies the site float book and WhatsApp documents, then someone checks the tags ---------- */
+const FX_TABS = ["ffloat", "fdocs", "fcheck"];
+let FOCUS = true; try { FOCUS = localStorage.getItem("pay_mode") !== "full"; } catch (e) {}
+let CK_SHOW = 150, CK_SEL = {};
+function setMode(focus, quiet) {   // quiet: applied at load, nothing remembered yet
+  FOCUS = !!focus; if (!quiet) try { localStorage.setItem("pay_mode", FOCUS ? "focus" : "full"); } catch (e) {}
+  document.body.classList.toggle("focus", FOCUS); showTab(FOCUS ? "ffloat" : "overview");
+}
+const ckList = () => rwFloat().filter(p => p.project || p.equip).map(p => ({ k: "pay|" + p.id, src: "pay", rec: p, date: p.date, party: VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "", detail: p.note || "", amt: +p.amt || 0 }))
+  .concat(rwDocs().filter(d => d.status !== "ignore" && (d.project || d.equip)).map(d => ({ k: "doc|" + d.id, src: "doc", rec: d, date: cdDate(d), party: d.vendor || d.who || "", detail: [d.type, d.docNo, d.items, d.site ? "site: " + d.site : ""].filter(Boolean).join(" · "), amt: cdAmt(d) || 0 })));
+function ckRec(k) { const i = k.indexOf("|"), src = k.slice(0, i), id = k.slice(i + 1); return (src === "pay" ? S.pays : S.docs).filter(x => x.id === id)[0]; }
+function ckOk(r) { const me = USER ? USER.email : "", on = today(); tgLinked(r).forEach(x => { if (x === r || S.pays.indexOf(x) >= 0 || S.docs.indexOf(x) >= 0) { x.tagOkBy = me; x.tagOkOn = on; } }); }
+function ckSelTxt() { const n = Object.keys(CK_SEL).filter(k => CK_SEL[k]).length; $("#ckSel").textContent = n ? n + " ticked" : "Tick lines to mark them together"; }
+const whoName = e => String(e || "").split("@")[0];
+function renderFocus() {
+  if (!FOCUS) return;
+  const fl = rwFloat(), fd = fl.filter(p => p.checkedOn && p.project), docs = rwDocs().filter(d => d.status !== "ignore"), dt = docs.filter(d => d.project || d.equip), ck = ckList(), ok = ck.filter(e => e.rec.tagOkOn);
+  const tile = (h, a, b, sub) => '<div><span class="sub">' + h + "</span><b>" + (b ? Math.round(a / b * 100) : 0) + '%</b><div class="tgbar"><i style="width:' + (b ? a / b * 100 : 0) + '%"></i></div><span class="sub">' + sub + "</span></div>";
+  $("#fxTop").innerHTML = tile("Site float lines with a project", fd.length, fl.length, fd.length.toLocaleString("en-IN") + " of " + fl.length.toLocaleString("en-IN") + " · " + fmt(fd.reduce((x, p) => x + (+p.amt || 0), 0)) + " of " + fmt(fl.reduce((x, p) => x + (+p.amt || 0), 0))) +
+    tile("WhatsApp documents tagged", dt.length, docs.length, dt.length.toLocaleString("en-IN") + " of " + docs.length.toLocaleString("en-IN") + " with a project or equipment") +
+    tile("Tags checked", ok.length, ck.length, ok.length.toLocaleString("en-IN") + " of " + ck.length.toLocaleString("en-IN") + " tagged entries");
+  const nf = fl.filter(p => !p.checkedOn || !p.project).length, nd = docs.filter(d => !rwDone(d) || (!d.project && !d.equip)).length, nc = ck.length - ok.length;
+  $("#fxFlCnt").textContent = nf ? nf.toLocaleString("en-IN") : ""; $("#fxDocCnt").textContent = nd ? nd.toLocaleString("en-IN") : ""; $("#fxChkCnt").textContent = nc ? nc.toLocaleString("en-IN") : "";
+  if (!$("#tab-ffloat").classList.contains("hide") || !$("#tab-fdocs").classList.contains("hide")) renderRaw();
+  if (!$("#tab-fcheck").classList.contains("hide")) renderCheck();
+}
+function renderCheck() {
+  const all = ckList(), me = USER ? USER.email : "", E = EBY();
+  const keep = (sel, html) => { const v = $(sel).value; $(sel).innerHTML = html; if ([].some.call($(sel).options, o => o.value === v)) $(sel).value = v; };
+  keep("#ckProj", '<option value="">Every project</option><option value="_none">No project, equipment only</option>' + uniq(all.map(e => e.rec.project).filter(Boolean)).sort().map(p => '<option value="' + esc(p) + '">' + esc(projName(p)) + "</option>").join(""));
+  keep("#ckBy", '<option value="">Tagged by anyone</option>' + uniq(all.map(e => e.rec.tagBy || e.rec.checkedBy || e.rec.reviewedBy).filter(Boolean)).sort().map(w => '<option value="' + esc(w) + '">Tagged by ' + esc(whoName(w)) + "</option>").join(""));
+  const sh = $("#ckShow").value, sr = $("#ckSrc").value, pj = $("#ckProj").value, by = $("#ckBy").value, ok = all.filter(e => e.rec.tagOkOn);
+  $("#ckSum").textContent = ok.length.toLocaleString("en-IN") + " of " + all.length.toLocaleString("en-IN") + " checked"; bar("#ckBar", ok.length, all.length);
+  const P = {}; all.forEach(e => { const k = e.rec.project || "_none", o = P[k] || (P[k] = { n: 0, a: 0, ok: 0 }); o.n++; o.a += e.amt; if (e.rec.tagOkOn) o.ok++; });
+  $("#ckProjTbl").innerHTML = all.length ? '<table class="tgtbl"><thead><tr><th class="l">Project</th><th>Entries</th><th>Amount</th><th>Checked</th></tr></thead><tbody>' + Object.keys(P).sort((a, b) => P[b].a - P[a].a).map(k => '<tr class="dr" data-act="ckproj" data-id="' + esc(k) + '"><td class="l">' + esc(k === "_none" ? "No project, equipment only" : projName(k)) + "</td><td>" + P[k].n + "</td><td>" + fmt(P[k].a) + "</td><td>" + P[k].ok + " of " + P[k].n + "</td></tr>").join("") + "</tbody></table>" : "";
+  const L = all.filter(e => (sh === "todo" ? !e.rec.tagOkOn : sh === "ok" ? !!e.rec.tagOkOn : true) && (!sr || e.src === sr) && (!pj || (pj === "_none" ? !e.rec.project : e.rec.project === pj)) && (!by || (e.rec.tagBy || e.rec.checkedBy || e.rec.reviewedBy) === by))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  $("#ckTbl").innerHTML = L.length ? '<table class="tgtbl" style="min-width:1100px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:9%"><col style="width:15%"><col style="width:20%"><col style="width:9%"><col style="width:14%"><col style="width:12%"><col style="width:10%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="ckall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Paid to / vendor</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th><th></th></tr></thead><tbody>' +
+    L.slice(0, CK_SHOW).map(e => { const r = e.rec, who = r.tagBy || r.checkedBy || r.reviewedBy || "";
+      return '<tr data-id="' + esc(e.k) + '"><td><input type="checkbox" class="chk1 ckChk"' + (CK_SEL[e.k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + (e.src === "pay" ? "Site float" : "WhatsApp" + (r.driveId || r.file ? '<br><a href="#" data-act="rwrev1" data-id="' + esc(r.id) + '">open</a>' : "")) + '</td><td class="l">' + esc(e.party) + (r.cat && CAT[r.cat] ? '<div class="nar">' + esc(CAT[r.cat]) + "</div>" : "") + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (who ? '<span class="sub">tagged by ' + esc(whoName(who)) + (who === me ? " (you)" : "") + "</span>" : "") + "</td><td>" + (e.amt ? fmt(e.amt) : "") +
+        '</td><td class="l"><select class="ckP" style="width:100%">' + tgProjOpts(r.project || "", "No project") + '</select></td><td class="l"><select class="ckE" style="width:100%">' + eqOpts(r.equip || "", "No equipment") + "</select></td><td>" +
+        (r.tagOkOn ? '<span class="pill ok">checked</span><div class="nar">' + esc(whoName(r.tagOkBy)) + " · " + dmy(r.tagOkOn) + '</div><button class="small" data-act="ckundo" data-id="' + esc(e.k) + '">Undo</button>' : '<button class="small primary" data-act="ckok" data-id="' + esc(e.k) + '">Correct</button>') + "</td></tr>"; }).join("") + "</tbody></table>" +
+    (L.length > CK_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="ckmore">Show ' + Math.min(150, L.length - CK_SHOW) + " more</button></div>" : "")
+    : '<div class="sub">' + (all.length ? "Nothing in this list." : "Nothing tagged yet: tag site float lines and WhatsApp documents first.") + "</div>";
+  ckSelTxt();
+}
 
 /* ---------- Project tags: every payment entry from every source tied to a project, and to equipment where it is for a machine ---------- */
 const TG_SRC_L = { bank: "Bank statements", pay: "Site float and direct", doc: "WhatsApp bills", tp: "Tally, Piling book", tm: "Tally, Main book" };
@@ -2288,13 +2369,24 @@ function tgCsv() {
 /* ---------- wiring ---------- */
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  if (name === "tag") setTimeout(renderTag, 0);
+  if (name === "ffloat") $("#tab-ffloat").appendChild($("#rwPcCard")); else if (name === "fdocs") $("#tab-fdocs").appendChild($("#rwDocCard"));
+  else if (name === "tag") { $("#tgStep1").appendChild($("#rwPcCard")); $("#tgStep1").appendChild($("#rwDocCard")); }
+  if (name === "tag") setTimeout(renderTag, 0); else if (FX_TABS.indexOf(name) >= 0) setTimeout(renderFocus, 0);
+  FX_TABS.forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
 function wire() {
-  $$("#tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $$("#tabs button[data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  ["#tab-ffloat", "#tab-fdocs"].forEach(id => $(id).addEventListener("click", e => { const h = e.target.closest("h2.fold"); if (h) tgFold(h); }));
+  ["#ckShow", "#ckSrc", "#ckProj", "#ckBy"].forEach(id => { $(id).onchange = () => { CK_SHOW = 150; CK_SEL = {}; renderCheck(); }; });
+  $("#ckTbl").addEventListener("change", e => {
+    const tr = e.target.closest("tr"); if (!tr) return; const r = ckRec(tr.dataset.id); if (!r) return;
+    if (e.target.classList.contains("ckChk")) { CK_SEL[tr.dataset.id] = e.target.checked; ckSelTxt(); return; }
+    if (e.target.classList.contains("ckP") || e.target.classList.contains("ckE")) { CK_ON = true; tgSetField(r, e.target.classList.contains("ckP") ? "project" : "equip", e.target.value); ckOk(r); CK_ON = false; persist(); renderAll(); toast("Changed and marked checked"); }
+  });
+  setMode(FOCUS, true);
   $("#period").onchange = e => { PERIOD = e.target.value ? e.target.value.split("|") : null; renderAll(); };
   $("#btnUndo").onclick = undo;
   $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
@@ -2387,6 +2479,14 @@ function wire() {
     else if (act === "rwrev" || act === "rwrev1") { e.preventDefault(); const k = $("#rwDocKind").value; cdReview(id, act === "rwrev" ? rwDocs().filter(d => !rwDone(d) && (!k || cdKind(d) === k)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0)).map(d => d.id) : [id]); }
     else if (act === "rwnot") cdSet(id, "ignore");
     else if (act === "rwmore") { RW_SHOW += 100; renderRaw(); }
+    else if (act === "dump") { setMode(false); showTab(id); }
+    else if (act === "focusmode") setMode(true);
+    else if (act === "ckok") { const r = ckRec(id); if (r) { ckOk(r); persist(); renderAll(); toast("Marked correct"); } }
+    else if (act === "ckundo") { const r = ckRec(id); if (r) { tgLinked(r).forEach(x => { if ("tagOkOn" in x) { x.tagOkBy = ""; x.tagOkOn = ""; } }); persist(); renderAll(); } }
+    else if (act === "ckall") { $$("#ckTbl .ckChk").forEach(c => { c.checked = t.checked; CK_SEL[c.closest("tr").dataset.id] = t.checked; }); ckSelTxt(); }
+    else if (act === "ckbulk") { const ids = Object.keys(CK_SEL).filter(k => CK_SEL[k]); if (!ids.length) { toast("Tick the lines first"); return; } ids.forEach(k => { const r = ckRec(k); if (r) ckOk(r); }); CK_SEL = {}; persist(); renderAll(); toast(ids.length + " marked correct"); }
+    else if (act === "ckmore") { CK_SHOW += 150; renderCheck(); }
+    else if (act === "ckproj") { $("#ckProj").value = id; CK_SHOW = 150; renderCheck(); }
     else if (act === "rwpc") rwPcSave(t.closest("tr"));
     else if (act === "rwdocall") { $$("#rwDocTbl .rwDocChk").forEach(c => { c.checked = t.checked; RW_DSEL[c.closest("tr").dataset.id] = t.checked; }); $("#rwDocSel").textContent = Object.keys(RW_DSEL).filter(x => RW_DSEL[x]).length + " ticked"; }
     else if (act === "rwdocbulk") {
@@ -2397,10 +2497,10 @@ function wire() {
     }
     else if (act === "rwpcall") { $$("#rwPcTbl .rwPcChk").forEach(c => { c.checked = t.checked; RW_SEL[c.closest("tr").dataset.id] = t.checked; }); $("#rwPcSel").textContent = Object.keys(RW_SEL).filter(k => RW_SEL[k]).length + " ticked"; }
     else if (act === "rwpcbulk") {
-      const pj = $("#rwPcBP").value, ids = Object.keys(RW_SEL).filter(k => RW_SEL[k]);
-      if (!pj || !ids.length) { toast(pj ? "Tick the lines first" : "Pick the project first"); return; }
-      S.pays.filter(p => RW_SEL[p.id]).forEach(p => { tgSetField(p, "project", pj); if (!p.checkedOn) { p.checkedBy = USER ? USER.email : ""; p.checkedOn = today(); } });
-      RW_SEL = {}; persist(); renderAll(); toast(ids.length + " lines set to " + projName(pj));
+      const pj = $("#rwPcBP").value, eq = $("#rwPcBE").value, ids = Object.keys(RW_SEL).filter(k => RW_SEL[k]);
+      if ((!pj && !eq) || !ids.length) { toast(pj || eq ? "Tick the lines first" : "Pick a project or equipment first"); return; }
+      S.pays.filter(p => RW_SEL[p.id]).forEach(p => { if (pj) tgSetField(p, "project", pj); if (eq) tgSetField(p, "equip", eq); if (!p.checkedOn) { p.checkedBy = USER ? USER.email : ""; p.checkedOn = today(); } });
+      RW_SEL = {}; persist(); renderAll(); toast(ids.length + " lines set");
     }
     else if (act === "tiset") tiSet(id, t.dataset.k, t.dataset.v);
     else if (act === "tiun") tiSet(id, t.dataset.k, "");
