@@ -1609,6 +1609,8 @@ function cdReview(id, list) {
     const v = d[f[0]] == null ? "" : d[f[0]];
     if (f[2] === "payer") { const cur = payerOf(v); return '<label>' + f[1] + '<select data-f="' + f[0] + '"><option value="">Not known</option>' + uniq(payerList().concat([cur])).filter(Boolean).map(o => '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>"; }
     if (f[2] === "cat") { const g = v || ((vendorByName(d.vendor) || {}).cat) || (/fuel|pump/i.test(d.type || "") ? "fuel" : ""); return '<label>' + f[1] + '<select data-f="' + f[0] + '">' + catOpts(g, "Not set") + "</select></label>"; }
+    if (f[0] === "paid") { const full = CD_BILL[d.type] && +d.total > 0 && Math.abs((+d.paid || 0) - +d.total) < 0.5;
+      return '<label>' + f[1] + '<input type="text" inputmode="decimal" data-f="paid" value="' + esc(v === "" || v === 0 ? "" : v) + '"' + (full ? " readonly" : "") + '></label><label id="rvFullBox"' + (CD_BILL[d.type] ? "" : ' class="hide"') + '>Bill paid?<span class="chk" style="min-height:34px"><input type="checkbox" id="rvPaidFull"' + (full ? " checked" : "") + '> Paid in full (amount paid = bill total)</span></label>'; }
     if (f[2] === "sel") return '<label>' + f[1] + '<select data-f="' + f[0] + '">' + uniq(RV_TYPES.concat([String(v)])).filter(Boolean).map(o => "<option" + (o === v ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>";
     return '<label' + (f[2] === "wide" ? ' class="w"' : "") + ">" + f[1] + '<input type="' + (f[2] === "date" ? "date" : "text") + '"' + (f[2] === "num" ? ' inputmode="decimal"' : "") + ' data-f="' + f[0] + '" value="' + esc(f[2] === "num" ? (v === "" || v === 0 ? "" : v) : v) + '"></label>';
   };
@@ -1622,17 +1624,28 @@ function cdReview(id, list) {
     '<button class="primary" data-act="rvsave" data-go="1">Save and next</button></div></div></div>', "review");
   $("#modal").className = "review"; $("#modal").dataset.id = id;
   const first = $('#rvForm [data-f="total"]') || $("#rvForm input"); if (first) first.focus();
+  // Paid in full: amount paid follows the bill total; only offered on bills
+  const fp = $('#rvForm [data-f="paid"]'), ft = $('#rvForm [data-f="total"]'), fb = $("#rvPaidFull"), sync = () => { if (fb.checked) fp.value = ft.value; fp.readOnly = fb.checked; };
+  fb.onchange = sync; ft.addEventListener("input", sync);
+  $('#rvForm [data-f="type"]').onchange = e => { const bill = !!CD_BILL[e.target.value]; $("#rvFullBox").classList.toggle("hide", !bill); if (!bill && fb.checked) { fb.checked = false; sync(); } };
 }
 function rvSave(go) {
   const id = $("#modal").dataset.id, d = S.docs.filter(x => x.id === id)[0]; if (!d) return;
-  let bad = false;
+  let bad = false; const V = {}, F = {};
   $$("#rvForm [data-f]").forEach(el => {
     const f = el.dataset.f, num = ["taxable", "gst", "total", "paid"].indexOf(f) >= 0;
-    let v = el.value.trim();
+    let v = el.value.trim(); el.classList.remove("bad"); F[f] = el;
     if (num) { if (v === "") v = 0; else { const n = toNum(v.replace(/[^\d.\-]/g, ""), NaN); if (isNaN(n)) { el.classList.add("bad"); bad = true; return; } v = n; } }
-    d[f] = v;
+    V[f] = v;
   });
   if (bad) { toast("Check the amounts"); return; }
+  if (CD_BILL[V.type]) {   // a bill needs its amounts
+    if (!(V.total > 0)) { F.total.classList.add("bad"); F.total.focus(); toast("A bill needs its bill total"); return; }
+    if (V.taxable > 0 && Math.abs(V.taxable + (V.gst || 0) - V.total) > 2) { F.taxable.classList.add("bad"); F.gst.classList.add("bad"); toast("Taxable value + GST should add up to the bill total"); return; }
+    if ($("#rvPaidFull") && $("#rvPaidFull").checked) V.paid = V.total;
+    if (V.paid > V.total + 1) { F.paid.classList.add("bad"); toast("Amount paid is more than the bill total"); return; }
+  }
+  Object.keys(V).forEach(f => { d[f] = V[f]; });
   if (d.docDate) d.month = d.docDate.slice(0, 7);
   d.reviewedBy = USER ? USER.email : ""; d.reviewedOn = today();
   if (d.project) tgSetField(d, "project", d.project); if (d.equip) tgSetField(d, "equip", d.equip);   // tied bank line, Tally voucher and float line follow
