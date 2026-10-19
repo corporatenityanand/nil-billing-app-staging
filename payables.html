@@ -126,6 +126,8 @@ label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px s
 .dot.high{background:var(--bad)}.dot.med{background:var(--pi)}.dot.low{background:var(--muted)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 #odLines input{width:100%;min-width:0;padding:4px 6px}#odLines td{padding:3px 4px;vertical-align:top}#odLines .od-d{min-width:220px}#odLines .od-n{width:84px}#odLines .od-s{width:64px}
+.tltbl{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;min-width:100%}.tltbl th,.tltbl td{padding:4px 5px;border-bottom:1px solid var(--line)}.tltbl .tlname{position:sticky;left:0;background:var(--surface);min-width:190px;max-width:240px;z-index:1}
+.tltbl .tlc{text-align:center;min-width:52px;white-space:nowrap;font-variant-numeric:tabular-nums}.tltbl .tlon{background:color-mix(in srgb,var(--inv) 16%,transparent)}.tltbl .tlopen{color:var(--bad);font-weight:600}.tltbl td[data-act]{cursor:pointer;text-decoration:underline dotted}.tltbl .tlsel{outline:2px solid var(--inv);outline-offset:-2px}.tltbl tr.tlx td{background:var(--surface)}
 .odtot{display:grid;grid-template-columns:auto auto;gap:2px 18px;justify-content:end;font-size:13px;margin-top:6px}.odtot b{text-align:right}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
 .toast.show{opacity:1}
@@ -331,6 +333,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button class="dx" data-tab="projects">Projects</button>
     <button class="dx" data-tab="masters">Masters</button>
     <button class="dx" data-tab="import">Import</button>
+    <button data-tab="timeline">Timeline</button>
     <button data-tab="orders">PO / WO <span class="cnt" id="ordCnt"></span></button>
   </nav>
 
@@ -454,6 +457,17 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="selbar"><span id="ckSel">Tick lines to mark them together</span><button class="small primary" data-act="ckbulk">Mark ticked correct</button></div>
       <div class="tblwrap" id="ckTbl"></div>
     </div>
+  </section>
+  <section id="tab-timeline" class="hide">
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Timeline by month</h2><span style="flex:1"></span>
+        <label class="sub">From <input type="month" id="tlFrom"></label><label class="sub">To <input type="month" id="tlTo"></label>
+        <select id="tlSrc"></select></div>
+      <div class="help">Shaded months: the project is running (its start and end dates, set in All data &gt; Projects). Amounts are what each project spent that month from the chosen source; one source at a time so nothing is counted twice. Click an amount to see the entries, and tag the "Not tagged yet" ones: the projects running that month come first in the pick list.</div>
+      <div class="tblwrap" id="tlGrid"></div>
+    </div>
+    <div class="card" id="tlList"></div>
+    <div class="card"><h2>Equipment by month</h2><div class="help">Which project each machine's tagged entries (all sources) went to each month. Hover a cell for amounts.</div><div class="tblwrap" id="tlEq"></div></div>
   </section>
   <section id="tab-orders" class="hide">
     <div class="card">
@@ -1075,7 +1089,12 @@ function fillPeriods() {
 }
 const vName = r => r.v ? r.v.name : r.payee;
 const projName = id => (id === "_co" ? "Company level" : PBY[id] ? PBY[id].name || id : id);
-const projOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.projects.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))).map(p => '<option value="' + esc(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.id + " · " + (p.name || "")) + "</option>").join("");
+const projOpts = (sel, blank, date) => {   // with a date: the projects running then come first
+  const o = p => '<option value="' + esc(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + esc(p.id + " · " + (p.name || "")) + "</option>";
+  const all = S.projects.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))), ym = date ? String(date).slice(0, 7) : "";
+  const run = ym ? all.filter(p => tlRunsIn(p, ym)) : [];
+  return (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + (run.length ? '<optgroup label="Running in ' + esc(tlMonLbl(ym)) + '">' + run.map(o).join("") + '</optgroup><optgroup label="Other projects">' + all.filter(p => run.indexOf(p) < 0).map(o).join("") + "</optgroup>" : all.map(o).join(""));
+};
 const srcList = () => uniq(S.lines.map(l => l.acct).concat(["Direct", "Site float"]).concat(String(S.settings.sources || "").split(",").map(s => s.trim())));
 
 /* ---------- render ---------- */
@@ -1665,7 +1684,7 @@ function cdReview(id, list) {
   openModal('<h2>Review ' + esc(d.type || "document") + ' <span class="sub">' + (pos + 1) + " of " + RV_LIST.length + " in this list</span></h2>" +
     '<div class="rvgrid"><div class="rvdoc">' + (url ? '<iframe src="' + esc(url) + '" title="The bill" allow="autoplay"></iframe>' : '<div class="help" style="padding:12px">No Drive copy of this file.</div>') + "</div>" +
     '<div><div class="help">' + esc(d.who || "") + (d.posted ? " posted it on " + esc(dmy(d.posted)) : "") + (d.caption ? ": " + esc(d.caption) : "") + (url ? ' · <a href="' + esc(url.replace(/\/preview$/, "/view")) + '" target="_blank" rel="noopener">Open in Drive</a>' : "") + "</div>" +
-    '<div class="form" id="rvForm"><label>Project<select data-f="project">' + tgProjOpts(d.project || "", "No project yet") + '</select></label><label>Equipment<select data-f="equip">' + eqOpts(d.equip || "", "No equipment") + "</select></label>" + RV_F.map(fld).join("") + "</div>" +
+    '<div class="form" id="rvForm"><label>Project<select data-f="project">' + tgProjOpts(d.project || "", "No project yet", cdDate(d)) + '</select></label><label>Equipment<select data-f="equip">' + eqOpts(d.equip || "", "No equipment") + "</select></label>" + RV_F.map(fld).join("") + "</div>" +
     (d.reviewedOn ? '<div class="sub" style="margin-top:6px">Reviewed by ' + esc(d.reviewedBy) + " on " + esc(dmy(d.reviewedOn)) + "</div>" : "") +
     '<div class="toolbar" style="margin-top:12px;justify-content:flex-end"><button data-act="mclose">Close</button>' +
     (pos > 0 ? '<button data-act="rvsave" data-go="-1">Save, previous</button>' : "") + '<button data-act="rvsave" data-go="0">Save</button>' +
@@ -2097,7 +2116,7 @@ function renderRaw() {
   const open = all.filter(d => (!k || cdKind(d) === k) && (sh0 === "open" ? !rwDone(d) : sh0 === "notag" ? d.status !== "ignore" && !d.project && !d.equip : true)).sort((a, b) => (cdDate(a) < cdDate(b) ? -1 : cdDate(a) > cdDate(b) ? 1 : 0));
   $("#rwDocTbl").innerHTML = open.length ? '<table class="tgtbl" style="min-width:1000px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:12%"><col style="width:15%"><col style="width:20%"><col style="width:11%"><col style="width:16%"><col style="width:15%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="rwdocall"></th><th class="l">Date</th><th class="l">Read as</th><th class="l">Vendor</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
     open.slice(0, RW_SHOW).map(d => { const sg = dSug(d); return '<tr data-id="' + esc(d.id) + '"><td><input type="checkbox" class="chk1 rwDocChk"' + (RW_DSEL[d.id] ? " checked" : "") + '></td><td class="l">' + dmy(cdDate(d)) + '</td><td class="l">' + esc(d.type || "") + (d.cat && CAT[d.cat] ? '<div class="nar">' + esc(CAT[d.cat]) + "</div>" : "") + (rwDone(d) ? '<br><span class="pill ok">' + (d.status === "ignore" ? "not a bill" : "reviewed") + "</span>" : "") + '</td><td class="l">' + esc(d.vendor || d.who || "") + '</td><td class="l"><div class="nar">' + esc([d.site ? "site: " + d.site : "", d.docNo, d.items, d.caption].filter(Boolean).join(" · ")) + "</div></td><td>" + (cdAmt(d) ? fmt(cdAmt(d)) : "") +
-      '<div class="acts" style="justify-content:flex-end;margin-top:3px"><button class="small primary" data-act="rwrev" data-id="' + esc(d.id) + '">Review</button>' + (d.status === "ignore" ? "" : '<button class="small" data-act="rwnot" data-id="' + esc(d.id) + '">Not a bill</button>') + '</div></td><td class="l"><select class="rwDP" style="width:100%">' + tgProjOpts(sg, "No project") + "</select>" + (sg && !d.project ? '<div class="nar">suggested: pick to confirm</div>' : "") +
+      '<div class="acts" style="justify-content:flex-end;margin-top:3px"><button class="small primary" data-act="rwrev" data-id="' + esc(d.id) + '">Review</button>' + (d.status === "ignore" ? "" : '<button class="small" data-act="rwnot" data-id="' + esc(d.id) + '">Not a bill</button>') + '</div></td><td class="l"><select class="rwDP" style="width:100%">' + tgProjOpts(sg, "No project", cdDate(d)) + "</select>" + (sg && !d.project ? '<div class="nar">suggested: pick to confirm</div>' : "") +
       '</td><td class="l"><select class="rwDE" style="width:100%">' + eqOpts(d.equip || "", "No equipment") + "</select></td></tr>"; }).join("") + "</tbody></table>" +
     (open.length > RW_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="rwmore">Show ' + Math.min(100, open.length - RW_SHOW) + " more</button></div>" : "")
     : '<div class="sub">' + (all.length ? "Nothing in this list." : "No WhatsApp documents imported yet (Import tab).") + "</div>";
@@ -2109,7 +2128,7 @@ function renderRaw() {
   const pSug = p => p.project || wordsProject([p.payee, p.note, p.ref].join(" ")) || (S.docs.filter(d => d.payId === p.id && d.project)[0] || {}).project || "";
   $("#rwPcTbl").innerHTML = fo.length ? '<table class="tgtbl" style="min-width:1050px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:20%"><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="rwpcall"></th><th class="l">Date</th><th class="l">Book says</th><th>Amount</th><th class="l">Paid to</th><th class="l">What for</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
     fo.slice(0, RW_SHOW).map(p => { const sg = pSug(p); return '<tr data-id="' + esc(p.id) + '"><td><input type="checkbox" class="chk1 rwPcChk"' + (RW_SEL[p.id] ? " checked" : "") + '></td><td class="l">' + dmy(p.date) + '</td><td class="l"><div class="nar">' + esc([p.payee, p.note].filter(Boolean).join(" · ")) + "</div>" + (p.checkedOn ? '<span class="pill ok">classified</span>' : "") + "</td><td>" + fmt(p.amt) +
-      '</td><td class="l"><input type="text" class="rwPay" list="vendorList" value="' + esc(VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "") + '" style="width:100%"></td><td class="l"><select class="rwCat" style="width:100%">' + catOpts(p.cat || "site") + '</select></td><td class="l"><select class="rwProj" style="width:100%">' + tgProjOpts(sg, "No project yet") + "</select>" + (sg && !p.project ? '<div class="nar">suggested</div>' : "") + '</td><td class="l"><div style="display:flex;gap:4px"><select class="rwEq" style="flex:1;min-width:0">' + eqOpts(p.equip || "", "No equipment") + '</select><button class="small primary" data-act="rwpc" data-id="' + esc(p.id) + '">Save</button></div></td></tr>'; }).join("") + "</tbody></table>" +
+      '</td><td class="l"><input type="text" class="rwPay" list="vendorList" value="' + esc(VBY[p.vendorId] ? VBY[p.vendorId].name : p.payee || "") + '" style="width:100%"></td><td class="l"><select class="rwCat" style="width:100%">' + catOpts(p.cat || "site") + '</select></td><td class="l"><select class="rwProj" style="width:100%">' + tgProjOpts(sg, "No project yet", p.date) + "</select>" + (sg && !p.project ? '<div class="nar">suggested</div>' : "") + '</td><td class="l"><div style="display:flex;gap:4px"><select class="rwEq" style="flex:1;min-width:0">' + eqOpts(p.equip || "", "No equipment") + '</select><button class="small primary" data-act="rwpc" data-id="' + esc(p.id) + '">Save</button></div></td></tr>'; }).join("") + "</tbody></table>" +
     (fo.length > RW_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="rwmore">Show ' + Math.min(100, fo.length - RW_SHOW) + " more</button></div>" : "")
     : '<div class="sub">' + (fl.length ? "Nothing in this list." : "No site float book imported yet (Import tab).") + "</div>";
   $("#rwPcSel").textContent = Object.keys(RW_SEL).filter(k => RW_SEL[k]).length ? Object.keys(RW_SEL).filter(k => RW_SEL[k]).length + " ticked" : "Tick lines to set them together";
@@ -2251,7 +2270,7 @@ function renderCheck() {
   $("#ckTbl").innerHTML = L.length ? '<table class="tgtbl" style="min-width:1100px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:9%"><col style="width:15%"><col style="width:20%"><col style="width:9%"><col style="width:14%"><col style="width:12%"><col style="width:10%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="ckall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Paid to / vendor</th><th class="l">Detail</th><th>Amount</th><th class="l">Project</th><th class="l">Equipment</th><th></th></tr></thead><tbody>' +
     L.slice(0, CK_SHOW).map(e => { const r = e.rec, who = r.tagBy || r.checkedBy || r.reviewedBy || "";
       return '<tr data-id="' + esc(e.k) + '"><td><input type="checkbox" class="chk1 ckChk"' + (CK_SEL[e.k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + (e.src === "pay" ? "Site float" : "WhatsApp" + (r.driveId || r.file ? '<br><a href="#" data-act="rwrev1" data-id="' + esc(r.id) + '">open</a>' : "")) + '</td><td class="l">' + esc(e.party) + (r.cat && CAT[r.cat] ? '<div class="nar">' + esc(CAT[r.cat]) + "</div>" : "") + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (who ? '<span class="sub">tagged by ' + esc(whoName(who)) + (who === me ? " (you)" : "") + "</span>" : "") + "</td><td>" + (e.amt ? fmt(e.amt) : "") +
-        '</td><td class="l"><select class="ckP" style="width:100%">' + tgProjOpts(r.project || "", "No project") + '</select></td><td class="l"><select class="ckE" style="width:100%">' + eqOpts(r.equip || "", "No equipment") + "</select></td><td>" +
+        '</td><td class="l"><select class="ckP" style="width:100%">' + tgProjOpts(r.project || "", "No project", r.date) + '</select></td><td class="l"><select class="ckE" style="width:100%">' + eqOpts(r.equip || "", "No equipment") + "</select></td><td>" +
         (r.tagOkOn ? '<span class="pill ok">checked</span><div class="nar">' + esc(whoName(r.tagOkBy)) + " · " + dmy(r.tagOkOn) + '</div><button class="small" data-act="ckundo" data-id="' + esc(e.k) + '">Undo</button>' : '<button class="small primary" data-act="ckok" data-id="' + esc(e.k) + '">Correct</button>') + "</td></tr>"; }).join("") + "</tbody></table>" +
     (L.length > CK_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="ckmore">Show ' + Math.min(150, L.length - CK_SHOW) + " more</button></div>" : "")
     : '<div class="sub">' + (all.length ? "Nothing in this list." : "Nothing tagged yet: tag site float lines and WhatsApp documents first.") + "</div>";
@@ -2263,7 +2282,7 @@ const TG_SRC_L = { bank: "Bank statements", pay: "Site float and direct", doc: "
 let TG_SRC = { bank: 1, pay: 1, doc: 1, tp: 1, tm: 0 }, TG_STEP = "1", TG_CUR = "", TG_SEL = {}, TG_IDX = {};
 const EBY = () => { const m = {}; S.equip.forEach(e => { m[e.id] = e; }); return m; };
 const eqOpts = (sel, blank) => (blank != null ? '<option value="">' + esc(blank) + "</option>" : "") + S.equip.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(e => '<option value="' + esc(e.id) + '"' + (e.id === sel ? " selected" : "") + ">" + esc(e.name || e.id) + "</option>").join("");
-const tgProjOpts = (sel, blank) => projOpts(sel, blank) + '<option value="_co"' + (sel === "_co" ? " selected" : "") + ">Company level (no project)</option>";
+const tgProjOpts = (sel, blank, date) => projOpts(sel, blank, date) + '<option value="_co"' + (sel === "_co" ? " selected" : "") + ">Company level (no project)</option>";
 let TG_KC = {};
 function tgKey(name) { const s0 = String(name || "").trim(); if (TG_KC[s0]) return TG_KC[s0]; const v = vendorByName(s0); return (TG_KC[s0] = v ? ["v:" + v.id, v.name] : ["n:" + norm(s0), s0]); }
 function tgEntries() {
@@ -2352,7 +2371,7 @@ function renderTagParty() {
     pos + '<div class="tblwrap" style="margin-top:10px;max-height:58vh"><table class="tgtbl" style="min-width:1050px"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:11%"><col style="width:24%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:14%"><col style="width:12%"></colgroup><thead><tr><th><input type="checkbox" class="chk1" data-act="tgselall"></th><th class="l">Date</th><th class="l">Source</th><th class="l">Detail</th><th title="Paid to the party">Debit</th><th title="Billed by the party">Credit</th><th>Balance</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
     L.map(e => { const k = e.src + "|" + e.id, b = inBal(e);
       return '<tr' + (b ? "" : ' class="tgref"') + '><td><input type="checkbox" class="chk1" data-act="tgsel" data-id="' + esc(k) + '"' + (TG_SEL[k] ? " checked" : "") + '></td><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.where) + '</td><td class="l"><div class="nar">' + esc(e.detail) + "</div>" + (tgLinked(e.rec).length > 1 ? '<span class="pill ok">tied</span>' : "") + "</td><td>" + (e.side === "dr" ? fmt(e.amt) : "") + "</td><td>" + (e.side === "cr" ? fmt(e.amt) : "") + '</td><td class="bal">' + (b ? balTxt(RUN[k]) : "") +
-        '</td><td class="l"><select class="tgOne" data-f="project" data-id="' + esc(k) + '">' + tgProjOpts(e.rec.project || "", "Not tagged") + '</select></td><td class="l"><select class="tgOne" data-f="equip" data-id="' + esc(k) + '">' + eqOpts(e.rec.equip || "", "None") + "</select></td></tr>"; }).join("") +
+        '</td><td class="l"><select class="tgOne" data-f="project" data-id="' + esc(k) + '">' + tgProjOpts(e.rec.project || "", "Not tagged", e.date) + '</select></td><td class="l"><select class="tgOne" data-f="equip" data-id="' + esc(k) + '">' + eqOpts(e.rec.equip || "", "None") + "</select></td></tr>"; }).join("") +
     "</tbody></table></div>";
 }
 function tgApply(next) {
@@ -2432,11 +2451,60 @@ function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
   if (name === "ffloat") $("#tab-ffloat").appendChild($("#rwPcCard")); else if (name === "fdocs") $("#tab-fdocs").appendChild($("#rwDocCard"));
   else if (name === "tag") { $("#tgStep1").appendChild($("#rwPcCard")); $("#tgStep1").appendChild($("#rwDocCard")); }
-  if (name === "orders") renderOrders();
+  if (name === "orders") renderOrders(); else if (name === "timeline") setTimeout(renderTimeline, 0);
   if (name === "tag") setTimeout(renderTag, 0); else if (FX_TABS.indexOf(name) >= 0) setTimeout(renderFocus, 0);
   FX_TABS.forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
-  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import", "orders"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import", "orders", "timeline"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
+}
+/* ---------- timeline: projects, spend and equipment month by month; tag a month's entries against the projects running then ---------- */
+let TL_SEL = null, TL_SHOW = 100;
+const tlYm = iso => String(iso || "").slice(0, 7);
+const tlMonLbl = ym => { const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+ym.slice(5, 7) - 1]; return m + "-" + ym.slice(2, 4); };
+const tlNext = ym => { let y = +ym.slice(0, 4), m = +ym.slice(5, 7) + 1; if (m > 12) { m = 1; y++; } return y + "-" + String(m).padStart(2, "0"); };
+function tlMonths(a, b) { const out = []; if (!a || !b || a > b) return out; for (let m = a; m <= b && out.length < 72; m = tlNext(m)) out.push(m); return out; }
+const tlRunsIn = (p, ym) => !!p.start && tlYm(p.start) <= ym && (!p.end || tlYm(p.end) >= ym);
+const TL_SRC = { money: "Payments: bank and logged (incl. site float)", float: "Site float only", doc: "WhatsApp bills", tp: "Tally Piling: payments", tm: "Tally Main: payments" };
+function tlEntries(src) {
+  return tgEntries().filter(e => src === "money" ? (e.src === "bank" || e.src === "pay") && e.side === "dr" : src === "float" ? e.src === "pay" && e.rec.source === "Site float" : src === "doc" ? e.src === "doc" : e.src === src && e.side === "dr");
+}
+function renderTimeline() {
+  const el = $("#tlGrid"); if (!el) return;
+  const src = $("#tlSrc").value || "money", E = tlEntries(src).filter(e => e.date);
+  const P = S.projects.slice().sort((a, b) => String(a.start || "9").localeCompare(String(b.start || "9")) || String(a.id).localeCompare(String(b.id)));
+  const ds = E.map(e => tlYm(e.date)).concat(P.map(p => tlYm(p.start)).filter(Boolean)).sort();
+  if (!$("#tlFrom").value) { const ago = tlYm(isoOf(new Date(Date.now() - 540 * 864e5))); $("#tlFrom").value = ds.length && ds[0] > ago ? ds[0] : ago; }   // the last 18 months, or from the first entry
+  if (!$("#tlTo").value) $("#tlTo").value = tlYm(today());
+  const M = tlMonths($("#tlFrom").value, $("#tlTo").value);
+  const sum = {}, add = (row, ym, a) => { const r = sum[row] || (sum[row] = {}); r[ym] = (r[ym] || 0) + a; };
+  E.forEach(e => { const ym = tlYm(e.date); add(e.rec.project || "_none", ym, e.amt); });
+  const eqm = {};   // equipment -> month -> project -> amount, from every source's tags
+  tgEntries().forEach(e => { if (!e.rec.equip || !e.date) return; const ym = tlYm(e.date), q = eqm[e.rec.equip] || (eqm[e.rec.equip] = {}), c = q[ym] || (q[ym] = {}); const p = e.rec.project || "?"; c[p] = (c[p] || 0) + e.amt; });
+  const cell = (row, ym, run) => { const a = (sum[row] || {})[ym] || 0, on = TL_SEL && TL_SEL.row === row && TL_SEL.ym === ym;
+    return '<td class="tlc' + (run ? " tlon" : "") + (row === "_none" && a ? " tlopen" : "") + (on ? " tlsel" : "") + '"' + (a ? ' data-act="tlcell" data-id="' + esc(row + "|" + ym) + '" title="' + esc(fmt(a)) + '"' : "") + ">" + (a ? cmp(a).replace("₹", "") : "") + "</td>"; };
+  const tot = r => M.reduce((t, m) => t + ((sum[r] || {})[m] || 0), 0);
+  const head = '<thead><tr><th class="l tlname">Project</th>' + M.map(m => '<th class="tlc">' + tlMonLbl(m) + "</th>").join("") + '<th class="num">Total</th></tr></thead>';
+  const prow = p => '<tr><td class="l tlname"><b>' + esc(p.id) + "</b> " + esc(p.name || "") + '<div class="sub">' + (p.start ? dmy(p.start) + " to " + (p.end ? dmy(p.end) : "now") : "no dates yet") + "</div></td>" + M.map(m => cell(p.id, m, tlRunsIn(p, m))).join("") + '<td class="num">' + fmt(tot(p.id)) + "</td></tr>";
+  const xrow = (r, lbl) => '<tr class="tlx"><td class="l tlname"><b>' + lbl + "</b></td>" + M.map(m => cell(r, m, false)).join("") + '<td class="num">' + fmt(tot(r)) + "</td></tr>";
+  const running = m => P.filter(p => tlRunsIn(p, m)).length;
+  el.innerHTML = M.length ? '<table class="tltbl">' + head + "<tbody>" + '<tr class="tlx"><td class="l tlname sub">Projects running</td>' + M.map(m => '<td class="tlc sub">' + (running(m) || "") + "</td>").join("") + "<td></td></tr>" +
+    P.map(prow).join("") + xrow("_co", "Company level") + xrow("_none", "Not tagged yet") + "</tbody></table>" : '<div class="sub">Pick a month range.</div>';
+  const EQ = S.equip.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  $("#tlEq").innerHTML = EQ.length && M.length ? '<table class="tltbl"><thead><tr><th class="l tlname">Equipment</th>' + M.map(m => '<th class="tlc">' + tlMonLbl(m) + "</th>").join("") + "</tr></thead><tbody>" +
+    EQ.map(q => '<tr><td class="l tlname"><b>' + esc(q.name || q.id) + '</b><div class="sub">' + esc([q.kind, q.project ? "home: " + q.project : ""].filter(Boolean).join(" · ")) + "</div></td>" + M.map(m => { const c = (eqm[q.id] || {})[m] || {}, ks = Object.keys(c).sort((a, b) => c[b] - c[a]);
+      return '<td class="tlc' + (ks.length ? " tlon" : "") + '" title="' + esc(ks.map(k => (k === "?" ? "no project" : k === "_co" ? "company level" : k) + " " + fmt(c[k])).join(", ")) + '">' + esc(ks.map(k => k === "?" ? "?" : k === "_co" ? "Co" : k).join(" ")) + "</td>"; }).join("") + "</tr>").join("") + "</tbody></table>"
+    : '<div class="sub">' + (EQ.length ? "" : "No equipment listed yet (All data > Project tags, step 3).") + "</div>";
+  renderTlList(E);
+}
+function renderTlList(E) {
+  const box = $("#tlList"); if (!TL_SEL) { box.innerHTML = '<div class="sub">Click an amount in the grid to see its entries. "Not tagged yet" cells list the month\'s untagged entries, with the projects running that month first in the pick list.</div>'; return; }
+  const L = E.filter(e => tlYm(e.date) === TL_SEL.ym && (TL_SEL.row === "_none" ? !e.rec.project : e.rec.project === TL_SEL.row)).sort((a, b) => b.amt - a.amt);
+  const run = S.projects.filter(p => tlRunsIn(p, TL_SEL.ym)).map(p => p.id);
+  const SRCN = { bank: "Bank", pay: "Logged", doc: "WhatsApp", tp: "Tally Piling", tm: "Tally Main" };
+  box.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(TL_SEL.row === "_none" ? "Not tagged" : TL_SEL.row === "_co" ? "Company level" : TL_SEL.row) + " · " + tlMonLbl(TL_SEL.ym) + '</h2><span class="sub">' + L.length + " entries, " + fmt(L.reduce((t, e) => t + e.amt, 0)) + (run.length ? " · running then: " + esc(run.join(", ")) : " · no project has dates covering this month") + '</span><span style="flex:1"></span><button class="small" data-act="tlclose">Close</button></div>' +
+    (L.length ? '<div class="tblwrap"><table class="tgtbl" style="min-width:900px"><thead><tr><th class="l">Date</th><th class="l">Source</th><th class="l">Party</th><th class="l">Detail</th><th class="num">Amount</th><th class="l">Project</th><th class="l">Equipment</th></tr></thead><tbody>' +
+      L.slice(0, TL_SHOW).map(e => '<tr data-id="' + esc(e.src + "|" + e.id) + '"><td class="l">' + dmy(e.date) + '</td><td class="l">' + esc(e.src === "pay" ? e.rec.source || "Logged" : SRCN[e.src]) + '</td><td class="l">' + esc(e.party) + '</td><td class="l"><div class="nar">' + esc(e.detail || "") + '</div></td><td class="num">' + fmt(e.amt) + '</td><td class="l"><select class="tlP" style="width:100%">' + tgProjOpts(e.rec.project || "", "Not tagged", e.date) + '</select></td><td class="l"><select class="tlE" style="width:100%">' + eqOpts(e.rec.equip || "", "No equipment") + "</select></td></tr>").join("") + "</tbody></table></div>" +
+      (L.length > TL_SHOW ? '<div style="margin-top:8px"><button class="small" data-act="tlmore">Show ' + Math.min(100, L.length - TL_SHOW) + " more</button></div>" : "") : '<div class="sub">Nothing left here.</div>');
 }
 /* ---------- purchase orders and work orders: made here, printed to PDF, sent by the user (nothing is sent from the app) ---------- */
 let OD_LINES = [];
@@ -2664,6 +2732,13 @@ function wire() {
   $("#setSources").onchange = e => { S.settings.sources = e.target.value.trim(); persist(); renderAll(); };
   $("#setPayers").onchange = e => { S.settings.payers = e.target.value.split(",").map(x => x.trim()).filter(Boolean).join(", "); persist(); renderAll(); };
   $$("[data-set]").forEach(el => { el.onchange = () => { S.settings[el.dataset.set] = el.value.trim(); persist(); renderAll(); }; });
+  $("#tlSrc").innerHTML = Object.keys(TL_SRC).map(k => '<option value="' + k + '">' + esc(TL_SRC[k]) + "</option>").join("");
+  ["#tlSrc", "#tlFrom", "#tlTo"].forEach(id => { $(id).onchange = () => { TL_SEL = null; renderTimeline(); }; });
+  $("#tlList").addEventListener("change", e => {
+    const tr = e.target.closest("tr"); if (!tr || !tr.dataset.id) return; const en = TG_IDX[tr.dataset.id]; if (!en) return;
+    const f = e.target.classList.contains("tlP") ? "project" : e.target.classList.contains("tlE") ? "equip" : ""; if (!f) return;
+    const n = tgSetField(en.rec, f, e.target.value); persist(); renderAll(); renderTimeline(); toast(n > 1 ? "Tagged, with " + (n - 1) + " tied entr" + (n === 2 ? "y" : "ies") : "Tagged");
+  });
   ["#odKind", "#odStatus"].forEach(id => { $(id).onchange = renderOrders; }); $("#odSearch").oninput = renderOrders;
   $("#setFloatHolder").onchange = e => { S.settings.floatHolder = e.target.value.trim(); persist(); renderAll(); };
   $("#setDupDays").onchange = e => { S.settings.dupDays = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
@@ -2677,6 +2752,9 @@ function wire() {
     if (act === "cmenu") t.nextElementSibling.classList.toggle("hide");
     else if (act === "mclose") closeModal();
     else if (act === "ordnew") openOrder(null, id);
+    else if (act === "tlcell") { const i = id.lastIndexOf("|"); TL_SEL = { row: id.slice(0, i), ym: id.slice(i + 1) }; TL_SHOW = 100; renderTimeline(); $("#tlList").scrollIntoView({ block: "start" }); }
+    else if (act === "tlclose") { TL_SEL = null; renderTimeline(); }
+    else if (act === "tlmore") { TL_SHOW += 100; renderTimeline(); }
     else if (act === "ordedit") openOrder(id);
     else if (act === "orddup") openOrder(id, null, true);
     else if (act === "ordprint") printOrder(id);
