@@ -117,7 +117,7 @@ label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px s
 .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
 .form label .chk{display:flex;gap:6px;align-items:center;white-space:nowrap}
 .form label .chk input{width:auto;flex:none;margin:0}
-.form input,.form select{width:100%}
+.form input,.form select,.form textarea{width:100%}.form textarea{font:inherit}
 .preview{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:9px;font-size:13px}
 .preview b{display:block;font-size:16px}
 .flag{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
@@ -125,6 +125,8 @@ label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px s
 .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}
 .dot.high{background:var(--bad)}.dot.med{background:var(--pi)}.dot.low{background:var(--muted)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+#odLines input{width:100%;min-width:0;padding:4px 6px}#odLines td{padding:3px 4px;vertical-align:top}#odLines .od-d{min-width:220px}#odLines .od-n{width:84px}#odLines .od-s{width:64px}
+.odtot{display:grid;grid-template-columns:auto auto;gap:2px 18px;justify-content:end;font-size:13px;margin-top:6px}.odtot b{text-align:right}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
 .toast.show{opacity:1}
 #modalbg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
@@ -329,6 +331,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button class="dx" data-tab="projects">Projects</button>
     <button class="dx" data-tab="masters">Masters</button>
     <button class="dx" data-tab="import">Import</button>
+    <button data-tab="orders">PO / WO <span class="cnt" id="ordCnt"></span></button>
   </nav>
 
   <div class="viewbar" role="group" aria-label="Period">
@@ -452,6 +455,17 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="tblwrap" id="ckTbl"></div>
     </div>
   </section>
+  <section id="tab-orders" class="hide">
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Purchase orders and work orders</h2><span class="sub" id="odSum"></span><span style="flex:1"></span>
+        <button class="primary small" data-act="ordnew" data-id="PO">+ Purchase order</button><button class="primary small" data-act="ordnew" data-id="WO">+ Work order</button></div>
+      <div class="toolbar"><select id="odKind"><option value="">PO and WO</option><option value="PO">Purchase orders</option><option value="WO">Work orders</option></select>
+        <select id="odStatus"><option value="">All</option><option value="Issued">Issued</option><option value="Cancelled">Cancelled</option></select>
+        <input type="search" id="odSearch" placeholder="Search vendor, number, item" style="max-width:260px"></div>
+      <div class="help">Make an order, then Print to save it as a PDF and send it yourself. Nothing is sent from here. Numbers run per financial year (set the prefix and the company details in All data &gt; Masters).</div>
+      <div class="tblwrap" id="odTbl"></div>
+    </div>
+  </section>
   <section id="tab-tag" class="hide">
     <div class="card" id="tgTop" style="margin-bottom:12px">
       <div class="toolbar" style="margin-bottom:6px"><h2 class="fold" title="Click to fold or unfold" style="margin:0">Tie every entry to a project and equipment</h2><span style="flex:1"></span><span class="sub" id="tgTot"></span></div>
@@ -560,6 +574,20 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
   </section>
 
   <section id="tab-masters" class="hide">
+    <div class="card">
+      <h2>Company details on purchase and work orders</h2>
+      <div class="form">
+        <label>Company name<input type="text" id="setCoName" data-set="coName"></label>
+        <label>GSTIN<input type="text" id="setCoGstin" data-set="coGstin"></label>
+        <label>Phone<input type="text" data-set="coPhone"></label>
+        <label>Email<input type="text" data-set="coEmail"></label>
+        <label style="grid-column:1/-1">Address<input type="text" data-set="coAddr"></label>
+        <label>Order number prefix<input type="text" data-set="ordPrefix" placeholder="NIL"></label>
+        <label>Signed by (name, designation)<input type="text" data-set="ordSign"></label>
+        <label style="grid-column:1/-1">Purchase order terms (one per line)<textarea rows="5" data-set="poTerms"></textarea></label>
+        <label style="grid-column:1/-1">Work order terms (one per line)<textarea rows="5" data-set="woTerms"></textarea></label>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:12px">
       <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Categories</h2><span class="sub" id="catSum"></span></div>
       <div class="help">Rename a category and every payment in it follows. "Left out" keeps its payments out of the payables totals (like the DG set). "No project" is for company-level payments that never belong to a site. A category in use cannot be deleted: hide it instead, so it stops showing in the pick lists. The categories the bank text sets by itself (tax, GST, PF and ESIC, loans, card bills, bank charges, own accounts, DG set) can be renamed but not removed.</div>
@@ -638,13 +666,13 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey" } });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey", coName: "Nityanand Infrastructure Ltd.", coAddr: "711, Highway Commerce Centre, I B Patel Road, Goregaon (East), Mumbai 400 063", coGstin: "27AAACN1981E1ZL", coPhone: "022-40021405", coEmail: "", ordPrefix: "NIL", ordSign: "", poTerms: "Please quote this PO number on your invoice, delivery challan and all letters.\nMaterial must match the description and quantity above. Rejected material will be returned at your cost.\nDeliver to the site above with the delivery challan, and test certificates where applicable.\nYour tax invoice must show our GSTIN. GST is paid only against a valid tax invoice.\nPayment as per the payment terms above, after receipt and acceptance at site.", woTerms: "Please quote this work order number on all bills and letters.\nWork to be done as per the scope above, the drawings and the site engineer's instructions.\nBills must carry measurement sheets certified by our site engineer.\nYou are responsible for your workers' wages, PF, ESIC, insurance and safety on site as per law.\nTDS will be deducted as applicable.\nPayment as per the payment terms above, against certified bills." }, orders: [] });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
   const n = NEW_STATE(); if (!o) return n;
-  ["vendors", "projects", "lines", "pays", "docs", "tally", "tsnap", "tchg", "equip"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
+  ["vendors", "projects", "lines", "pays", "docs", "tally", "tsnap", "tchg", "equip", "orders"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.cats = mergeCats(o.cats);
   n.settings = Object.assign(n.settings, o.settings || {});
   return n;
@@ -678,14 +706,15 @@ const TABS = {
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
   tally_changes: ["id", "kind", "ref", "book", "date", "party", "type", "no", "dr", "cr", "was", "reason", "by", "at", "status", "postedBy", "postedOn", "tallyNo", "tallyId"],
+  orders: ["id", "kind", "no", "date", "vendorId", "vendor", "gstin", "vaddr", "vphone", "project", "site", "delivery", "ref", "subject", "lines", "taxMode", "subtotal", "tax", "total", "payTerms", "terms", "status", "by", "on", "note"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg", equipment: "equip" };
-const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1 };
+const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg", equipment: "equip", orders: "orders" };
+const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "orders", "settings"];
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1, subtotal: 1, tax: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
-const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1, delivery: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
@@ -773,7 +802,7 @@ async function loadAll() {
     });
   });
   const n = NEW_STATE();
-  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.equip = raw.equipment; n.cats = raw.categories;
+  n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.equip = raw.equipment; n.cats = raw.categories; n.orders = raw.orders;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
   BASE = rowsView();
@@ -1055,7 +1084,7 @@ function renderAll() {
   $("#vendorList").innerHTML = S.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => '<option value="' + esc(v.name) + '">').join("");
   const n = S.lines.length, accts = uniq(S.lines.map(l => l.acct));
   $("#vbinfo").textContent = n ? n.toLocaleString("en-IN") + " bank lines from " + accts.join(", ") : "No bank statement imported yet";
-  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderTag(); renderVendors(); renderProjects(); renderImport(); renderMasters(); renderFocus();
+  renderOverview(); renderClassify(); renderPayments(); renderChat(); renderBooks(); renderTally(); renderTag(); renderVendors(); renderProjects(); renderImport(); renderMasters(); renderFocus(); renderOrders();
 }
 function bars(el, items, total, click) {
   const max = Math.max.apply(null, items.map(x => x[1]).concat([1]));
@@ -1420,6 +1449,7 @@ function renderImport() {
   if (document.activeElement && /^set/.test(document.activeElement.id)) return;
   if (document.activeElement !== $("#sfPayee")) $("#sfPayee").value = S.settings.floatPayee || "";
   $("#setSources").value = S.settings.sources || ""; $("#setPayers").value = S.settings.payers || ""; $("#setFloatHolder").value = S.settings.floatHolder || ""; $("#setDupDays").value = S.settings.dupDays; $("#setDupMin").value = S.settings.dupMin;
+  $$("[data-set]").forEach(el => { if (document.activeElement !== el) el.value = S.settings[el.dataset.set] || ""; });
 }
 /* ---------- masters: categories ---------- */
 function renderMasters() {
@@ -2402,10 +2432,166 @@ function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
   if (name === "ffloat") $("#tab-ffloat").appendChild($("#rwPcCard")); else if (name === "fdocs") $("#tab-fdocs").appendChild($("#rwDocCard"));
   else if (name === "tag") { $("#tgStep1").appendChild($("#rwPcCard")); $("#tgStep1").appendChild($("#rwDocCard")); }
+  if (name === "orders") renderOrders();
   if (name === "tag") setTimeout(renderTag, 0); else if (FX_TABS.indexOf(name) >= 0) setTimeout(renderFocus, 0);
   FX_TABS.forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
-  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import", "orders"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
+}
+/* ---------- purchase orders and work orders: made here, printed to PDF, sent by the user (nothing is sent from the app) ---------- */
+let OD_LINES = [];
+const odFy = iso => { const a = fyOf(iso || today()); return String(a).slice(2) + "-" + String(a + 1).slice(2); };
+function nextOrdNo(kind, date, skipId) {
+  const pre = (S.settings.ordPrefix || "NIL").trim(), base = (pre ? pre + "/" : "") + kind + "/" + odFy(date) + "/";
+  let max = 0;
+  S.orders.forEach(o => { if (o.id === skipId || String(o.no).indexOf(base) !== 0) return; const n = parseInt(String(o.no).slice(base.length), 10); if (n > max) max = n; });
+  return base + String(max + 1).padStart(3, "0");
+}
+const odLinesOf = o => { try { const a = JSON.parse(o.lines || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+const odAmt = l => round2((+l.q || 0) * (+l.r || 0));
+function odCalc(lines, mode) {   // per GST rate; intra state splits into CGST + SGST
+  let sub = 0; const by = {};
+  lines.forEach(l => { const a = odAmt(l); sub += a; const g = mode === "none" ? 0 : +l.g || 0; if (g) by[g] = (by[g] || 0) + a; });
+  const taxes = Object.keys(by).sort((a, b) => a - b).map(g => ({ g: +g, base: round2(by[g]), tax: round2(by[g] * g / 100) }));
+  const tax = round2(taxes.reduce((t, x) => t + x.tax, 0)), raw = round2(sub + tax), total = Math.round(raw);
+  return { sub: round2(sub), taxes: taxes, tax: tax, roundOff: round2(total - raw), total: total };
+}
+function inWordsINR(n) {   // Indian system: crore, lakh, thousand
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const t = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const two = x => x < 20 ? a[x] : t[Math.floor(x / 10)] + (x % 10 ? " " + a[x % 10] : "");
+  const three = x => (x >= 100 ? a[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " : "") : "") + (x % 100 ? two(x % 100) : "");
+  const w = x => {
+    if (!x) return "";
+    const cr = Math.floor(x / 1e7), l = Math.floor(x / 1e5) % 100, th = Math.floor(x / 1000) % 100, h = x % 1000;
+    return [cr ? w(cr) + " Crore" : "", l ? two(l) + " Lakh" : "", th ? two(th) + " Thousand" : "", h ? three(h) : ""].filter(Boolean).join(" ");
+  };
+  n = Math.round((+n || 0) * 100); const r = Math.floor(n / 100), p = n % 100;
+  return "Rupees " + (r ? w(r) : "Zero") + (p ? " and " + two(p) + " Paise" : "") + " Only";
+}
+const odState = g => String(g || "").trim().slice(0, 2);
+const odMode = g => !String(g || "").trim() || odState(g) === odState(S.settings.coGstin || "27") ? "intra" : "inter";
+function renderOrders() {
+  const el = $("#odTbl"); if (!el) return;
+  const k = $("#odKind").value, st = $("#odStatus").value, q = $("#odSearch").value.trim().toLowerCase();
+  const all = S.orders.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)));
+  const rs = all.filter(o => (!k || o.kind === k) && (!st || o.status === st) && (!q || [o.no, o.vendor, o.subject, o.project, o.site, o.lines].join(" ").toLowerCase().indexOf(q) >= 0));
+  $("#ordCnt").textContent = all.length ? "(" + all.length + ")" : "";
+  const live = all.filter(o => o.status !== "Cancelled");
+  $("#odSum").textContent = live.length ? live.length + " orders, " + fmt(live.reduce((t, o) => t + (+o.total || 0), 0)) : "";
+  el.innerHTML = rs.length ? "<table><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Project</th><th>For</th><th class=num>Total</th><th>Status</th><th></th></tr></thead><tbody>" + rs.map(o =>
+    '<tr data-id="' + esc(o.id) + '"' + (o.status === "Cancelled" ? ' style="opacity:.55"' : "") + "><td><b>" + esc(o.no) + "</b></td><td>" + dmy(o.date) + "</td><td>" + esc(o.vendor) + "</td><td>" + esc(o.project || "") + "</td><td>" + esc(o.subject || odLinesOf(o).map(l => l.d).filter(Boolean).slice(0, 2).join(", ")) + '</td><td class=num>' + fmt(o.total) + "</td><td>" + esc(o.status || "Issued") + "</td>" +
+    '<td style="white-space:nowrap"><button class="small primary" data-act="ordprint" data-id="' + esc(o.id) + '">Print</button> <button class="small" data-act="ordedit" data-id="' + esc(o.id) + '">Edit</button> <button class="small" data-act="orddup" data-id="' + esc(o.id) + '">Copy</button>' +
+    (o.status !== "Cancelled" ? ' <button class="small danger" data-act="ordcancel" data-id="' + esc(o.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
+    : '<div class="sub">' + (all.length ? "No orders match." : "No orders yet. Use + Purchase order or + Work order.") + "</div>";
+}
+function odLinesDraw() {
+  $("#odLines tbody").innerHTML = OD_LINES.map((l, i) => '<tr data-i="' + i + '"><td class="od-d"><input data-f="d" value="' + esc(l.d) + '" placeholder="Item or work"></td><td class="od-n"><input data-f="hsn" value="' + esc(l.hsn) + '"></td><td class="od-n"><input data-f="q" inputmode="decimal" value="' + esc(l.q) + '"></td><td class="od-s"><input data-f="u" value="' + esc(l.u) + '" placeholder="nos"></td><td class="od-n"><input data-f="r" inputmode="decimal" value="' + esc(l.r) + '"></td><td class="od-s"><input data-f="g" inputmode="decimal" value="' + esc(l.g) + '"></td><td class="num od-a">' + fmt(odAmt(l)) + '</td><td><button class="small" data-act="oddel" data-id="' + i + '" title="Remove line">&times;</button></td></tr>').join("");
+  odTotals();
+}
+function odLinesRead() { $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelectorAll("input").forEach(inp => { l[inp.dataset.f] = inp.value.trim(); }); }); }
+function odTotals() {
+  const mode = $("#odTax").value, c = odCalc(OD_LINES, mode);
+  $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelector(".od-a").textContent = fmt(odAmt(l)); });
+  $("#odTot").innerHTML = "<span>Before GST</span><b>" + fmt(c.sub) + "</b>" + c.taxes.map(x => mode === "intra" ? "<span>CGST " + x.g / 2 + "% + SGST " + x.g / 2 + "%</span><b>" + fmt(x.tax) + "</b>" : "<span>IGST " + x.g + "%</span><b>" + fmt(x.tax) + "</b>").join("") + "<span>Total</span><b>" + fmt(c.total) + "</b><span></span><span class=sub>" + esc(inWordsINR(c.total)) + "</span>";
+}
+function openOrder(id, kind, copy) {
+  const src = id ? S.orders.filter(o => o.id === id)[0] : null; if (id && !src) return;
+  const o = src ? Object.assign({}, src) : { kind: kind || "PO", date: today(), taxMode: "intra", status: "Issued" };
+  if (copy) { o.date = today(); o.status = "Issued"; o.no = ""; }
+  const isNew = !src || copy; kind = o.kind;
+  if (!o.no) o.no = nextOrdNo(kind, o.date);
+  OD_LINES = src ? odLinesOf(src).map(l => Object.assign({}, l)) : [];
+  if (!OD_LINES.length) OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: 18 });
+  const W = kind === "WO";
+  openModal("<h2>" + (isNew ? "New " : "Edit ") + (W ? "work order" : "purchase order") + (copy ? " (copy of " + esc(src.no) + ")" : "") + "</h2>" +
+    '<div class="form"><label>Type<select id="odK"><option value="PO"' + (W ? "" : " selected") + '>Purchase order</option><option value="WO"' + (W ? " selected" : "") + '>Work order</option></select></label>' +
+    '<label>Number<input type="text" id="odNo" value="' + esc(o.no) + '"></label><label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
+    '<label>' + (W ? "Complete by" : "Deliver by") + '<input type="date" id="odDel" value="' + esc(o.delivery || "") + '"></label>' +
+    '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label><label>Vendor GSTIN<input type="text" id="odG" value="' + esc(o.gstin || "") + '"></label>' +
+    '<label>Vendor phone<input type="text" id="odPh" value="' + esc(o.vphone || "") + '"></label><label>Quotation ref.<input type="text" id="odRef" value="' + esc(o.ref || "") + '"></label>' +
+    '<label style="grid-column:1/-1">Vendor address<input type="text" id="odAd" value="' + esc(o.vaddr || "") + '"></label>' +
+    '<label>Project<select id="odP">' + projOpts(o.project || "", "No project") + '</select></label><label style="grid-column:span 2">' + (W ? "Site / place of work" : "Deliver to (site address)") + '<input type="text" id="odSite" value="' + esc(o.site || "") + '"></label>' +
+    '<label>GST<select id="odTax"><option value="intra">CGST + SGST (Maharashtra)</option><option value="inter">IGST (other state)</option><option value="none">No GST</option></select></label>' +
+    '<label style="grid-column:1/-1">Subject<input type="text" id="odSub" value="' + esc(o.subject || "") + '" placeholder="' + (W ? "e.g. Piling labour work at site" : "e.g. Supply of TMT bars") + '"></label></div>' +
+    '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>' + (W ? "Work / item" : "Item") + "</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th>Unit</th><th>Rate</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>" +
+    '<div class="toolbar" style="margin:6px 0 0"><button class="small" data-act="odadd">+ Line</button><span style="flex:1"></span></div><div class="odtot" id="odTot"></div>' +
+    '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Payment terms<input type="text" id="odPay" value="' + esc(o.payTerms || "") + '" placeholder="e.g. 30 days from receipt of material and invoice"></label>' +
+    '<label style="grid-column:1/-1">Terms and conditions (one per line)<textarea id="odTerms" rows="5">' + esc(isNew && !copy ? S.settings[W ? "woTerms" : "poTerms"] || "" : o.terms || "") + "</textarea></label>" +
+    '<label style="grid-column:1/-1">Note (not printed)<input type="text" id="odNote" value="' + esc(o.note || "") + '"></label></div>' +
+    '<div id="odMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>' +
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><span style="flex:1"></span><button data-act="mclose">Close</button><button id="odSave">Save</button><button class="primary" id="odSavePrint">Save and print</button></div>', true);
+  $("#odTax").value = o.taxMode || "intra";
+  odLinesDraw();
+  $("#odLines").addEventListener("input", () => { odLinesRead(); odTotals(); });
+  $("#odTax").onchange = odTotals;
+  const renum = () => { if (isNew) $("#odNo").value = nextOrdNo($("#odK").value, $("#odDate").value); };
+  $("#odK").onchange = () => { const w = $("#odK").value === "WO", t = $("#odTerms"); if (t.value.trim() === String(S.settings[w ? "poTerms" : "woTerms"] || "").trim()) t.value = S.settings[w ? "woTerms" : "poTerms"] || ""; renum(); };
+  $("#odDate").onchange = renum;
+  $("#odV").onchange = () => {   // fill what we know of this vendor: GSTIN and phone from the vendor list, address from its last order
+    const name = $("#odV").value.trim(), v = vendorByName(name), last = S.orders.filter(x => x.id !== (src && src.id) && (v ? x.vendorId === v.id : norm(x.vendor) === norm(name))).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
+    if (!$("#odG").value) $("#odG").value = (v && v.gstin) || last.gstin || "";
+    if (!$("#odPh").value) $("#odPh").value = (v && v.phone) || last.vphone || "";
+    if (!$("#odAd").value) $("#odAd").value = last.vaddr || "";
+    if ($("#odG").value) { $("#odTax").value = odMode($("#odG").value); odTotals(); }
+  };
+  $("#odG").onchange = () => { if ($("#odG").value.trim() && $("#odTax").value !== "none") { $("#odTax").value = odMode($("#odG").value); odTotals(); } };
+  $("#odSave").onclick = () => saveOrder(isNew ? null : src.id, false);
+  $("#odSavePrint").onclick = () => saveOrder(isNew ? null : src.id, true);
+}
+function saveOrder(id, print) {
+  odLinesRead();
+  const lines = OD_LINES.filter(l => l.d || +l.q || +l.r), msg = t => { $("#odMsg").textContent = t; };
+  const kind = $("#odK").value, no = $("#odNo").value.trim(), date = $("#odDate").value, vendor = $("#odV").value.trim(), gstin = $("#odG").value.trim().toUpperCase();
+  if (!vendor) return msg("Enter the vendor.");
+  if (!date) return msg("Enter the date.");
+  if (!no) return msg("Enter the order number.");
+  if (S.orders.some(o => o.id !== id && String(o.no).toLowerCase() === no.toLowerCase())) return msg("Number " + no + " is already used.");
+  if (!lines.length) return msg("Add at least one line.");
+  const bad = lines.findIndex(l => !l.d || !(+l.q > 0) || !(+l.r >= 0) || isNaN(+l.g || 0));
+  if (bad >= 0) return msg("Line " + (bad + 1) + ": needs a description, a quantity above 0 and a rate.");
+  if (gstin && !/^\d{2}[A-Z0-9]{13}$/.test(gstin)) return msg("The vendor GSTIN should be 15 characters, starting with the 2-digit state code.");
+  const mode = $("#odTax").value, c = odCalc(lines, mode), v = vendorByName(vendor), me = USER ? USER.email : "";
+  let o = id ? S.orders.filter(x => x.id === id)[0] : null;
+  if (!o) { o = { id: uid(), status: "Issued", by: me, on: today() }; S.orders.push(o); }
+  Object.assign(o, { kind: kind, no: no, date: date, vendorId: v ? v.id : "", vendor: v ? v.name : vendor, gstin: gstin, vaddr: $("#odAd").value.trim(), vphone: $("#odPh").value.trim(),
+    project: $("#odP").value, site: $("#odSite").value.trim(), delivery: $("#odDel").value, ref: $("#odRef").value.trim(), subject: $("#odSub").value.trim(),
+    lines: JSON.stringify(lines.map(l => ({ d: l.d, hsn: l.hsn, q: +l.q || 0, u: l.u, r: +l.r || 0, g: mode === "none" ? 0 : +l.g || 0 }))), taxMode: mode,
+    subtotal: c.sub, tax: c.tax, total: c.total, payTerms: $("#odPay").value.trim(), terms: $("#odTerms").value.trim(), note: $("#odNote").value.trim() });
+  if (v && !v.gstin && gstin) v.gstin = gstin;
+  closeModal(); persist(); renderAll(); toast(o.no + " saved");
+  if (print) printOrder(o.id);
+}
+function ordCancel(id) {
+  const o = S.orders.filter(x => x.id === id)[0]; if (!o) return;
+  if (!confirm("Cancel " + o.no + "? It stays in the list marked Cancelled and its number is not reused.")) return;
+  o.status = "Cancelled"; persist(); renderAll(); toast(o.no + " cancelled");
+}
+function printOrder(id) {
+  const o = S.orders.filter(x => x.id === id)[0]; if (!o) return;
+  const L = odLinesOf(o), c = odCalc(L, o.taxMode), W = o.kind === "WO", st = S.settings, intra = o.taxMode === "intra";
+  const m2 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), n2 = v => (+v || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+  const p = PBY[o.project], title = W ? "WORK ORDER" : "PURCHASE ORDER", terms = String(o.terms || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
+  const rows = L.map((l, i) => "<tr><td>" + (i + 1) + "</td><td class=l>" + esc(l.d) + "</td><td>" + esc(l.hsn || "") + "</td><td>" + n2(l.q) + "</td><td class=c>" + esc(l.u || "") + "</td><td>" + m2(l.r) + "</td><td>" + (o.taxMode === "none" ? "-" : (+l.g || 0) + "%") + "</td><td>" + m2(odAmt(l)) + "</td></tr>").join("");
+  const tax = c.taxes.map(x => intra ? "<tr><td class=l>CGST @ " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax / 2) + "</td></tr><tr><td class=l>SGST @ " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax - round2(x.tax / 2)) + "</td></tr>" : "<tr><td class=l>IGST @ " + x.g + "% on " + m2(x.base) + "</td><td>" + m2(x.tax) + "</td></tr>").join("");
+  const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc(o.no + " " + o.vendor) + "</title><style>body{font:12px/1.45 Arial,sans-serif;margin:24px;color:#000}.hd{text-align:center;border-bottom:2px solid #000;padding-bottom:8px}.hd h1{font-size:18px;margin:0}.hd div{font-size:11px}h2{text-align:center;font-size:15px;letter-spacing:1px;margin:10px 0}" +
+    ".two{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #444}.two>div{padding:6px 8px}.two>div+div{border-left:1px solid #444}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{border:1px solid #444;padding:4px 6px;text-align:right;vertical-align:top}th{background:#eee}.l{text-align:left}.c{text-align:center}" +
+    ".it th:nth-child(2){width:42%}.tot{width:55%;margin-left:auto}.tot td{border:1px solid #444}.tot tr:last-child td{font-weight:bold;font-size:13px}ol{margin:4px 0 0 18px;padding:0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:56px}.sig div{border-top:1px solid #000;padding-top:4px}" +
+    ".x{position:fixed;top:40%;left:0;right:0;text-align:center;font-size:80px;color:rgba(200,0,0,.18);transform:rotate(-20deg)}@media print{body{margin:10mm}}</style></head><body>" +
+    (o.status === "Cancelled" ? "<div class=x>CANCELLED</div>" : "") +
+    "<div class=hd><h1>" + esc(st.coName || "") + "</h1><div>" + esc(st.coAddr || "") + "</div><div>" + [st.coGstin ? "GSTIN: " + esc(st.coGstin) : "", st.coPhone ? "Phone: " + esc(st.coPhone) : "", st.coEmail ? "Email: " + esc(st.coEmail) : ""].filter(Boolean).join(" &middot; ") + "</div></div>" +
+    "<h2>" + title + "</h2><div class=two><div><b>To</b><br><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.vphone ? "<br>Phone: " + esc(o.vphone) : "") + "</div>" +
+    "<div><b>" + (W ? "WO" : "PO") + " no.:</b> " + esc(o.no) + "<br><b>Date:</b> " + dmy(o.date) + (o.ref ? "<br><b>Your quotation:</b> " + esc(o.ref) : "") + (p ? "<br><b>Project:</b> " + esc(p.name || p.id) : o.project ? "<br><b>Project:</b> " + esc(o.project) : "") + (o.site ? "<br><b>" + (W ? "Site" : "Deliver to") + ":</b> " + esc(o.site) : "") + (o.delivery ? "<br><b>" + (W ? "Complete by" : "Deliver by") + ":</b> " + dmy(o.delivery) : "") + "</div></div>" +
+    (o.subject ? "<p><b>Subject:</b> " + esc(o.subject) + "</p>" : "") + "<p>Dear Sir/Madam,<br>" + (W ? "We are pleased to award you the following work on the terms below." : "Please supply the following on the terms below.") + "</p>" +
+    "<table class=it><thead><tr><th>Sr</th><th class=l>Description</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th class=c>Unit</th><th>Rate (Rs)</th><th>GST</th><th>Amount (Rs)</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+    "<table class=tot><tr><td class=l>Total before GST</td><td>" + m2(c.sub) + "</td></tr>" + tax + (c.roundOff ? "<tr><td class=l>Rounded off</td><td>" + m2(c.roundOff) + "</td></tr>" : "") + "<tr><td class=l>Total</td><td>Rs " + m2(c.total) + "</td></tr></table>" +
+    "<p><b>Amount in words:</b> " + esc(inWordsINR(c.total)) + "</p>" + (o.payTerms ? "<p><b>Payment terms:</b> " + esc(o.payTerms) + "</p>" : "") +
+    (terms.length ? "<div><b>Terms and conditions</b><ol>" + terms.map(t => "<li>" + esc(t) + "</li>").join("") + "</ol></div>" : "") +
+    "<div class=sig><div>For " + esc(st.coName || "") + "<br>" + (st.ordSign ? esc(st.ordSign) + "<br>" : "") + "Authorised signatory</div><div>Accepted by " + esc(o.vendor) + "<br>Name, signature, stamp and date</div></div></body></html>";
+  const win = window.open("", "_blank");
+  if (!win) { toast("Allow pop-ups for this page to print the order"); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
 }
 function drillPay(o) { ["pSource", "pCat", "pProj", "pFlag", "pSearch"].forEach(id => { $("#" + id).value = ""; }); Object.keys(o).forEach(k => { $("#" + k).value = o[k]; }); P_SHOW = 200; renderPayments(); showTab("payments"); }
 function wire() {
@@ -2477,6 +2663,8 @@ function wire() {
   $("#prFile").onchange = e => { const f = e.target.files[0]; if (f) onProjectFile(f); e.target.value = ""; };
   $("#setSources").onchange = e => { S.settings.sources = e.target.value.trim(); persist(); renderAll(); };
   $("#setPayers").onchange = e => { S.settings.payers = e.target.value.split(",").map(x => x.trim()).filter(Boolean).join(", "); persist(); renderAll(); };
+  $$("[data-set]").forEach(el => { el.onchange = () => { S.settings[el.dataset.set] = el.value.trim(); persist(); renderAll(); }; });
+  ["#odKind", "#odStatus"].forEach(id => { $(id).onchange = renderOrders; }); $("#odSearch").oninput = renderOrders;
   $("#setFloatHolder").onchange = e => { S.settings.floatHolder = e.target.value.trim(); persist(); renderAll(); };
   $("#setDupDays").onchange = e => { S.settings.dupDays = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
   $("#setDupMin").onchange = e => { S.settings.dupMin = Math.max(0, +e.target.value || 0); persist(); renderAll(); };
@@ -2488,6 +2676,13 @@ function wire() {
     const id = t.dataset.id, act = t.dataset.act;
     if (act === "cmenu") t.nextElementSibling.classList.toggle("hide");
     else if (act === "mclose") closeModal();
+    else if (act === "ordnew") openOrder(null, id);
+    else if (act === "ordedit") openOrder(id);
+    else if (act === "orddup") openOrder(id, null, true);
+    else if (act === "ordprint") printOrder(id);
+    else if (act === "ordcancel") ordCancel(id);
+    else if (act === "odadd") { odLinesRead(); OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: OD_LINES.length ? OD_LINES[OD_LINES.length - 1].g : 18 }); odLinesDraw(); }
+    else if (act === "oddel") { odLinesRead(); OD_LINES.splice(+id, 1); if (!OD_LINES.length) OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: 18 }); odLinesDraw(); }
     else if (act === "newpay") openPay(null);
     else if (act === "pedit") openPay(id);
     else if (act === "pdel") delPay(id);
