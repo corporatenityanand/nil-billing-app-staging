@@ -651,7 +651,7 @@ const today = () => isoOf(new Date());
 const daysBetween = (a, b) => Math.round((toD(b) - toD(a)) / 864e5);
 let toastT = null;
 function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2400); }
-function openModal(html, wide) { $("#modal").className = wide ? "wide" : ""; $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
+function openModal(html, wide) { delete $("#modal").dataset.keep; $("#modal").className = wide ? "wide" : ""; $("#modal").innerHTML = html; $("#modalbg").classList.add("show"); }
 function closeModal() { $("#modalbg").classList.remove("show"); }
 
 /* ---------- categories ---------- */
@@ -2601,8 +2601,11 @@ function openOrder(id, kind, copy) {
     '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Terms and conditions (one per line)<textarea id="odTerms" rows="6">' + esc(isNew && !copy ? S.settings[W ? "woTerms" : "poTerms"] || "" : o.terms || "") + "</textarea></label>" +
     '<label style="grid-column:1/-1">Note (not printed)<input type="text" id="odNote" value="' + esc(o.note || "") + '"></label></div>' +
     '<div id="odMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>' +
-    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><span style="flex:1"></span><button data-act="mclose">Close</button><button id="odSave">Save</button><button class="primary" id="odSavePrint">Save and print</button></div>', true);
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><span style="flex:1"></span><button id="odClose">Close</button><button id="odSave">Save</button><button class="primary" id="odSavePrint">Save and print</button></div>', true);
   $("#odTax").value = o.taxMode || "intra";
+  $("#modal").dataset.keep = "1";   // a click outside does not close the order form
+  let dirty = false; $("#modal").addEventListener("input", () => { dirty = true; }); $("#modal").addEventListener("change", () => { dirty = true; });
+  $("#odClose").onclick = () => { if (!dirty || confirm("Close without saving? The changes to this order will be lost.")) closeModal(); };
   odLinesDraw();
   $("#odLines").addEventListener("input", () => { odLinesRead(); odTotals(); });
   $("#odTax").onchange = odTotals; $("#odOth").oninput = odTotals;
@@ -2662,8 +2665,8 @@ function printOrder(id) {   // ERP-style A4 document: header block, vendor / bil
   const tax = c.taxes.map(x => intra ? "<tr><td>CGST " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(round2(x.tax / 2)) + "</td></tr><tr><td>SGST " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax - round2(x.tax / 2)) + "</td></tr>" : "<tr><td>IGST " + x.g + "% on " + m2(x.base) + "</td><td>" + m2(x.tax) + "</td></tr>").join("");
   const logo = new URL("logo.png", location.href).href, ship = o.site || st.coWorkshop || st.coAddr || "";
   const css = "@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}html{background:#ddd}body{font:8.6pt/1.35 Arial,Helvetica,sans-serif;color:#000;background:#fff;width:210mm;min-height:297mm;margin:0 auto;padding:10mm;}table{border-collapse:collapse;width:100%}" +
-    ".top{display:grid;grid-template-columns:1.5fr 1fr;gap:10px;border-bottom:3px solid #000;padding-bottom:8px}.co{display:flex;gap:10px;align-items:flex-start}.co img{height:40px;filter:grayscale(1)}.co h1{font-size:13pt;margin:0 0 2px;color:#000;letter-spacing:.3px}.co div{font-size:7.2pt;color:#000}" +
-    ".doc h2{margin:0 0 4px;text-align:right;font-size:14pt;color:#000;text-transform:uppercase;letter-spacing:1.5px}.doc table th{text-align:left;font-weight:normal;color:#000;padding:1px 6px 1px 0;width:42%}.doc table td{font-weight:bold;padding:1px 0}" +
+    ".top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;border-bottom:2px solid #000;padding-bottom:5px}.co{display:flex;gap:10px;align-items:center}.co img{height:36px;filter:grayscale(1)}.co h1{font-size:14pt;margin:0;letter-spacing:.4px}.top h2{margin:0;font-size:14pt;text-transform:uppercase;letter-spacing:2px;white-space:nowrap}" +
+    ".hd2{display:grid;grid-template-columns:1.45fr 1fr;margin-top:8px;border:1px solid #000}.hd2>div{padding:6px 8px}.hd2>div+div{border-left:1px solid #000}.kvt{font-size:7.6pt}.kvt th{text-align:left;font-weight:normal;vertical-align:top;white-space:nowrap;padding:1.5px 10px 1.5px 0;width:1%}.kvt td{vertical-align:top;padding:1.5px 0}.kvt.m td{font-weight:bold}.kvt.m tr+tr th,.kvt.m tr+tr td{border-top:1px dotted #000}" +
     ".boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:8px;border:1px solid #000}.boxes>div{padding:6px 8px;min-height:86px}.boxes>div+div{border-left:1px solid #000}.hdr{color:#000;font-weight:bold;font-size:7.6pt;text-transform:uppercase;letter-spacing:.6px;margin:-6px -8px 5px;padding:3px 8px;border-bottom:1px solid #000}" +
     ".rem{margin-top:6px;border:1px solid #000;padding:4px 8px}.it{margin-top:8px;font-size:7.6pt}.it th{font-weight:bold;padding:3px 3px;border:1px solid #000;border-bottom-width:2px;text-align:right;font-size:7pt}.it td{border:1px solid #000;padding:3px 3px;text-align:right;vertical-align:top}.it .l{text-align:left}.it .c{text-align:center}" +
     ".sumw{display:grid;grid-template-columns:1fr 250px;gap:12px;margin-top:8px;align-items:start}.sum td{padding:3px 6px;border-bottom:1px solid #000}.sum td+td{text-align:right;white-space:nowrap}.sum tr.tot td{border-top:2px solid #000;border-bottom:2px solid #000;font-weight:bold;font-size:10.5pt}" +
@@ -2671,9 +2674,10 @@ function printOrder(id) {   // ERP-style A4 document: header block, vendor / bil
     ".sig{display:grid;grid-template-columns:repeat(4,1fr);margin-top:10px;border:1px solid #000;page-break-inside:avoid}.sig>div{padding:6px 8px;height:70px;display:flex;flex-direction:column;justify-content:space-between;font-size:8pt}.sig>div+div{border-left:1px solid #000}.sig span{color:#000;font-size:7.4pt;text-transform:uppercase;letter-spacing:.5px}" +
     ".foot{margin-top:8px;display:flex;justify-content:space-between;font-size:7pt;color:#000;border-top:1px solid #000;padding-top:3px}.x{position:fixed;top:38%;left:0;right:0;text-align:center;font-size:84px;font-weight:bold;color:rgba(0,0,0,.14);transform:rotate(-24deg)}@media print{html{background:#fff}body{width:auto;min-height:0;margin:0;padding:0}}";
   const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc(o.no + " " + o.vendor) + "</title><style>" + css + "</style></head><body>" + (o.status === "Cancelled" ? "<div class=x>CANCELLED</div>" : "") +
-    "<div class=top><div class=co><img src='" + esc(logo) + "' alt='' onerror='this.remove()'><div><h1>" + esc(String(st.coName || "").toUpperCase()) + "</h1><div>Corporate office: " + esc(st.coAddr || "") + "</div>" + (st.coWorkshop ? "<div>Workshop: " + esc(st.coWorkshop) + "</div>" : "") +
-    "<div>" + [st.coPhone ? "Tel: " + esc(st.coPhone) : "", st.coEmail ? "Email: " + esc(st.coEmail) : ""].filter(Boolean).join(" &nbsp;|&nbsp; ") + "</div><div>GSTIN: <b>" + esc(st.coGstin || "") + "</b> &nbsp;|&nbsp; State: Maharashtra (27)" + (st.coGstin ? " &nbsp;|&nbsp; PAN: " + esc(String(st.coGstin).slice(2, 12)) : "") + "</div></div></div>" +
-    "<div class=doc><h2>" + T + "</h2><table>" + kv(W ? "WO number" : "PO number", esc(o.no)) + kv("Date", d10(o.date)) + kv("Quotation no.", esc(o.ref || "")) + kv("Quotation date", d10(o.qdate)) + kv("Credit terms", esc(o.payTerms || "")) + kv(W ? "Completion terms" : "Delivery terms", esc(o.dterms || "")) + kv(W ? "Complete by" : "Deliver by", d10(o.delivery)) + kv("Project", esc(p ? p.id + " " + (p.name || "") : o.project === "_co" ? "" : o.project || "")) + kv("Currency", "INR") + "</table></div></div>" +
+    "<div class=top><div class=co><img src='" + esc(logo) + "' alt='' onerror='this.remove()'><h1>" + esc(String(st.coName || "").toUpperCase()) + "</h1></div><h2>" + T + "</h2></div>" +
+    "<div class=hd2><div><div class=hdr>Issued by</div><table class=kvt>" + kv("Corporate office", esc(st.coAddr || "")) + kv("Workshop", esc(st.coWorkshop || "")) + kv("Phone", esc(st.coPhone || "")) + kv("Email", esc(st.coEmail || "")) +
+    kv("GSTIN", st.coGstin ? "<b>" + esc(st.coGstin) + "</b>" : "") + kv("PAN", st.coGstin ? esc(String(st.coGstin).slice(2, 12)) : "") + kv("State", st.coGstin ? "Maharashtra, code " + esc(String(st.coGstin).slice(0, 2)) : "") + "</table></div>" +
+    "<div><div class=hdr>" + T + " details</div><table class='kvt m'>" + kv(W ? "WO number" : "PO number", esc(o.no)) + kv("Date", d10(o.date)) + kv("Quotation no.", esc(o.ref || "")) + kv("Quotation date", d10(o.qdate)) + kv("Credit terms", esc(o.payTerms || "")) + kv(W ? "Completion terms" : "Delivery terms", esc(o.dterms || "")) + kv(W ? "Complete by" : "Deliver by", d10(o.delivery)) + kv("Project", esc(p ? p.id + " " + (p.name || "") : o.project === "_co" ? "" : o.project || "")) + kv("Currency", "INR") + "</table></div></div>" +
     "<div class=boxes><div><div class=hdr>Vendor</div><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.vphone ? "<br>Contact: " + esc(o.vphone) : "") + (o.vemail ? "<br>Email: " + esc(o.vemail) : "") + "</div>" +
     "<div><div class=hdr>Bill to</div><b>" + esc(st.coName || "") + "</b><br>" + esc(st.coAddr || "") + "<br>GSTIN: " + esc(st.coGstin || "") + "</div>" +
     "<div><div class=hdr>" + (W ? "Place of work" : "Ship to") + "</div><b>" + esc(st.coName || "") + "</b><br>" + esc(ship) + "</div></div>" +
@@ -2702,7 +2706,7 @@ function wire() {
   setMode(FOCUS, true);
   $("#period").onchange = e => { PERIOD = e.target.value ? e.target.value.split("|") : null; renderAll(); };
   $("#btnUndo").onclick = undo;
-  $("#modalbg").onclick = e => { if (e.target.id === "modalbg") closeModal(); };
+  $("#modalbg").onclick = e => { if (e.target.id === "modalbg" && !$("#modal").dataset.keep) closeModal(); };   // forms marked keep (orders) close only from their own buttons
   ["pSource", "pCat", "pProj", "pFlag"].forEach(id => { $("#" + id).onchange = () => { P_SHOW = 200; renderPayments(); }; });
   $("#pSearch").oninput = () => { P_SHOW = 200; renderPayments(); };
   $("#pReset").onclick = () => drillPay({});
