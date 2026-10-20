@@ -128,6 +128,7 @@ label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px s
 #odLines input{width:100%;min-width:0;padding:4px 6px}#odLines td{padding:3px 4px;vertical-align:top}#odLines .od-d{min-width:220px}#odLines .od-n{width:84px}#odLines .od-s{width:62px}
 .tltbl{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;min-width:100%}.tltbl th,.tltbl td{padding:4px 5px;border-bottom:1px solid var(--line)}.tltbl .tlname{position:sticky;left:0;background:var(--surface);min-width:190px;max-width:240px;z-index:1}
 .tltbl .tlc{text-align:center;min-width:52px;white-space:nowrap;font-variant-numeric:tabular-nums}.tltbl .tlon{background:color-mix(in srgb,var(--inv) 16%,transparent)}.tltbl .tlopen{color:var(--bad);font-weight:600}.tltbl td[data-act]{cursor:pointer;text-decoration:underline dotted}.tltbl .tlsel{outline:2px solid var(--inv);outline-offset:-2px}.tltbl tr.tlx td{background:var(--surface)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{border:0;border-radius:0;background:transparent;padding:5px 12px}.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--accent);color:var(--surface);font-weight:600}
 .odtot{display:grid;grid-template-columns:auto auto;gap:2px 18px;justify-content:end;font-size:13px;margin-top:6px}.odtot b{text-align:right}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
 .toast.show{opacity:1}
@@ -2558,7 +2559,7 @@ function renderOrders() {
   $("#odSum").textContent = live.length ? live.length + " orders, " + fmt(live.reduce((t, o) => t + (+o.total || 0), 0)) : "";
   el.innerHTML = rs.length ? "<table><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Project</th><th>For</th><th class=num>Total</th><th>Status</th><th></th></tr></thead><tbody>" + rs.map(o =>
     '<tr data-id="' + esc(o.id) + '"' + (o.status === "Cancelled" ? ' style="opacity:.55"' : "") + "><td><b>" + esc(o.no) + "</b></td><td>" + dmy(o.date) + "</td><td>" + esc(o.vendor) + "</td><td>" + esc(o.project || "") + "</td><td>" + esc(o.subject || odLinesOf(o).map(l => l.d).filter(Boolean).slice(0, 2).join(", ")) + '</td><td class=num>' + fmt(o.total) + "</td><td>" + esc(o.status || "Issued") + "</td>" +
-    '<td style="white-space:nowrap"><button class="small primary" data-act="ordprint" data-id="' + esc(o.id) + '">Print</button> <button class="small" data-act="ordedit" data-id="' + esc(o.id) + '">Edit</button> <button class="small" data-act="orddup" data-id="' + esc(o.id) + '">Copy</button>' +
+    '<td style="white-space:nowrap"><button class="small primary" data-act="ordprint" data-id="' + esc(o.id) + '">Print</button> <button class="small" data-act="ordedit" data-id="' + esc(o.id) + '">Edit</button> <button class="small" data-act="orddup" data-id="' + esc(o.id) + '">Copy</button>' + (o.status !== "Cancelled" ? ' <button class="small" data-act="ordswap" data-id="' + esc(o.id) + '" title="Open it switched to a ' + (o.kind === "WO" ? "purchase" : "work") + ' order; saving gives it the next number in that series">To ' + (o.kind === "WO" ? "PO" : "WO") + "</button>" : "") +
     (o.status !== "Cancelled" ? ' <button class="small danger" data-act="ordcancel" data-id="' + esc(o.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
     : '<div class="sub">' + (all.length ? "No orders match." : "No orders yet. Use + Purchase order or + Work order.") + "</div>";
 }
@@ -2577,7 +2578,7 @@ function odTotals() {
     c.taxes.map(x => mode === "intra" ? "<span>CGST " + x.g / 2 + "% + SGST " + x.g / 2 + "%</span><b>" + fmt(x.tax) + "</b>" : "<span>IGST " + x.g + "%</span><b>" + fmt(x.tax) + "</b>").join("") +
     (c.other ? "<span>Other charges</span><b>" + fmt(c.other) + "</b>" : "") + "<span>Total</span><b>" + fmt(c.total) + "</b><span></span><span class=sub>" + esc(inWordsINR(c.total)) + "</span>";
 }
-function openOrder(id, kind, copy) {
+function openOrder(id, kind, copy, switchTo) {   // switchTo: open a saved order already switched to the other type
   const src = id ? S.orders.filter(o => o.id === id)[0] : null; if (id && !src) return;
   const o = src ? Object.assign({}, src) : { kind: kind || "PO", date: today(), taxMode: "intra", status: "Issued", payTerms: "30 days", dterms: "Immediately" };
   if (copy) { o.date = today(); o.status = "Issued"; o.no = ""; }
@@ -2585,18 +2586,17 @@ function openOrder(id, kind, copy) {
   if (!o.no) o.no = nextOrdNo(kind, o.date);
   OD_LINES = src ? odLinesOf(src).map(l => Object.assign(OD_BLANK(), l)) : [];
   if (!OD_LINES.length) OD_LINES.push(OD_BLANK());
-  const W = kind === "WO", f = (lbl, id, v, extra) => "<label" + (extra || "") + ">" + lbl + '<input type="text" id="' + id + '" value="' + esc(v || "") + '"></label>';
-  openModal("<h2>" + (isNew ? "New " : "Edit ") + (W ? "work order" : "purchase order") + (copy ? " (copy of " + esc(src.no) + ")" : "") + "</h2>" +
-    '<div class="form"><label>Type<select id="odK"><option value="PO"' + (W ? "" : " selected") + '>Purchase order</option><option value="WO"' + (W ? " selected" : "") + '>Work order</option></select></label>' +
-    f("Number", "odNo", o.no) + '<label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
-    '<label>' + (W ? "Complete by" : "Deliver by") + '<input type="date" id="odDel" value="' + esc(o.delivery || "") + '"></label>' +
+  const W = kind === "WO", f = (lbl, id, v, extra, lid) => "<label" + (extra || "") + ">" + (lid ? '<span id="' + lid + '">' + lbl + "</span>" : lbl) + '<input type="text" id="' + id + '" value="' + esc(v || "") + '"></label>';
+  openModal('<div class="toolbar" style="margin-bottom:8px"><h2 style="margin:0" id="odTitle"></h2><span style="flex:1"></span><span class="sub">Type</span><span class="seg" role="group" aria-label="Order type"><button type="button" class="odSw" data-k="PO">Purchase order</button><button type="button" class="odSw" data-k="WO">Work order</button></span><input type="hidden" id="odK" value="' + kind + '"></div>' +
+    '<div class="form">' + f("Number", "odNo", o.no) + '<label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
+    '<label><span id="odDelL"></span><input type="date" id="odDel" value="' + esc(o.delivery || "") + '"></label>' +
     '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label>' + f("Vendor GSTIN", "odG", o.gstin) + f("Contact no.", "odPh", o.vphone) + f("Vendor email", "odEm", o.vemail) +
     f("Vendor address", "odAd", o.vaddr, ' style="grid-column:1/-1"') +
-    f("Quotation no.", "odRef", o.ref) + '<label>Quotation date<input type="date" id="odQd" value="' + esc(o.qdate || "") + '"></label>' + f("Credit terms", "odPay", o.payTerms) + f(W ? "Completion terms" : "Delivery terms", "odDt", o.dterms) +
-    '<label>Project<select id="odP">' + projOpts(o.project || "", "No project", o.date) + '</select></label>' + f(W ? "Site / place of work" : "Deliver to (blank = our workshop)", "odSite", o.site, ' style="grid-column:span 2"') +
+    f("Quotation no.", "odRef", o.ref) + '<label>Quotation date<input type="date" id="odQd" value="' + esc(o.qdate || "") + '"></label>' + f("Credit terms", "odPay", o.payTerms) + f("", "odDt", o.dterms, "", "odDtL") +
+    '<label>Project<select id="odP">' + projOpts(o.project || "", "No project", o.date) + '</select></label>' + f("", "odSite", o.site, ' style="grid-column:span 2"', "odSiteL") +
     '<label>GST<select id="odTax"><option value="intra">CGST + SGST (Maharashtra)</option><option value="inter">IGST (other state)</option><option value="none">No GST</option></select></label>' +
     f("Subject", "odSub", o.subject, ' style="grid-column:1/-1"') + f("Remark (printed)", "odRm", o.remark, ' style="grid-column:1/-1"') + "</div>" +
-    '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>Part no.</th><th>' + (W ? "Work / item" : "Description") + "</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Disc %</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>" +
+    '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>Part no.</th><th id="odDescH"></th><th id="odHsnH"></th><th>Qty</th><th>Unit</th><th>Rate</th><th>Disc %</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>' +
     '<div class="toolbar" style="margin:6px 0 0"><button class="small" data-act="odadd">+ Line</button><span style="flex:1"></span><label class="sub">Other charges (&#8377;) <input type="text" inputmode="decimal" id="odOth" value="' + esc(o.other || "") + '" style="width:110px"></label></div><div class="odtot" id="odTot"></div>' +
     '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Terms and conditions (one per line)<textarea id="odTerms" rows="6">' + esc(isNew && !copy ? S.settings[W ? "woTerms" : "poTerms"] || "" : o.terms || "") + "</textarea></label>" +
     '<label style="grid-column:1/-1">Note (not printed)<input type="text" id="odNote" value="' + esc(o.note || "") + '"></label></div>' +
@@ -2610,7 +2610,19 @@ function openOrder(id, kind, copy) {
   $("#odLines").addEventListener("input", () => { odLinesRead(); odTotals(); });
   $("#odTax").onchange = odTotals; $("#odOth").oninput = odTotals;
   const renum = () => { if (isNew) $("#odNo").value = nextOrdNo($("#odK").value, $("#odDate").value); };
-  $("#odK").onchange = () => { const w = $("#odK").value === "WO", t = $("#odTerms"); if (t.value.trim() === String(S.settings[w ? "poTerms" : "woTerms"] || "").trim()) t.value = S.settings[w ? "woTerms" : "poTerms"] || ""; renum(); };
+  const setKind = (k, user) => {   // labels follow the type; a saved order switched to the other type takes that series' next number (its own number back if switched back)
+    const w = k === "WO", was = $("#odK").value; $("#odK").value = k;
+    $$(".odSw").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+    $("#odTitle").textContent = (isNew ? "New " : "Edit ") + (w ? "work order" : "purchase order") + (copy ? " (copy of " + src.no + ")" : "") + (!isNew && k !== src.kind ? " (was " + src.no + ")" : "");
+    $("#odDelL").textContent = w ? "Complete by" : "Deliver by"; $("#odDtL").textContent = w ? "Completion terms" : "Delivery terms";
+    $("#odSiteL").textContent = w ? "Site / place of work" : "Deliver to (blank = our workshop)"; $("#odDescH").textContent = w ? "Work / item" : "Description"; $("#odHsnH").textContent = w ? "SAC" : "HSN";
+    if (!user || k === was) return;
+    const t = $("#odTerms"); if (t.value.trim() === String(S.settings[w ? "poTerms" : "woTerms"] || "").trim()) t.value = S.settings[w ? "woTerms" : "poTerms"] || "";
+    if (isNew) renum(); else $("#odNo").value = k === src.kind ? src.no : nextOrdNo(k, $("#odDate").value, src.id);
+    dirty = true;
+  };
+  $$(".odSw").forEach(b => { b.onclick = () => setKind(b.dataset.k, true); });
+  setKind(kind, false); if (switchTo && switchTo !== kind) setKind(switchTo, true);
   $("#odDate").onchange = () => { renum(); $("#odP").innerHTML = projOpts($("#odP").value, "No project", $("#odDate").value); };
   $("#odV").onchange = () => {   // fill what we know of this vendor: GSTIN and phone from the vendor list, the rest from its last order
     const name = $("#odV").value.trim(), v = vendorByName(name), last = S.orders.filter(x => x.id !== (src && src.id) && (v ? x.vendorId === v.id : norm(x.vendor) === norm(name))).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
@@ -2789,6 +2801,7 @@ function wire() {
     else if (act === "tlmore") { TL_SHOW += 100; renderTimeline(); }
     else if (act === "ordedit") openOrder(id);
     else if (act === "orddup") openOrder(id, null, true);
+    else if (act === "ordswap") { const o = S.orders.filter(x => x.id === id)[0]; if (o) openOrder(id, null, false, o.kind === "WO" ? "PO" : "WO"); }
     else if (act === "ordprint") printOrder(id);
     else if (act === "ordcancel") ordCancel(id);
     else if (act === "odadd") { odLinesRead(); OD_LINES.push(Object.assign(OD_BLANK(), { g: OD_LINES.length ? OD_LINES[OD_LINES.length - 1].g : 18 })); odLinesDraw(); }
