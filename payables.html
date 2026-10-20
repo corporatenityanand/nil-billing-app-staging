@@ -125,7 +125,7 @@ label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px s
 .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}
 .dot.high{background:var(--bad)}.dot.med{background:var(--pi)}.dot.low{background:var(--muted)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
-#odLines input{width:100%;min-width:0;padding:4px 6px}#odLines td{padding:3px 4px;vertical-align:top}#odLines .od-d{min-width:220px}#odLines .od-n{width:84px}#odLines .od-s{width:64px}
+#odLines input{width:100%;min-width:0;padding:4px 6px}#odLines td{padding:3px 4px;vertical-align:top}#odLines .od-d{min-width:220px}#odLines .od-n{width:84px}#odLines .od-s{width:62px}
 .tltbl{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;min-width:100%}.tltbl th,.tltbl td{padding:4px 5px;border-bottom:1px solid var(--line)}.tltbl .tlname{position:sticky;left:0;background:var(--surface);min-width:190px;max-width:240px;z-index:1}
 .tltbl .tlc{text-align:center;min-width:52px;white-space:nowrap;font-variant-numeric:tabular-nums}.tltbl .tlon{background:color-mix(in srgb,var(--inv) 16%,transparent)}.tltbl .tlopen{color:var(--bad);font-weight:600}.tltbl td[data-act]{cursor:pointer;text-decoration:underline dotted}.tltbl .tlsel{outline:2px solid var(--inv);outline-offset:-2px}.tltbl tr.tlx td{background:var(--surface)}
 .odtot{display:grid;grid-template-columns:auto auto;gap:2px 18px;justify-content:end;font-size:13px;margin-top:6px}.odtot b{text-align:right}
@@ -476,7 +476,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
       <div class="toolbar"><select id="odKind"><option value="">PO and WO</option><option value="PO">Purchase orders</option><option value="WO">Work orders</option></select>
         <select id="odStatus"><option value="">All</option><option value="Issued">Issued</option><option value="Cancelled">Cancelled</option></select>
         <input type="search" id="odSearch" placeholder="Search vendor, number, item" style="max-width:260px"></div>
-      <div class="help">Make an order, then Print to save it as a PDF and send it yourself. Nothing is sent from here. Numbers run per financial year (set the prefix and the company details in All data &gt; Masters).</div>
+      <div class="help">Make an order, then Print to save it as a PDF and send it yourself. Nothing is sent from here. Numbers run per financial year (number format, company details and default terms: All data &gt; Masters).</div>
       <div class="tblwrap" id="odTbl"></div>
     </div>
   </section>
@@ -596,7 +596,8 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
         <label>Phone<input type="text" data-set="coPhone"></label>
         <label>Email<input type="text" data-set="coEmail"></label>
         <label style="grid-column:1/-1">Address<input type="text" data-set="coAddr"></label>
-        <label>Order number prefix<input type="text" data-set="ordPrefix" placeholder="NIL"></label>
+        <label style="grid-column:1/-1">Workshop address (ship-to when an order has no site)<input type="text" data-set="coWorkshop"></label>
+        <label>Order number format ({T} = PO or WO, {FY} = 26-27, {0000} = number)<input type="text" data-set="ordFormat" placeholder="{T}/{FY}/{0000}"></label>
         <label>Signed by (name, designation)<input type="text" data-set="ordSign"></label>
         <label style="grid-column:1/-1">Purchase order terms (one per line)<textarea rows="5" data-set="poTerms"></textarea></label>
         <label style="grid-column:1/-1">Work order terms (one per line)<textarea rows="5" data-set="woTerms"></textarea></label>
@@ -680,7 +681,7 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey", coName: "Nityanand Infrastructure Ltd.", coAddr: "711, Highway Commerce Centre, I B Patel Road, Goregaon (East), Mumbai 400 063", coGstin: "27AAACN1981E1ZL", coPhone: "022-40021405", coEmail: "", ordPrefix: "NIL", ordSign: "", poTerms: "Please quote this PO number on your invoice, delivery challan and all letters.\nMaterial must match the description and quantity above. Rejected material will be returned at your cost.\nDeliver to the site above with the delivery challan, and test certificates where applicable.\nYour tax invoice must show our GSTIN. GST is paid only against a valid tax invoice.\nPayment as per the payment terms above, after receipt and acceptance at site.", woTerms: "Please quote this work order number on all bills and letters.\nWork to be done as per the scope above, the drawings and the site engineer's instructions.\nBills must carry measurement sheets certified by our site engineer.\nYou are responsible for your workers' wages, PF, ESIC, insurance and safety on site as per law.\nTDS will be deducted as applicable.\nPayment as per the payment terms above, against certified bills." }, orders: [] });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey", coName: "Nityanand Infrastructure Ltd.", coAddr: "711, Highway Commerce Center, I B Patel Road, Goregaon (East), Mumbai 400 063", coGstin: "27AAACN1981E1ZL", coPhone: "022-40021405 / 06 / 07 / 08", coEmail: "purchase@nityanand.com / purchase1@nityanand.com", coWorkshop: "Old Mumbai-Pune Highway, Khanavale Village, Thombrewadi, Near Shedung Toll Plaza, Raigad 410206, Maharashtra", ordFormat: "{T}/{FY}/{0000}", ordSign: "", poTerms: "Payment will be released within 30 days of receipt of accepted material.\nDelivery as per the delivery terms above.\nWarranty: as per the manufacturer's standard warranty.\nAcceptance of goods is subject to the correct part number and suitability. Material may be rejected for damage, rust or unsuitability.\nSend all documents (gate pass, challan, invoice / bill with GST no.) along with the supply to avoid delay in payment.\nThe prices are firm. No escalation in price for any reason will be allowed.\nGST is applicable as per Government rules.\nTransportation charges: paid extra at actual / material collected by us / free of cost, as agreed.\nInsurance of the material up to the delivery site / our Panvel workshop shall be arranged by Nityanand Infrastructure Limited.\nPacking and forwarding charges are included in the price.\nLiquidated damages: for late delivery, a penalty of 0.5% of the price of the undelivered supplies will be levied for every week of delay.\nRisk purchase: notwithstanding anything in this order, if at any stage the purchaser feels that delay is taking place or is likely in the execution of this order, the purchaser shall have the right to procure the material or any part of it from other sources at the risk and cost of the supplier.", woTerms: "Please quote this work order number on all bills and letters.\nWork to be done as per the scope above, the drawings and the site engineer's instructions.\nBills must carry measurement sheets certified by our site engineer.\nYou are responsible for your workers' wages, PF, ESIC, insurance and safety on site as per law.\nTDS will be deducted as applicable.\nPayment as per the payment terms above, against certified bills." }, orders: [] });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
@@ -720,15 +721,15 @@ const TABS = {
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
   tally_changes: ["id", "kind", "ref", "book", "date", "party", "type", "no", "dr", "cr", "was", "reason", "by", "at", "status", "postedBy", "postedOn", "tallyNo", "tallyId"],
-  orders: ["id", "kind", "no", "date", "vendorId", "vendor", "gstin", "vaddr", "vphone", "project", "site", "delivery", "ref", "subject", "lines", "taxMode", "subtotal", "tax", "total", "payTerms", "terms", "status", "by", "on", "note"],
+  orders: ["id", "kind", "no", "date", "vendorId", "vendor", "gstin", "vaddr", "vphone", "project", "site", "delivery", "ref", "subject", "lines", "taxMode", "subtotal", "tax", "total", "payTerms", "terms", "status", "by", "on", "note", "vemail", "qdate", "dterms", "remark", "other"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
 const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg", equipment: "equip", orders: "orders" };
 const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "orders", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1, subtotal: 1, tax: 1 };
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1, subtotal: 1, tax: 1, other: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
-const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1, delivery: 1 };
+const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1, delivery: 1, qdate: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 const GRANT_KEY = "rcr_sheets_granted";   // shared with the receivables app: same Google client and permission
@@ -819,6 +820,8 @@ async function loadAll() {
   n.vendors = raw.vendors; n.projects = raw.projects; n.lines = raw.bank_lines; n.pays = raw.payments; n.docs = raw.chat_docs; n.tally = raw.tally; n.tsnap = raw.tally_snap; n.tchg = raw.tally_changes; n.equip = raw.equipment; n.cats = raw.categories; n.orders = raw.orders;
   raw.settings.forEach(x => { const k = String(x.key).trim(); if (k in n.settings) n.settings[k] = typeof n.settings[k] === "number" ? toNum(x.value, n.settings[k]) : String(x.value); });
   S = normalize(n);
+  const OD_OLD = { coPhone: "022-40021405", coEmail: "", coAddr: "711, Highway Commerce Centre, I B Patel Road, Goregaon (East), Mumbai 400 063", poTerms: "Please quote this PO number on your invoice, delivery challan and all letters.\nMaterial must match the description and quantity above. Rejected material will be returned at your cost.\nDeliver to the site above with the delivery challan, and test certificates where applicable.\nYour tax invoice must show our GSTIN. GST is paid only against a valid tax invoice.\nPayment as per the payment terms above, after receipt and acceptance at site." }, OD_NEW = NEW_STATE().settings;   // defaults of the first order generator, never edited: take the ones from the company's own PO format
+  Object.keys(OD_OLD).forEach(k => { if (String(S.settings[k] || "") === OD_OLD[k]) S.settings[k] = OD_NEW[k]; });
   BASE = rowsView();
   LOADED_AT = Date.now();
 }
@@ -2509,20 +2512,26 @@ function renderTlList(E) {
 /* ---------- purchase orders and work orders: made here, printed to PDF, sent by the user (nothing is sent from the app) ---------- */
 let OD_LINES = [];
 const odFy = iso => { const a = fyOf(iso || today()); return String(a).slice(2) + "-" + String(a + 1).slice(2); };
-function nextOrdNo(kind, date, skipId) {
-  const pre = (S.settings.ordPrefix || "NIL").trim(), base = (pre ? pre + "/" : "") + kind + "/" + odFy(date) + "/";
+const odFmt = () => String(S.settings.ordFormat || "{T}/{FY}/{0000}").trim() || "{T}/{FY}/{0000}";
+function nextOrdNo(kind, date, skipId) {   // format tokens: {T} = PO or WO, {FY} = 26-27, {0000} = running number (as many digits as zeros)
+  const f = odFmt().replace(/\{T\}/g, kind).replace(/\{FY\}/g, odFy(date)), m = f.match(/\{(0+)\}/), w = m ? m[1].length : 4;
+  const parts = m ? [f.slice(0, m.index), f.slice(m.index + m[0].length)] : [f + "/", ""];
+  const rx = new RegExp("^" + parts[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\d+)" + parts[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
   let max = 0;
-  S.orders.forEach(o => { if (o.id === skipId || String(o.no).indexOf(base) !== 0) return; const n = parseInt(String(o.no).slice(base.length), 10); if (n > max) max = n; });
-  return base + String(max + 1).padStart(3, "0");
+  S.orders.forEach(o => { if (o.id === skipId) return; const x = String(o.no || "").match(rx); if (x && +x[1] > max) max = +x[1]; });
+  return parts[0] + String(max + 1).padStart(w, "0") + parts[1];
 }
 const odLinesOf = o => { try { const a = JSON.parse(o.lines || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
-const odAmt = l => round2((+l.q || 0) * (+l.r || 0));
-function odCalc(lines, mode) {   // per GST rate; intra state splits into CGST + SGST
-  let sub = 0; const by = {};
-  lines.forEach(l => { const a = odAmt(l); sub += a; const g = mode === "none" ? 0 : +l.g || 0; if (g) by[g] = (by[g] || 0) + a; });
+const odGross = l => round2((+l.q || 0) * (+l.r || 0));
+const odDisc = l => round2(odGross(l) * (+l.dc || 0) / 100);
+const odAmt = l => round2(odGross(l) - odDisc(l));   // taxable value of the line
+const odLTax = (l, mode) => mode === "none" ? 0 : round2(odAmt(l) * (+l.g || 0) / 100);
+function odCalc(lines, mode, other) {   // per GST rate; intra state splits into CGST + SGST; other charges added after tax
+  let gross = 0, disc = 0, sub = 0; const by = {};
+  lines.forEach(l => { gross += odGross(l); disc += odDisc(l); const a = odAmt(l); sub += a; const g = mode === "none" ? 0 : +l.g || 0; if (g) by[g] = (by[g] || 0) + a; });
   const taxes = Object.keys(by).sort((a, b) => a - b).map(g => ({ g: +g, base: round2(by[g]), tax: round2(by[g] * g / 100) }));
-  const tax = round2(taxes.reduce((t, x) => t + x.tax, 0)), raw = round2(sub + tax), total = Math.round(raw);
-  return { sub: round2(sub), taxes: taxes, tax: tax, roundOff: round2(total - raw), total: total };
+  const tax = round2(taxes.reduce((t, x) => t + x.tax, 0)), oth = round2(+other || 0), raw = round2(sub + tax + oth), total = Math.round(raw);
+  return { gross: round2(gross), disc: round2(disc), sub: round2(sub), taxes: taxes, tax: tax, other: oth, roundOff: round2(total - raw), total: total };
 }
 function inWordsINR(n) {   // Indian system: crore, lakh, thousand
   const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
@@ -2553,53 +2562,58 @@ function renderOrders() {
     (o.status !== "Cancelled" ? ' <button class="small danger" data-act="ordcancel" data-id="' + esc(o.id) + '">Cancel</button>' : "") + "</td></tr>").join("") + "</tbody></table>"
     : '<div class="sub">' + (all.length ? "No orders match." : "No orders yet. Use + Purchase order or + Work order.") + "</div>";
 }
+const OD_BLANK = () => ({ pn: "", d: "", hsn: "", q: "", u: "", r: "", dc: "", g: 18 });
 function odLinesDraw() {
-  $("#odLines tbody").innerHTML = OD_LINES.map((l, i) => '<tr data-i="' + i + '"><td class="od-d"><input data-f="d" value="' + esc(l.d) + '" placeholder="Item or work"></td><td class="od-n"><input data-f="hsn" value="' + esc(l.hsn) + '"></td><td class="od-n"><input data-f="q" inputmode="decimal" value="' + esc(l.q) + '"></td><td class="od-s"><input data-f="u" value="' + esc(l.u) + '" placeholder="nos"></td><td class="od-n"><input data-f="r" inputmode="decimal" value="' + esc(l.r) + '"></td><td class="od-s"><input data-f="g" inputmode="decimal" value="' + esc(l.g) + '"></td><td class="num od-a">' + fmt(odAmt(l)) + '</td><td><button class="small" data-act="oddel" data-id="' + i + '" title="Remove line">&times;</button></td></tr>').join("");
+  const inp = (l, f, cls, ph, num) => '<td class="' + cls + '"><input data-f="' + f + '"' + (num ? ' inputmode="decimal"' : "") + ' value="' + esc(l[f]) + '"' + (ph ? ' placeholder="' + ph + '"' : "") + "></td>";
+  $("#odLines tbody").innerHTML = OD_LINES.map((l, i) => '<tr data-i="' + i + '">' + inp(l, "pn", "od-s", "NA") + inp(l, "d", "od-d", "Item or work") + inp(l, "hsn", "od-n") + inp(l, "q", "od-n", "", 1) + inp(l, "u", "od-s", "Nos") + inp(l, "r", "od-n", "", 1) + inp(l, "dc", "od-s", "0", 1) + inp(l, "g", "od-s", "", 1) +
+    '<td class="num od-a">' + fmt(odAmt(l)) + '</td><td><button class="small" data-act="oddel" data-id="' + i + '" title="Remove line">&times;</button></td></tr>').join("");
   odTotals();
 }
 function odLinesRead() { $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelectorAll("input").forEach(inp => { l[inp.dataset.f] = inp.value.trim(); }); }); }
 function odTotals() {
-  const mode = $("#odTax").value, c = odCalc(OD_LINES, mode);
+  const mode = $("#odTax").value, c = odCalc(OD_LINES, mode, $("#odOth").value);
   $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelector(".od-a").textContent = fmt(odAmt(l)); });
-  $("#odTot").innerHTML = "<span>Before GST</span><b>" + fmt(c.sub) + "</b>" + c.taxes.map(x => mode === "intra" ? "<span>CGST " + x.g / 2 + "% + SGST " + x.g / 2 + "%</span><b>" + fmt(x.tax) + "</b>" : "<span>IGST " + x.g + "%</span><b>" + fmt(x.tax) + "</b>").join("") + "<span>Total</span><b>" + fmt(c.total) + "</b><span></span><span class=sub>" + esc(inWordsINR(c.total)) + "</span>";
+  $("#odTot").innerHTML = (c.disc ? "<span>Gross</span><b>" + fmt(c.gross) + "</b><span>Discount</span><b>-" + fmt(c.disc) + "</b>" : "") + "<span>Before GST</span><b>" + fmt(c.sub) + "</b>" +
+    c.taxes.map(x => mode === "intra" ? "<span>CGST " + x.g / 2 + "% + SGST " + x.g / 2 + "%</span><b>" + fmt(x.tax) + "</b>" : "<span>IGST " + x.g + "%</span><b>" + fmt(x.tax) + "</b>").join("") +
+    (c.other ? "<span>Other charges</span><b>" + fmt(c.other) + "</b>" : "") + "<span>Total</span><b>" + fmt(c.total) + "</b><span></span><span class=sub>" + esc(inWordsINR(c.total)) + "</span>";
 }
 function openOrder(id, kind, copy) {
   const src = id ? S.orders.filter(o => o.id === id)[0] : null; if (id && !src) return;
-  const o = src ? Object.assign({}, src) : { kind: kind || "PO", date: today(), taxMode: "intra", status: "Issued" };
+  const o = src ? Object.assign({}, src) : { kind: kind || "PO", date: today(), taxMode: "intra", status: "Issued", payTerms: "30 days", dterms: "Immediately" };
   if (copy) { o.date = today(); o.status = "Issued"; o.no = ""; }
   const isNew = !src || copy; kind = o.kind;
   if (!o.no) o.no = nextOrdNo(kind, o.date);
-  OD_LINES = src ? odLinesOf(src).map(l => Object.assign({}, l)) : [];
-  if (!OD_LINES.length) OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: 18 });
-  const W = kind === "WO";
+  OD_LINES = src ? odLinesOf(src).map(l => Object.assign(OD_BLANK(), l)) : [];
+  if (!OD_LINES.length) OD_LINES.push(OD_BLANK());
+  const W = kind === "WO", f = (lbl, id, v, extra) => "<label" + (extra || "") + ">" + lbl + '<input type="text" id="' + id + '" value="' + esc(v || "") + '"></label>';
   openModal("<h2>" + (isNew ? "New " : "Edit ") + (W ? "work order" : "purchase order") + (copy ? " (copy of " + esc(src.no) + ")" : "") + "</h2>" +
     '<div class="form"><label>Type<select id="odK"><option value="PO"' + (W ? "" : " selected") + '>Purchase order</option><option value="WO"' + (W ? " selected" : "") + '>Work order</option></select></label>' +
-    '<label>Number<input type="text" id="odNo" value="' + esc(o.no) + '"></label><label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
+    f("Number", "odNo", o.no) + '<label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
     '<label>' + (W ? "Complete by" : "Deliver by") + '<input type="date" id="odDel" value="' + esc(o.delivery || "") + '"></label>' +
-    '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label><label>Vendor GSTIN<input type="text" id="odG" value="' + esc(o.gstin || "") + '"></label>' +
-    '<label>Vendor phone<input type="text" id="odPh" value="' + esc(o.vphone || "") + '"></label><label>Quotation ref.<input type="text" id="odRef" value="' + esc(o.ref || "") + '"></label>' +
-    '<label style="grid-column:1/-1">Vendor address<input type="text" id="odAd" value="' + esc(o.vaddr || "") + '"></label>' +
-    '<label>Project<select id="odP">' + projOpts(o.project || "", "No project") + '</select></label><label style="grid-column:span 2">' + (W ? "Site / place of work" : "Deliver to (site address)") + '<input type="text" id="odSite" value="' + esc(o.site || "") + '"></label>' +
+    '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label>' + f("Vendor GSTIN", "odG", o.gstin) + f("Contact no.", "odPh", o.vphone) + f("Vendor email", "odEm", o.vemail) +
+    f("Vendor address", "odAd", o.vaddr, ' style="grid-column:1/-1"') +
+    f("Quotation no.", "odRef", o.ref) + '<label>Quotation date<input type="date" id="odQd" value="' + esc(o.qdate || "") + '"></label>' + f("Credit terms", "odPay", o.payTerms) + f(W ? "Completion terms" : "Delivery terms", "odDt", o.dterms) +
+    '<label>Project<select id="odP">' + projOpts(o.project || "", "No project", o.date) + '</select></label>' + f(W ? "Site / place of work" : "Deliver to (blank = our workshop)", "odSite", o.site, ' style="grid-column:span 2"') +
     '<label>GST<select id="odTax"><option value="intra">CGST + SGST (Maharashtra)</option><option value="inter">IGST (other state)</option><option value="none">No GST</option></select></label>' +
-    '<label style="grid-column:1/-1">Subject<input type="text" id="odSub" value="' + esc(o.subject || "") + '" placeholder="' + (W ? "e.g. Piling labour work at site" : "e.g. Supply of TMT bars") + '"></label></div>' +
-    '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>' + (W ? "Work / item" : "Item") + "</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th>Unit</th><th>Rate</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>" +
-    '<div class="toolbar" style="margin:6px 0 0"><button class="small" data-act="odadd">+ Line</button><span style="flex:1"></span></div><div class="odtot" id="odTot"></div>' +
-    '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Payment terms<input type="text" id="odPay" value="' + esc(o.payTerms || "") + '" placeholder="e.g. 30 days from receipt of material and invoice"></label>' +
-    '<label style="grid-column:1/-1">Terms and conditions (one per line)<textarea id="odTerms" rows="5">' + esc(isNew && !copy ? S.settings[W ? "woTerms" : "poTerms"] || "" : o.terms || "") + "</textarea></label>" +
+    f("Subject", "odSub", o.subject, ' style="grid-column:1/-1"') + f("Remark (printed)", "odRm", o.remark, ' style="grid-column:1/-1"') + "</div>" +
+    '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>Part no.</th><th>' + (W ? "Work / item" : "Description") + "</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Disc %</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>" +
+    '<div class="toolbar" style="margin:6px 0 0"><button class="small" data-act="odadd">+ Line</button><span style="flex:1"></span><label class="sub">Other charges (&#8377;) <input type="text" inputmode="decimal" id="odOth" value="' + esc(o.other || "") + '" style="width:110px"></label></div><div class="odtot" id="odTot"></div>' +
+    '<div class="form" style="margin-top:10px"><label style="grid-column:1/-1">Terms and conditions (one per line)<textarea id="odTerms" rows="6">' + esc(isNew && !copy ? S.settings[W ? "woTerms" : "poTerms"] || "" : o.terms || "") + "</textarea></label>" +
     '<label style="grid-column:1/-1">Note (not printed)<input type="text" id="odNote" value="' + esc(o.note || "") + '"></label></div>' +
     '<div id="odMsg" style="margin-top:8px;font-size:13px;font-weight:600;color:var(--bad)"></div>' +
     '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><span style="flex:1"></span><button data-act="mclose">Close</button><button id="odSave">Save</button><button class="primary" id="odSavePrint">Save and print</button></div>', true);
   $("#odTax").value = o.taxMode || "intra";
   odLinesDraw();
   $("#odLines").addEventListener("input", () => { odLinesRead(); odTotals(); });
-  $("#odTax").onchange = odTotals;
+  $("#odTax").onchange = odTotals; $("#odOth").oninput = odTotals;
   const renum = () => { if (isNew) $("#odNo").value = nextOrdNo($("#odK").value, $("#odDate").value); };
   $("#odK").onchange = () => { const w = $("#odK").value === "WO", t = $("#odTerms"); if (t.value.trim() === String(S.settings[w ? "poTerms" : "woTerms"] || "").trim()) t.value = S.settings[w ? "woTerms" : "poTerms"] || ""; renum(); };
-  $("#odDate").onchange = renum;
-  $("#odV").onchange = () => {   // fill what we know of this vendor: GSTIN and phone from the vendor list, address from its last order
+  $("#odDate").onchange = () => { renum(); $("#odP").innerHTML = projOpts($("#odP").value, "No project", $("#odDate").value); };
+  $("#odV").onchange = () => {   // fill what we know of this vendor: GSTIN and phone from the vendor list, the rest from its last order
     const name = $("#odV").value.trim(), v = vendorByName(name), last = S.orders.filter(x => x.id !== (src && src.id) && (v ? x.vendorId === v.id : norm(x.vendor) === norm(name))).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
     if (!$("#odG").value) $("#odG").value = (v && v.gstin) || last.gstin || "";
     if (!$("#odPh").value) $("#odPh").value = (v && v.phone) || last.vphone || "";
+    if (!$("#odEm").value) $("#odEm").value = last.vemail || "";
     if (!$("#odAd").value) $("#odAd").value = last.vaddr || "";
     if ($("#odG").value) { $("#odTax").value = odMode($("#odG").value); odTotals(); }
   };
@@ -2616,16 +2630,17 @@ function saveOrder(id, print) {
   if (!no) return msg("Enter the order number.");
   if (S.orders.some(o => o.id !== id && String(o.no).toLowerCase() === no.toLowerCase())) return msg("Number " + no + " is already used.");
   if (!lines.length) return msg("Add at least one line.");
-  const bad = lines.findIndex(l => !l.d || !(+l.q > 0) || !(+l.r >= 0) || isNaN(+l.g || 0));
-  if (bad >= 0) return msg("Line " + (bad + 1) + ": needs a description, a quantity above 0 and a rate.");
+  const bad = lines.findIndex(l => !l.d || !(+l.q > 0) || !(+l.r >= 0) || isNaN(+l.g || 0) || isNaN(+l.dc || 0) || +l.dc < 0 || +l.dc > 100);
+  if (bad >= 0) return msg("Line " + (bad + 1) + ": needs a description, a quantity above 0, a rate, and a discount from 0 to 100%.");
   if (gstin && !/^\d{2}[A-Z0-9]{13}$/.test(gstin)) return msg("The vendor GSTIN should be 15 characters, starting with the 2-digit state code.");
-  const mode = $("#odTax").value, c = odCalc(lines, mode), v = vendorByName(vendor), me = USER ? USER.email : "";
+  if (isNaN(+($("#odOth").value || 0))) return msg("Other charges should be a number.");
+  const mode = $("#odTax").value, c = odCalc(lines, mode, $("#odOth").value), v = vendorByName(vendor), me = USER ? USER.email : "";
   let o = id ? S.orders.filter(x => x.id === id)[0] : null;
   if (!o) { o = { id: uid(), status: "Issued", by: me, on: today() }; S.orders.push(o); }
-  Object.assign(o, { kind: kind, no: no, date: date, vendorId: v ? v.id : "", vendor: v ? v.name : vendor, gstin: gstin, vaddr: $("#odAd").value.trim(), vphone: $("#odPh").value.trim(),
-    project: $("#odP").value, site: $("#odSite").value.trim(), delivery: $("#odDel").value, ref: $("#odRef").value.trim(), subject: $("#odSub").value.trim(),
-    lines: JSON.stringify(lines.map(l => ({ d: l.d, hsn: l.hsn, q: +l.q || 0, u: l.u, r: +l.r || 0, g: mode === "none" ? 0 : +l.g || 0 }))), taxMode: mode,
-    subtotal: c.sub, tax: c.tax, total: c.total, payTerms: $("#odPay").value.trim(), terms: $("#odTerms").value.trim(), note: $("#odNote").value.trim() });
+  Object.assign(o, { kind: kind, no: no, date: date, vendorId: v ? v.id : "", vendor: v ? v.name : vendor, gstin: gstin, vaddr: $("#odAd").value.trim(), vphone: $("#odPh").value.trim(), vemail: $("#odEm").value.trim(),
+    project: $("#odP").value, site: $("#odSite").value.trim(), delivery: $("#odDel").value, ref: $("#odRef").value.trim(), qdate: $("#odQd").value, subject: $("#odSub").value.trim(), remark: $("#odRm").value.trim(),
+    lines: JSON.stringify(lines.map(l => ({ pn: l.pn, d: l.d, hsn: l.hsn, q: +l.q || 0, u: l.u, r: +l.r || 0, dc: +l.dc || 0, g: mode === "none" ? 0 : +l.g || 0 }))), taxMode: mode,
+    subtotal: c.sub, tax: c.tax, other: c.other, total: c.total, payTerms: $("#odPay").value.trim(), dterms: $("#odDt").value.trim(), terms: $("#odTerms").value.trim(), note: $("#odNote").value.trim() });
   if (v && !v.gstin && gstin) v.gstin = gstin;
   closeModal(); persist(); renderAll(); toast(o.no + " saved");
   if (print) printOrder(o.id);
@@ -2635,27 +2650,40 @@ function ordCancel(id) {
   if (!confirm("Cancel " + o.no + "? It stays in the list marked Cancelled and its number is not reused.")) return;
   o.status = "Cancelled"; persist(); renderAll(); toast(o.no + " cancelled");
 }
-function printOrder(id) {
+function printOrder(id) {   // ERP-style A4 document: header block, vendor / bill-to / ship-to, item grid, tax summary, terms, four sign-offs
   const o = S.orders.filter(x => x.id === id)[0]; if (!o) return;
-  const L = odLinesOf(o), c = odCalc(L, o.taxMode), W = o.kind === "WO", st = S.settings, intra = o.taxMode === "intra";
-  const m2 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), n2 = v => (+v || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
-  const p = PBY[o.project], title = W ? "WORK ORDER" : "PURCHASE ORDER", terms = String(o.terms || "").split(/\n+/).map(x => x.trim()).filter(Boolean);
-  const rows = L.map((l, i) => "<tr><td>" + (i + 1) + "</td><td class=l>" + esc(l.d) + "</td><td>" + esc(l.hsn || "") + "</td><td>" + n2(l.q) + "</td><td class=c>" + esc(l.u || "") + "</td><td>" + m2(l.r) + "</td><td>" + (o.taxMode === "none" ? "-" : (+l.g || 0) + "%") + "</td><td>" + m2(odAmt(l)) + "</td></tr>").join("");
-  const tax = c.taxes.map(x => intra ? "<tr><td class=l>CGST @ " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax / 2) + "</td></tr><tr><td class=l>SGST @ " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax - round2(x.tax / 2)) + "</td></tr>" : "<tr><td class=l>IGST @ " + x.g + "% on " + m2(x.base) + "</td><td>" + m2(x.tax) + "</td></tr>").join("");
-  const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc(o.no + " " + o.vendor) + "</title><style>body{font:12px/1.45 Arial,sans-serif;margin:24px;color:#000}.hd{text-align:center;border-bottom:2px solid #000;padding-bottom:8px}.hd h1{font-size:18px;margin:0}.hd div{font-size:11px}h2{text-align:center;font-size:15px;letter-spacing:1px;margin:10px 0}" +
-    ".two{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #444}.two>div{padding:6px 8px}.two>div+div{border-left:1px solid #444}table{border-collapse:collapse;width:100%;margin-top:10px}th,td{border:1px solid #444;padding:4px 6px;text-align:right;vertical-align:top}th{background:#eee}.l{text-align:left}.c{text-align:center}" +
-    ".it th:nth-child(2){width:42%}.tot{width:55%;margin-left:auto}.tot td{border:1px solid #444}.tot tr:last-child td{font-weight:bold;font-size:13px}ol{margin:4px 0 0 18px;padding:0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:56px}.sig div{border-top:1px solid #000;padding-top:4px}" +
-    ".x{position:fixed;top:40%;left:0;right:0;text-align:center;font-size:80px;color:rgba(200,0,0,.18);transform:rotate(-20deg)}@media print{body{margin:10mm}}</style></head><body>" +
-    (o.status === "Cancelled" ? "<div class=x>CANCELLED</div>" : "") +
-    "<div class=hd><h1>" + esc(st.coName || "") + "</h1><div>" + esc(st.coAddr || "") + "</div><div>" + [st.coGstin ? "GSTIN: " + esc(st.coGstin) : "", st.coPhone ? "Phone: " + esc(st.coPhone) : "", st.coEmail ? "Email: " + esc(st.coEmail) : ""].filter(Boolean).join(" &middot; ") + "</div></div>" +
-    "<h2>" + title + "</h2><div class=two><div><b>To</b><br><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.vphone ? "<br>Phone: " + esc(o.vphone) : "") + "</div>" +
-    "<div><b>" + (W ? "WO" : "PO") + " no.:</b> " + esc(o.no) + "<br><b>Date:</b> " + dmy(o.date) + (o.ref ? "<br><b>Your quotation:</b> " + esc(o.ref) : "") + (p ? "<br><b>Project:</b> " + esc(p.name || p.id) : o.project ? "<br><b>Project:</b> " + esc(o.project) : "") + (o.site ? "<br><b>" + (W ? "Site" : "Deliver to") + ":</b> " + esc(o.site) : "") + (o.delivery ? "<br><b>" + (W ? "Complete by" : "Deliver by") + ":</b> " + dmy(o.delivery) : "") + "</div></div>" +
-    (o.subject ? "<p><b>Subject:</b> " + esc(o.subject) + "</p>" : "") + "<p>Dear Sir/Madam,<br>" + (W ? "We are pleased to award you the following work on the terms below." : "Please supply the following on the terms below.") + "</p>" +
-    "<table class=it><thead><tr><th>Sr</th><th class=l>Description</th><th>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th class=c>Unit</th><th>Rate (Rs)</th><th>GST</th><th>Amount (Rs)</th></tr></thead><tbody>" + rows + "</tbody></table>" +
-    "<table class=tot><tr><td class=l>Total before GST</td><td>" + m2(c.sub) + "</td></tr>" + tax + (c.roundOff ? "<tr><td class=l>Rounded off</td><td>" + m2(c.roundOff) + "</td></tr>" : "") + "<tr><td class=l>Total</td><td>Rs " + m2(c.total) + "</td></tr></table>" +
-    "<p><b>Amount in words:</b> " + esc(inWordsINR(c.total)) + "</p>" + (o.payTerms ? "<p><b>Payment terms:</b> " + esc(o.payTerms) + "</p>" : "") +
-    (terms.length ? "<div><b>Terms and conditions</b><ol>" + terms.map(t => "<li>" + esc(t) + "</li>").join("") + "</ol></div>" : "") +
-    "<div class=sig><div>For " + esc(st.coName || "") + "<br>" + (st.ordSign ? esc(st.ordSign) + "<br>" : "") + "Authorised signatory</div><div>Accepted by " + esc(o.vendor) + "<br>Name, signature, stamp and date</div></div></body></html>";
+  const L = odLinesOf(o), c = odCalc(L, o.taxMode, o.other), W = o.kind === "WO", st = S.settings, intra = o.taxMode === "intra", T = W ? "Work Order" : "Purchase Order";
+  const m2 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), n3 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const d10 = iso => { if (!iso) return ""; const p = String(iso).split("-"); return p[2] + "." + p[1] + "." + p[0]; };
+  const p = PBY[o.project], terms = String(o.terms || "").split(/\n+/).map(x => x.trim()).filter(Boolean), anyDisc = L.some(l => +l.dc);
+  const kv = (k, v) => v ? "<tr><th>" + k + "</th><td>" + v + "</td></tr>" : "";
+  const rows = L.map((l, i) => "<tr><td class=c>" + String((i + 1) * 10).padStart(5, "0") + "</td><td class=l>" + esc(l.pn || "") + "</td><td class=l>" + esc(l.d) + "</td><td class=c>" + esc(l.hsn || "") + "</td><td>" + n3(l.q) + "</td><td class=c>" + esc(l.u || "") + "</td><td>" + m2(l.r) + "</td><td>" + m2(odGross(l)) + "</td>" +
+    (anyDisc ? "<td>" + (+l.dc ? (+l.dc).toFixed(2) : "") + "</td><td>" + (+l.dc ? m2(odDisc(l)) : "") + "</td>" : "") + "<td>" + m2(odAmt(l)) + "</td><td class=c>" + (o.taxMode === "none" ? "" : (+l.g || 0) + "%") + "</td><td>" + m2(odLTax(l, o.taxMode)) + "</td><td><b>" + m2(odAmt(l) + odLTax(l, o.taxMode)) + "</b></td></tr>").join("");
+  const tax = c.taxes.map(x => intra ? "<tr><td>CGST " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(round2(x.tax / 2)) + "</td></tr><tr><td>SGST " + x.g / 2 + "% on " + m2(x.base) + "</td><td>" + m2(x.tax - round2(x.tax / 2)) + "</td></tr>" : "<tr><td>IGST " + x.g + "% on " + m2(x.base) + "</td><td>" + m2(x.tax) + "</td></tr>").join("");
+  const logo = new URL("logo.png", location.href).href, ship = o.site || st.coWorkshop || st.coAddr || "";
+  const css = "@page{size:A4;margin:10mm}*{box-sizing:border-box}body{font:9pt/1.35 Arial,Helvetica,sans-serif;color:#111;margin:0;padding:8mm}table{border-collapse:collapse;width:100%}" +
+    ".top{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;border-bottom:3px solid #1f3b57;padding-bottom:8px}.co{display:flex;gap:10px;align-items:flex-start}.co img{height:46px}.co h1{font-size:15pt;margin:0 0 2px;color:#1f3b57;letter-spacing:.3px}.co div{font-size:7.8pt;color:#333}" +
+    ".doc h2{margin:0 0 4px;text-align:right;font-size:16pt;color:#1f3b57;text-transform:uppercase;letter-spacing:1.5px}.doc table th{text-align:left;font-weight:normal;color:#555;padding:1px 6px 1px 0;width:42%}.doc table td{font-weight:bold;padding:1px 0}" +
+    ".boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:8px;border:1px solid #9aa7b4}.boxes>div{padding:6px 8px;min-height:86px}.boxes>div+div{border-left:1px solid #9aa7b4}.hdr{background:#e6ecf2;color:#1f3b57;font-weight:bold;font-size:7.6pt;text-transform:uppercase;letter-spacing:.6px;margin:-6px -8px 5px;padding:3px 8px;border-bottom:1px solid #9aa7b4}" +
+    ".rem{margin-top:6px;border:1px solid #9aa7b4;padding:4px 8px}.it{margin-top:8px;font-size:8pt}.it th{background:#1f3b57;color:#fff;font-weight:bold;padding:4px 4px;border:1px solid #1f3b57;text-align:right;font-size:7.6pt}.it td{border:1px solid #c3ccd5;padding:3px 4px;text-align:right;vertical-align:top}.it tbody tr:nth-child(even) td{background:#f5f7f9}.it .l{text-align:left}.it .c{text-align:center}" +
+    ".sumw{display:grid;grid-template-columns:1fr 300px;gap:12px;margin-top:8px;align-items:start}.sum td{padding:3px 6px;border-bottom:1px solid #dde3e9}.sum td+td{text-align:right;white-space:nowrap}.sum tr.tot td{border-top:2px solid #1f3b57;border-bottom:2px solid #1f3b57;font-weight:bold;font-size:10.5pt;background:#e6ecf2}" +
+    ".words{border:1px solid #9aa7b4;padding:6px 8px}.words b{display:block;font-size:7.6pt;color:#555;text-transform:uppercase;letter-spacing:.6px}.terms{margin-top:8px;border:1px solid #9aa7b4;padding:6px 8px;font-size:7.8pt}.terms ol{margin:3px 0 0 16px;padding:0}.terms li{margin:1px 0}" +
+    ".sig{display:grid;grid-template-columns:repeat(4,1fr);margin-top:10px;border:1px solid #9aa7b4;page-break-inside:avoid}.sig>div{padding:6px 8px;height:78px;display:flex;flex-direction:column;justify-content:space-between;font-size:8pt}.sig>div+div{border-left:1px solid #9aa7b4}.sig span{color:#555;font-size:7.4pt;text-transform:uppercase;letter-spacing:.5px}" +
+    ".foot{margin-top:8px;display:flex;justify-content:space-between;font-size:7pt;color:#666;border-top:1px solid #c3ccd5;padding-top:3px}.x{position:fixed;top:38%;left:0;right:0;text-align:center;font-size:84px;font-weight:bold;color:rgba(190,0,0,.16);transform:rotate(-24deg)}@media print{body{padding:0}}";
+  const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc(o.no + " " + o.vendor) + "</title><style>" + css + "</style></head><body>" + (o.status === "Cancelled" ? "<div class=x>CANCELLED</div>" : "") +
+    "<div class=top><div class=co><img src='" + esc(logo) + "' alt='' onerror='this.remove()'><div><h1>" + esc(String(st.coName || "").toUpperCase()) + "</h1><div>Corporate office: " + esc(st.coAddr || "") + "</div>" + (st.coWorkshop ? "<div>Workshop: " + esc(st.coWorkshop) + "</div>" : "") +
+    "<div>" + [st.coPhone ? "Tel: " + esc(st.coPhone) : "", st.coEmail ? "Email: " + esc(st.coEmail) : ""].filter(Boolean).join(" &nbsp;|&nbsp; ") + "</div><div>GSTIN: <b>" + esc(st.coGstin || "") + "</b> &nbsp;|&nbsp; State: Maharashtra (27)" + (st.coGstin ? " &nbsp;|&nbsp; PAN: " + esc(String(st.coGstin).slice(2, 12)) : "") + "</div></div></div>" +
+    "<div class=doc><h2>" + T + "</h2><table>" + kv(W ? "WO number" : "PO number", esc(o.no)) + kv("Date", d10(o.date)) + kv("Quotation no.", esc(o.ref || "")) + kv("Quotation date", d10(o.qdate)) + kv("Credit terms", esc(o.payTerms || "")) + kv(W ? "Completion terms" : "Delivery terms", esc(o.dterms || "")) + kv(W ? "Complete by" : "Deliver by", d10(o.delivery)) + kv("Project", esc(p ? p.id + " " + (p.name || "") : o.project === "_co" ? "" : o.project || "")) + kv("Currency", "INR") + "</table></div></div>" +
+    "<div class=boxes><div><div class=hdr>Vendor</div><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.vphone ? "<br>Contact: " + esc(o.vphone) : "") + (o.vemail ? "<br>Email: " + esc(o.vemail) : "") + "</div>" +
+    "<div><div class=hdr>Bill to</div><b>" + esc(st.coName || "") + "</b><br>" + esc(st.coAddr || "") + "<br>GSTIN: " + esc(st.coGstin || "") + "</div>" +
+    "<div><div class=hdr>" + (W ? "Place of work" : "Ship to") + "</div><b>" + esc(st.coName || "") + "</b><br>" + esc(ship) + "</div></div>" +
+    (o.subject || o.remark ? "<div class=rem>" + (o.subject ? "<b>Subject:</b> " + esc(o.subject) : "") + (o.subject && o.remark ? "<br>" : "") + (o.remark ? "<b>Remark:</b> " + esc(o.remark) : "") + "</div>" : "") +
+    "<table class=it><thead><tr><th class=c>Item</th><th class=l>Part no.</th><th class=l>Description</th><th class=c>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th class=c>Unit</th><th>Rate</th><th>Gross amt</th>" + (anyDisc ? "<th>Disc %</th><th>Disc amt</th>" : "") + "<th>Taxable</th><th class=c>GST</th><th>GST amt</th><th>Net amount</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+    "<div class=sumw><div class=words><b>Amount in words</b>" + esc(inWordsINR(c.total)) + "</div><table class=sum>" + (c.disc ? "<tr><td>Gross amount</td><td>" + m2(c.gross) + "</td></tr><tr><td>Discount</td><td>-" + m2(c.disc) + "</td></tr>" : "") + "<tr><td>Taxable value</td><td>" + m2(c.sub) + "</td></tr>" + tax +
+    (c.other ? "<tr><td>Other charges</td><td>" + m2(c.other) + "</td></tr>" : "") + (c.roundOff ? "<tr><td>Round off</td><td>" + m2(c.roundOff) + "</td></tr>" : "") + "<tr class=tot><td>Total (INR)</td><td>" + m2(c.total) + "</td></tr></table></div>" +
+    (terms.length ? "<div class=terms><b>TERMS AND CONDITIONS</b><ol>" + terms.map(t => "<li>" + esc(t.replace(/^\d+\s*[.)]\s*/, "")) + "</li>").join("") + "</ol></div>" : "") +
+    "<div class=sig><div><span>Prepared by / date</span><div>" + esc(whoName(o.by)) + "<br>" + d10(o.on) + "</div></div><div><span>Stores clearance</span><div></div></div><div><span>Engg. clearance</span><div></div></div><div><span>Authorised by</span><div>" + (st.ordSign ? esc(st.ordSign) + "<br>" : "") + "For " + esc(st.coName || "") + "</div></div></div>" +
+    "<div class=foot><span>This is a computer-generated " + T.toLowerCase() + ". Please quote the " + (W ? "WO" : "PO") + " number on all invoices, challans and letters.</span><span>" + esc(o.no) + " &middot; printed " + d10(today()) + "</span></div></body></html>";
   const win = window.open("", "_blank");
   if (!win) { toast("Allow pop-ups for this page to print the order"); return; }
   win.document.open(); win.document.write(html); win.document.close();
@@ -2759,8 +2787,8 @@ function wire() {
     else if (act === "orddup") openOrder(id, null, true);
     else if (act === "ordprint") printOrder(id);
     else if (act === "ordcancel") ordCancel(id);
-    else if (act === "odadd") { odLinesRead(); OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: OD_LINES.length ? OD_LINES[OD_LINES.length - 1].g : 18 }); odLinesDraw(); }
-    else if (act === "oddel") { odLinesRead(); OD_LINES.splice(+id, 1); if (!OD_LINES.length) OD_LINES.push({ d: "", hsn: "", q: "", u: "", r: "", g: 18 }); odLinesDraw(); }
+    else if (act === "odadd") { odLinesRead(); OD_LINES.push(Object.assign(OD_BLANK(), { g: OD_LINES.length ? OD_LINES[OD_LINES.length - 1].g : 18 })); odLinesDraw(); }
+    else if (act === "oddel") { odLinesRead(); OD_LINES.splice(+id, 1); if (!OD_LINES.length) OD_LINES.push(OD_BLANK()); odLinesDraw(); }
     else if (act === "newpay") openPay(null);
     else if (act === "pedit") openPay(id);
     else if (act === "pdel") delPay(id);
