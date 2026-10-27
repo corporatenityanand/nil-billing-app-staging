@@ -90,6 +90,7 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .plcard.late{border-left:3px solid var(--bad)}
 .plcard .t{font-weight:600}.plcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cnt{font-size:11px;color:var(--muted)}
+.rqtbl input[type=text],.rqtbl select{padding:4px 6px;font-size:13px}.rqtbl td{vertical-align:middle}.rqtbl td:nth-child(3){min-width:260px}
 .bqtbl input{padding:5px 7px;font-size:13px}.bqtbl td{vertical-align:middle}.bqtbl tr.bqnew td,.bqtbl tr.bqedit td{background:var(--bg)}.bqtbl #bqnitem,.bqtbl #bqeitem{min-width:200px}#bqnrate,#bqerate{text-align:right}
 .rwsteps{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}.rwstep{border-radius:99px;font-size:12.5px}.rwstep b{display:inline-block;width:18px}.rwstep.on{border-color:var(--accent);font-weight:650}.rwstep.done{color:var(--cred)}
 .rwtbl input{text-align:right}.rwtbl td.l input{text-align:left;width:100%}
@@ -461,6 +462,14 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
       <div class="tblwrap" id="woTbl"></div>
     </div>
     <div class="card hide" id="woDetail"></div>
+    <div class="card" style="margin-top:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Billing requisites</h2><span class="sub" id="reqSum"></span><span style="flex:1"></span>
+        <label class="small btnlike" title="A .json file with requisites: phase, category, item, required, client">Import JSON<input type="file" id="reqFile" accept=".json,application/json" hidden></label>
+        <button class="small" data-act="rqexport">Export JSON</button><button class="small primary" data-act="rqapply">Add to work orders</button></div>
+      <div class="help">The master list every new work order's checklist starts from. Change anything in place; it saves to the Google Sheet. A requisite with a client applies only to that client. &ldquo;Add to work orders&rdquo; puts requisites missing from active contracts onto them; removing one here does not remove it from contracts.</div>
+      <div class="toolbar" style="margin:6px 0"><select id="rqNewPh"><option value="start">At start</option><option value="month">Every month</option><option value="bill" selected>Every RA bill</option><option value="close">At close</option></select><input type="text" id="rqNewCat" placeholder="Category" style="width:130px"><input type="text" id="rqNewItem" placeholder="New requisite, e.g. Basic rate approval letter" style="flex:1;min-width:200px"><button class="small" data-act="rqadd">Add</button></div>
+      <div class="tblwrap" id="reqTbl"></div>
+    </div>
   </section>
 
   <section id="tab-forecast" class="hide">
@@ -515,14 +524,14 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
@@ -534,6 +543,7 @@ function normalize(o) {
   n.bdocs = Array.isArray(o.bdocs) ? o.bdocs : [];
   n.ralines = Array.isArray(o.ralines) ? o.ralines : [];
   n.advbills = Array.isArray(o.advbills) ? o.advbills : [];
+  n.reqs = Array.isArray(o.reqs) ? o.reqs : [];
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -577,6 +587,7 @@ const TABS = {
   work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
   wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   adv_bills: ["id", "advId", "billId", "amt"],
+  requisites: ["id", "phase", "cat", "item", "client", "req", "exp", "dueDay", "owner", "note", "ord"],
   bill_docs: ["id", "pipeId", "woId", "cat", "item", "owner", "due", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
@@ -584,12 +595,12 @@ const TABS = {
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", adv_bills: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines", "adv_bills"];   // added after the first Sheets were made: created on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", adv_bills: "id", requisites: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines", "adv_bills", "requisites"];   // added after the first Sheets were made: created on first load if missing
 const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo", "folder"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1 };
-const BOOLC = { dateEst: 1, deleted: 1, blocks: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1, ord: 1 };
+const BOOLC = { dateEst: 1, deleted: 1, blocks: 1, req: 1, exp: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 // Until this browser has once received the Sheets permission, always show Google's permission screen:
@@ -703,6 +714,7 @@ async function loadAll() {
   n.bdocs = raw.bill_docs.map(d => Object.assign(d, { due: toIso(d.due), doneOn: toIso(d.doneOn), status: CK_ST[d.status] ? d.status : "open" }));
   n.ralines = raw.ra_lines;
   n.advbills = raw.adv_bills;
+  n.reqs = raw.requisites.map(r => Object.assign(r, { phase: WO_PH[r.phase] ? r.phase : "bill", dueDay: r.dueDay || "", ord: +r.ord || 0 }));
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
   DATA = { asOn: st.asOn ? toIso(st.asOn) : isoOf(new Date()), bills: bills, memo: memo };
@@ -731,6 +743,7 @@ function rowsView() {
   S.bdocs.forEach(p => { v.bill_docs[p.id] = pick(p, TABS.bill_docs); });
   S.ralines.forEach(p => { v.ra_lines[p.id] = pick(p, TABS.ra_lines); });
   S.advbills.forEach(p => { v.adv_bills[p.id] = pick(p, TABS.adv_bills); });
+  S.reqs.forEach(p => { v.requisites[p.id] = pick(p, TABS.requisites); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -1351,15 +1364,106 @@ function knownOwners() {
 const linkHtml = u => /^https?:\/\//i.test(u || "") ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Open file</a>' : "";
 
 /* checklist rows for a new contract from the ticked template lines */
+/* the billing requisites: the `requisites` tab when it has rows (imported or typed in), else the standard list above.
+   A requisite with a client applies only to that client's work orders. */
+const reqStd = () => WO_TPL.map((t, i) => ({ id: "std" + i, phase: t[0], cat: t[1], item: t[2], client: "", req: !!t[3].req, exp: !!t[3].exp, dueDay: t[3].day || "", owner: "", note: "", ord: i }));
+const reqAll = () => S.reqs.length ? S.reqs.slice().sort((a, b) => WO_PHS.indexOf(a.phase) - WO_PHS.indexOf(b.phase) || (+a.ord || 0) - (+b.ord || 0)) : reqStd();
+const reqFor = client => reqAll().filter(r => !r.client || norm(r.client) === norm(client || ""));
 function tplChecks(w, picks) {
-  const from = w.woDate || w.start || today();
-  return picks.map(i => {
-    const t = WO_TPL[i], o = t[3];
-    const due = t[0] === "start" ? addDays(from, 10) : t[0] === "month" ? nextDay(w.start || from, o.day) : (t[0] === "close" && i === WO_TPL.findIndex(x => x[0] === "close") ? (w.end || "") : "");
-    return { id: uid(), woId: w.id, phase: t[0], cat: t[1], item: t[2], owner: "", due: due, dueDay: o.day || "", expires: "", status: "open", link: "", blocks: !!o.req, note: "", doneOn: "", doneBy: "" };
+  const from = w.woDate || w.start || today(), firstClose = picks.filter(r => r.phase === "close")[0];
+  return picks.map(r => {
+    const due = r.phase === "start" ? addDays(from, 10) : r.phase === "month" ? nextDay(w.start || from, +r.dueDay || 15) : (r === firstClose ? (w.end || "") : "");
+    return { id: uid(), woId: w.id, phase: r.phase, cat: r.cat || "", item: r.item, owner: r.owner || "", due: due, dueDay: r.phase === "month" ? (+r.dueDay || 15) : "", expires: "", status: "open", link: "", blocks: !!r.req, note: r.note || "", doneOn: "", doneBy: "" };
   });
 }
+function tplPickHtml(client) {
+  const all = reqFor(client);
+  return WO_PHS.map(ph => "<b>" + WO_PH[ph] + "</b>" + all.filter(r => r.phase === ph).map(r => '<label><input type="checkbox" data-tpl="' + esc(r.id) + '" checked> ' + esc(r.item) + (r.client ? ' <span class="sub">(' + esc(r.client.split(" ")[0]) + " only)</span>" : "") + (r.req ? ' <span class="sub">(required on every bill)</span>' : "") + "</label>").join("")).join("");
+}
+/* requisites master: import / export JSON, edit in place, add to active work orders */
+const REQ_PH = { start: "start", "at start": "start", onboarding: "start", once: "start", month: "month", monthly: "month", "every month": "month", bill: "bill", "ra bill": "bill", "every bill": "bill", "every ra bill": "bill", "each bill": "bill", close: "close", "at close": "close", closeout: "close", closing: "close" };
+const reqPhase = v => REQ_PH[String(v || "").trim().toLowerCase()] || "";
+const truthy = v => v === true || /^(true|yes|y|1|required)$/i.test(String(v == null ? "" : v).trim());
+function reqParse(j) {   // a list, { requisites: [...] }, or { start: [...], month: [...], bill: [...], close: [...] }
+  let list = Array.isArray(j) ? j : Array.isArray(j.requisites) ? j.requisites : Array.isArray(j.billing_requisites) ? j.billing_requisites : null;
+  if (!list && j && typeof j === "object") { list = []; Object.keys(j).forEach(k => { const ph = reqPhase(k); if (ph && Array.isArray(j[k])) j[k].forEach(x => list.push(typeof x === "string" ? { phase: ph, item: x } : Object.assign({ phase: ph }, x))); }); }
+  return (list || []).map(x => typeof x === "string" ? { phase: "bill", item: x } : x).filter(x => x && typeof x === "object").map(x => ({
+    phase: reqPhase(x.phase || x.when || x.stage) || "bill", cat: String(x.cat || x.category || x.group || "").trim(), item: String(x.item || x.name || x.document || x.requisite || x.title || "").trim(),
+    client: String(x.client || "").trim(), req: truthy(x.req != null ? x.req : x.required != null ? x.required : x.mandatory), exp: truthy(x.exp != null ? x.exp : x.expires),
+    dueDay: +(x.dueDay || x.day || x.due_day) || "", owner: String(x.owner || x.who || "").trim(), note: String(x.note || x.notes || x.remarks || "").trim() })).filter(x => x.item);
+}
+function importReqs(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    let j; try { j = JSON.parse(rd.result); } catch (e) { toast("That file is not JSON."); return; }
+    if (j && !Array.isArray(j) && Array.isArray(j.work_orders)) { importWo(file); return; }
+    const xs = reqParse(j); if (!xs.length) { toast("No requisites found in that file. See the sample format under Export."); return; }
+    if (!S.reqs.length) S.reqs = reqStd().map(r => Object.assign({}, r, { id: uid() }));   // the standard list becomes editable rows first
+    let add = 0, upd = 0, ord = S.reqs.reduce((m, r) => Math.max(m, +r.ord || 0), 0);
+    xs.forEach(x => {
+      x.client = x.client ? (matchClient(x.client) || x.client) : "";
+      const hit = S.reqs.filter(r => r.phase === x.phase && norm(r.item) === norm(x.item) && norm(r.client) === norm(x.client))[0];
+      if (hit) { ["cat", "owner", "note", "dueDay"].forEach(k => { if (x[k] !== "" && x[k] != null) hit[k] = x[k]; }); hit.req = x.req || hit.req; hit.exp = x.exp || hit.exp; upd++; }
+      else { S.reqs.push(Object.assign({ id: uid(), ord: ++ord }, x)); add++; }
+    });
+    persist(); renderAll(); toast("Requisites: " + add + " added" + (upd ? ", " + upd + " updated" : "") + ". Use “Add to work orders” to put new ones on existing contracts.");
+  };
+  rd.readAsText(file);
+}
+function exportReqs() {
+  const xs = reqAll().map(r => { const o = { phase: r.phase, cat: r.cat, item: r.item }; if (r.client) o.client = r.client; if (r.req) o.required = true; if (r.exp) o.expires = true; if (r.phase === "month") o.dueDay = +r.dueDay || 15; if (r.owner) o.owner = r.owner; if (r.note) o.note = r.note; return o; });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ requisites: xs }, null, 2)], { type: "application/json" })); a.download = "billing_requisites.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function reqOwn() { if (!S.reqs.length) S.reqs = reqStd().map(r => Object.assign({}, r, { id: uid() })); }   // first edit turns the standard list into Sheet rows
+function renderReqs() {
+  const el = $("#reqTbl"); if (!el) return;
+  const ae = document.activeElement, ftr = ae && ae.closest && ae.closest("#reqTbl tr[data-rqid]"), fpos = ftr ? [Array.prototype.indexOf.call(ftr.parentNode.children, ftr), ae.dataset.rq] : null;
+  const all = reqAll(), std = !S.reqs.length, clients = workClients();
+  $("#reqSum").textContent = all.length + " requisite" + (all.length === 1 ? "" : "s") + (std ? " (standard list)" : "");
+  const sel = (r, k, opts) => '<select data-rq="' + k + '">' + Object.keys(opts).map(o => '<option value="' + o + '"' + (r[k] === o ? " selected" : "") + ">" + opts[o] + "</option>").join("") + "</select>";
+  const inp = (r, k, w, ph, extra) => '<input type="text" data-rq="' + k + '" value="' + esc(r[k] == null ? "" : r[k]) + '" style="width:' + w + '"' + (ph ? ' placeholder="' + ph + '"' : "") + (extra || "") + ">";
+  el.innerHTML = '<datalist id="rqClients">' + clients.map(c => '<option value="' + esc(c) + '">').join("") + '</datalist><datalist id="rqCats">' + uniq(all.map(r => r.cat).filter(Boolean)).map(c => '<option value="' + esc(c) + '">').join("") + "</datalist>" +
+    '<table class="cktbl rqtbl"><thead><tr><th class="l">When</th><th class="l">Category</th><th class="l">Requisite</th><th class="l">Only for client</th><th class="l">Required</th><th class="l">Expires</th><th class="l">Day</th><th class="l">Default owner</th><th></th></tr></thead><tbody>' +
+    all.map(r => '<tr data-rqid="' + esc(r.id) + '"><td class="l">' + sel(r, "phase", WO_PH) + '</td><td class="l">' + inp(r, "cat", "110px", "", ' list="rqCats"') + '</td><td class="l">' + inp(r, "item", "100%") + '</td><td class="l">' + inp(r, "client", "130px", "all clients", ' list="rqClients"') +
+      '</td><td class="l"><input type="checkbox" data-rq="req"' + (r.req ? " checked" : "") + (r.phase === "bill" ? "" : " disabled") + ' title="An RA bill cannot be submitted without it"></td><td class="l"><input type="checkbox" data-rq="exp"' + (r.exp ? " checked" : "") + '></td><td class="l">' + (r.phase === "month" ? inp(r, "dueDay", "40px", "15") : "") + '</td><td class="l">' + inp(r, "owner", "100px") +
+      '</td><td><button class="small danger" data-act="rqdel" data-id="' + esc(r.id) + '" title="Remove from the list">✕</button></td></tr>').join("") + "</tbody></table>";
+  if (fpos) { const tr = $$("#reqTbl tbody tr")[fpos[0]], f = tr && $('[data-rq="' + fpos[1] + '"]', tr); if (f) f.focus(); }
+}
+function reqEdit(e) {
+  const t = e.target, tr = t.closest && t.closest("tr[data-rqid]"); if (!tr || !t.dataset.rq) return;
+  const std = !S.reqs.length, idx = std ? +tr.dataset.rqid.slice(3) : -1;
+  reqOwn();
+  const r = std ? S.reqs[idx] : S.reqs.filter(x => x.id === tr.dataset.rqid)[0]; if (!r) return;
+  const k = t.dataset.rq, v = t.type === "checkbox" ? t.checked : t.value.trim();
+  if (k === "item" && !v) { t.value = r.item; toast("A requisite needs a name; use ✕ to remove it."); return; }
+  r[k] = k === "dueDay" ? (Math.min(31, Math.max(1, +v || 15))) : k === "client" ? (v ? (matchClient(v) || v) : "") : v;
+  if (k === "phase" && v !== "bill") r.req = false;
+  persist(); setTimeout(renderAll, 0);   // after the focus has moved on, so typing carries on in the next field
+}
+function reqAdd() {
+  reqOwn();
+  const ph = $("#rqNewPh").value, item = $("#rqNewItem").value.trim(); if (!item) { $("#rqNewItem").focus(); return; }
+  if (S.reqs.some(r => r.phase === ph && norm(r.item) === norm(item) && !r.client)) { toast("That requisite is already in the list."); return; }
+  S.reqs.push({ id: uid(), phase: ph, cat: $("#rqNewCat").value.trim(), item: item, client: "", req: ph === "bill", exp: false, dueDay: ph === "month" ? 15 : "", owner: "", note: "", ord: S.reqs.reduce((m, r) => Math.max(m, +r.ord || 0), 0) + 1 });
+  $("#rqNewItem").value = ""; persist(); renderAll(); $("#rqNewItem").focus(); toast("Requisite added");
+}
+function reqDel(id) {
+  reqOwn();
+  const r = id.indexOf("std") === 0 && S.reqs.length ? S.reqs[+id.slice(3)] : S.reqs.filter(x => x.id === id)[0]; if (!r) return;
+  S.reqs = S.reqs.filter(x => x !== r); persist(); renderAll(); toast("Removed from the list. Work orders keep their own copy.");
+}
+/* add requisites that a work order does not have yet (same phase and name) to every active work order of a matching client */
+function reqApply() {
+  let n = 0, ws = 0;
+  S.wos.filter(w => w.status !== "closed").forEach(w => {
+    const have = woChecks(w.id), miss = reqFor(w.client).filter(r => !have.some(c => c.phase === r.phase && norm(c.item) === norm(r.item)));
+    if (miss.length) { S.checks = S.checks.concat(tplChecks(w, miss)); n += miss.length; ws++; }
+  });
+  if (!n) { toast("Every active work order already has all the requisites."); return; }
+  persist(); renderAll(); toast("Added " + n + " requisite" + (n === 1 ? "" : "s") + " to " + ws + " work order" + (ws === 1 ? "" : "s"));
+}
 function renderWo() {
+  renderReqs();
   const act = S.wos.filter(w => w.status !== "closed"), all = S.wos.slice().sort((a, b) => (a.status === "closed") - (b.status === "closed") || a.client.localeCompare(b.client));
   if (WO_SEL && !woOf(WO_SEL)) WO_SEL = null;
   const stat = w => { const cs = woChecks(w.id).filter(c => c.phase !== "bill" && c.status !== "na"), d = cs.filter(c => c.status === "done").length, l = cs.filter(ckLate).length; return { n: cs.length, d: d, l: l }; };
@@ -1393,9 +1497,10 @@ function openWo(id, clientArg) {
     inp("advance", "Advance", "e.g. 35%, recovered once billing reaches 50%", true) + inp("penalty", "Delay penalty", "", true) + inp("folder", "Drive folder link", "https://drive.google.com/...", true) + inp("note", "Note", "", true) +
     (w ? '<label>Status<select id="wo_status"><option value="active"' + (v.status !== "closed" ? " selected" : "") + '>Active</option><option value="closed"' + (v.status === "closed" ? " selected" : "") + ">Closed</option></select></label>" : "") + "</div>" +
     (w ? "" : '<h3 style="margin:14px 0 4px;font-size:14px">Checklist</h3><div class="help">Untick what this client does not ask for. You can add, edit or remove items later.</div><div class="tplpick">' +
-      WO_PHS.map(ph => "<b>" + WO_PH[ph] + "</b>" + WO_TPL.map((t, i) => t[0] !== ph ? "" : '<label><input type="checkbox" data-tpl="' + i + '" checked> ' + esc(t[2]) + (t[3].req ? ' <span class="sub">(required on every bill)</span>' : "") + "</label>").join("")).join("") + "</div>") +
+      tplPickHtml(v.client) + "</div>") +
     '<div id="woMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (w ? '<button id="woDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
   $("#modal").classList.add("wide");
+  if (!w) { const re = () => { const t = $("#wo_new").value.trim(); $("#modal .tplpick").innerHTML = tplPickHtml(t ? (matchClient(t) || t) : $("#wo_clientSel").value); }; $("#wo_clientSel").onchange = re; $("#wo_new").onchange = re; }
   $("#mCancel").onclick = closeModal;
   if (w) $("#woDel").onclick = () => { closeModal(); confirmModal("Delete this work order?", esc(w.client) + " &middot; " + esc(woLabel(w)) + ". Its checklist goes too. Bills in the pipeline keep their documents. Use Status: Closed instead to keep it.", "Delete", () => { S.wos = S.wos.filter(x => x !== w); S.checks = S.checks.filter(c => c.woId !== w.id); persist(); renderAll(); toast("Work order deleted"); }); };
   $("#mSave").onclick = () => {
@@ -1409,7 +1514,8 @@ function openWo(id, clientArg) {
     else {
       const n = Object.assign({ id: uid(), status: "active" }, rec);
       S.wos.push(n);
-      S.checks = S.checks.concat(tplChecks(n, $$("#modal [data-tpl]").filter(x => x.checked).map(x => +x.dataset.tpl)));
+      const all = reqFor(client);
+      S.checks = S.checks.concat(tplChecks(n, $$("#modal [data-tpl]").filter(x => x.checked).map(x => all.filter(r => r.id === x.dataset.tpl)[0]).filter(Boolean)));
       WO_SEL = n.id;
     }
     persist(); closeModal(); renderAll(); if (!w) showTab("wo"); toast(w ? "Work order saved" : "Work order added with its checklist");
@@ -1421,7 +1527,7 @@ function openCheck(id, phase) {
   const ph = v.phase;
   openModal("<h2>" + (c ? "Edit checklist item" : "New checklist item") + '</h2><div class="sub" style="margin-bottom:8px">' + esc(woShort(w)) + " &middot; " + WO_PH[ph] + '</div><div class="form">' +
     '<label style="grid-column:1/-1">Item<input type="text" id="ckItem" value="' + esc(v.item) + '" placeholder="e.g. Last month\'s PF challan"></label>' +
-    '<label>Category<input type="text" id="ckCat" list="ckCats" value="' + esc(v.cat) + '"><datalist id="ckCats">' + WO_TPL.map(t => t[1]).filter((x, i, a) => a.indexOf(x) === i).map(x => '<option value="' + esc(x) + '">').join("") + "</datalist></label>" +
+    '<label>Category<input type="text" id="ckCat" list="ckCats" value="' + esc(v.cat) + '"><datalist id="ckCats">' + reqAll().map(r => r.cat).filter((x, i, a) => a.indexOf(x) === i).map(x => '<option value="' + esc(x) + '">').join("") + "</datalist></label>" +
     '<label>Who does it<input type="text" id="ckOwner" list="ckOwners" value="' + esc(v.owner) + '"><datalist id="ckOwners">' + knownOwners().map(o => '<option value="' + esc(o) + '">').join("") + "</datalist></label>" +
     (ph === "bill" ? '<label style="grid-column:1/-1"><span class="chk"><input type="checkbox" id="ckReq"' + (v.blocks ? " checked" : "") + "> Required: a bill cannot be submitted without it</span></label>"
       : '<label>Due<input type="date" id="ckDue" value="' + esc(v.due) + '"></label>' + (ph === "month" ? '<label>Repeats on day<input type="number" min="1" max="31" id="ckDay" value="' + esc(v.dueDay) + '"></label>' : "") +
@@ -1554,7 +1660,7 @@ function importWo(file) {
       w.client = matchClient(w.client) || w.client; w.kind = w.kind === "LOI" ? "LOI" : "WO"; w.status = w.status === "closed" ? "closed" : "active";
       S.wos.push(w); nw++;
       const cs = Array.isArray(o.checks) ? o.checks.filter(c => c && c.item && WO_PH[c.phase]).map(c => ({ id: uid(), woId: w.id, phase: c.phase, cat: String(c.cat || ""), item: String(c.item), owner: String(c.owner || ""), due: toIso(c.due || ""), dueDay: +c.dueDay || "", expires: toIso(c.expires || ""), status: CK_ST[c.status] ? c.status : "open", link: String(c.link || ""), blocks: !!(c.req || c.blocks), note: String(c.note || ""), doneOn: "", doneBy: "" }))
-        : tplChecks(w, WO_TPL.map((t, i) => i));
+        : tplChecks(w, reqFor(w.client));
       S.checks = S.checks.concat(cs); nc += cs.length;
     });
     persist(); renderAll(); toast(nw ? "Imported " + nw + " work order" + (nw === 1 ? "" : "s") + " with " + nc + " checklist items" + (skip ? ", " + skip + " already here" : "") : skip ? "All " + skip + " were already here" : "No work orders found in that file");
@@ -3191,6 +3297,10 @@ function wire() {
     if (act === "plmove") { movePipe(id, t.dataset.to); return; }
     if (act === "plbill") { billPipe(id); return; }
     if (act === "plopen") { showTab("pipeline"); return; }
+    if (act === "rqexport") { exportReqs(); return; }
+    if (act === "rqapply") { reqApply(); return; }
+    if (act === "rqadd") { reqAdd(); return; }
+    if (act === "rqdel") { reqDel(id); return; }
     if (act === "newwo") { openWo(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "wopick") { WO_SEL = id; renderWo(); $("#woDetail").scrollIntoView({ block: "start" }); return; }
     if (act === "woedit") { openWo(id); return; }
@@ -3268,6 +3378,9 @@ function wire() {
   $("#rwNext").onclick = () => rwNext(false); $("#rwBack").onclick = () => rwNext(true); $("#rwPrint").onclick = () => printAbstract(null);
   $("#tkOwner").onchange = e => { TK_OWNER = e.target.value; renderTasks(); };
   $("#woFile").onchange = e => { const f = e.target.files[0]; if (f) importWo(f); e.target.value = ""; };
+  $("#reqFile").onchange = e => { const f = e.target.files[0]; if (f) importReqs(f); e.target.value = ""; };
+  $("#reqTbl").addEventListener("change", reqEdit);
+  $("#rqNewItem").onkeydown = e => { if (e.key === "Enter") reqAdd(); };
 }
 
 function init() {
