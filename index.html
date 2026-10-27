@@ -1003,7 +1003,7 @@ function upPath(kind, id) { const p = upPlace(kind, id); return p ? p.parts.conc
 function upMsg(id, html) { $$('[data-up="' + id + '"]').forEach(el => { el.innerHTML = html; }); }
 function pickUpload(kind, id) {
   UP_TARGET = { kind: kind, id: id };
-  const inp = $("#upFile"); inp.value = ""; inp.click();
+  const inp = $("#upFile"); inp.value = ""; inp.accept = kind === "ap" ? "application/pdf,.pdf" : ""; inp.click();
 }
 async function runUpload(click) {
   const t = UP_TARGET, files = UP_FILES; if (!t || !files || !files.length) return;
@@ -3449,10 +3449,10 @@ function renderMat() {
 
   h += '<div class="card" style="margin-bottom:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Rate approvals</h2><span class="sub">' + aps.filter(a => a.status === "approved").length + " approved</span><span style=\"flex:1\"></span><button class=\"small primary\" data-act=\"apnew\">+ Rate approval</button></div>" +
     '<div class="help">Comes first: no lot or secured advance without a client-approved rate. Enter the vendor quotes, print the comparison sheet for the client, then record who approved which rate and until when.</div>' +
-    (aps.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Material</th><th class="l">Vendors</th><th>Lowest landed</th><th class="l">Proposed</th><th>Approved rate</th><th class="l">Approved by</th><th class="l">Valid to</th><th class="l">Status</th><th></th></tr></thead><tbody>' +
+    (aps.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Material</th><th class="l">Vendors</th><th>Lowest landed</th><th class="l">Proposed</th><th>Approved rate</th><th class="l">Approved by</th><th class="l">Valid to</th><th class="l">Status</th><th class="l">Approval</th><th></th></tr></thead><tbody>' +
       aps.map(a => { const m = mtOf(a.mtId), vs = a.vendors.filter(v => v.name), lo = vs.length ? Math.min.apply(null, vs.map(apLanded)) : 0, late = a.status === "approved" && a.validTo && a.validTo < today();
         return '<tr><td class="l">' + esc(mtLabel(m)) + '</td><td class="l">' + vs.length + "</td><td>" + (lo ? rateFmt(lo) : "") + '</td><td class="l">' + esc(a.pick || "") + "</td><td>" + (+a.rate ? rateFmt(a.rate) : "") + '</td><td class="l">' + esc(a.approver || "") + '</td><td class="l">' + (a.validTo ? dmy(a.validTo) + (late ? " " + tg("expired", "bad") : "") : "") + '</td><td class="l">' + tg(AP_ST[a.status] || a.status, a.status === "approved" ? "ok" : a.status === "rejected" ? "bad" : "") +
-          '</td><td style="white-space:nowrap"><button class="small" data-act="apedit" data-id="' + esc(a.id) + '">Open</button> <button class="small" data-act="apprint" data-id="' + esc(a.id) + '">Comparison sheet</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<div class="sub">None yet.</div>') + "</div>";
+          '</td><td class="l" data-up="' + esc(a.id) + '">' + (a.link ? linkHtml(a.link).replace("Open file", "Open") + " " : "") + '<button class="small" data-act="upl" data-k="ap" data-id="' + esc(a.id) + '">' + (a.link ? "Replace" : "Upload PDF") + '</button></td><td style="white-space:nowrap"><button class="small" data-act="apedit" data-id="' + esc(a.id) + '">Open</button> <button class="small" data-act="apprint" data-id="' + esc(a.id) + '">Comparison sheet</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<div class="sub">None yet.</div>') + "</div>";
 
   h += '<div class="card" style="margin-bottom:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Material lots</h2><span class="sub">' + lots.length + " lot" + (lots.length === 1 ? "" : "s") + '</span><span style="flex:1"></span><button class="small primary" data-act="ltnew">+ Lot delivered</button></div>' +
     '<div class="help">One lot per invoice delivered to site, at its approved rate. Documents: verified ones count towards the %. Warnings come from the invoice, weighbridge, e-way bill and test certificate details entered on the lot.</div>' +
@@ -3579,7 +3579,7 @@ function drawAppr() {
     '<label>Status<select id="apSt">' + Object.keys(AP_ST).map(k => '<option value="' + k + '"' + (AP.status === k ? " selected" : "") + ">" + AP_ST[k] + "</option>").join("") + "</select></label>" +
     '<label>Sent to client on<input type="date" id="apSent" value="' + esc(AP.sentOn || "") + '"></label><label>Approved by (client)<input type="text" id="apBy" value="' + esc(AP.approver || "") + '"></label>' +
     '<label>Approved rate (before GST, per ' + esc((m && m.unit) || "unit") + ')<input type="text" id="apRate" inputmode="decimal" value="' + esc(+AP.rate || "") + '"></label><label>Valid until<input type="date" id="apValid" value="' + esc(AP.validTo || "") + '"></label>' +
-    '<label style="grid-column:1/-1">Client approval (letter or email link)<input type="text" id="apLink" value="' + esc(AP.link || "") + '" placeholder="https://drive.google.com/..."></label>' + (AP.id ? '<div style="grid-column:1/-1" data-up="' + esc(AP.id) + '"><button class="small" data-act="upl" data-k="ap" data-id="' + esc(AP.id) + '">Upload approval</button></div>' : "") +
+    '<label style="grid-column:1/-1">Client approval (letter or email link)<input type="text" id="apLink" value="' + esc(AP.link || "") + '" placeholder="https://drive.google.com/..."></label>' + '<div style="grid-column:1/-1;font-size:13px"' + (AP.id ? ' data-up="' + esc(AP.id) + '"' : "") + '><button class="small" id="apUp">Upload approval PDF</button> <span class="sub">saves the approval, then files the PDF in Drive under ' + esc(contractParts(w.client, w).concat(["04 Materials", "Rate approvals"]).join(" / ")) + "</span></div>" +
     '<label style="grid-column:1/-1">Note<input type="text" id="apNote" value="' + esc(AP.note || "") + '"></label></div>' +
     '<div id="apMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' + (AP.id ? '<button id="apDel" style="margin-right:auto">Delete</button>' : "") + '<button id="apPrint">Comparison sheet</button><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
   $("#modal").classList.add("wide");
@@ -3593,16 +3593,18 @@ function drawAppr() {
     if (S.lots.some(l => l.apprId === AP.id)) { $("#apMsg").textContent = "Lots use this approval. Remove them first, or mark it rejected."; return; }
     const id = AP.id; closeModal(); confirmModal("Delete this rate approval?", "Its vendor quotes go too.", "Delete", () => { S.rapps = S.rapps.filter(a => a.id !== id); persist(); renderAll(); toast("Rate approval deleted"); });
   };
-  $("#mSave").onclick = () => {
+  const saveAp = () => {   // returns the saved approval's id, or "" with the reason shown
     readAppr();
     const vs = AP.vendors.filter(v => v.name.trim());
-    if (!vs.length || !vs.some(v => +parseAmt(v.rate))) { $("#apMsg").textContent = "Enter at least one vendor with a basic rate."; return; }
-    if (AP.status === "approved" && !(+AP.rate > 0)) { $("#apMsg").textContent = "Enter the rate the client approved."; return; }
-    if (AP.status === "approved" && !AP.approver) { $("#apMsg").textContent = "Enter who approved it on the client's side."; return; }
+    if (!vs.length || !vs.some(v => +parseAmt(v.rate))) { $("#apMsg").textContent = "Enter at least one vendor with a basic rate."; return ""; }
+    if (AP.status === "approved" && !(+AP.rate > 0)) { $("#apMsg").textContent = "Enter the rate the client approved."; return ""; }
+    if (AP.status === "approved" && !AP.approver) { $("#apMsg").textContent = "Enter who approved it on the client's side."; return ""; }
     const rec = Object.assign({}, AP, { vendors: vs.map(v => ({ name: v.name.trim(), gstin: String(v.gstin || "").trim().toUpperCase(), rate: round2(parseAmt(v.rate)), freight: round2(parseAmt(v.freight)), loading: round2(parseAmt(v.loading)), unloading: round2(parseAmt(v.unloading)), mathadi: round2(parseAmt(v.mathadi)), gst: parseAmt(v.gst) })) });
     if (AP.id) Object.assign(rappOf(AP.id), rec); else S.rapps.push(Object.assign(rec, { id: uid() }));
-    AP = null; persist(); closeModal(); renderAll(); toast("Rate approval saved");
+    persist(); renderAll(); return rec.id;
   };
+  $("#mSave").onclick = () => { if (!saveAp()) return; AP = null; closeModal(); toast("Rate approval saved"); };
+  $("#apUp").onclick = () => { const id = saveAp(); if (!id) return; AP = JSON.parse(JSON.stringify(rappOf(id))); drawAppr(); pickUpload("ap", id); };
 }
 function readAppr() {
   if (!AP || !$("#apMt")) return;
