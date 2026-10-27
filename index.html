@@ -1469,7 +1469,7 @@ function renderWo() {
   const stat = w => { const cs = woChecks(w.id).filter(c => c.phase !== "bill" && c.status !== "na"), d = cs.filter(c => c.status === "done").length, l = cs.filter(ckLate).length; return { n: cs.length, d: d, l: l }; };
   $("#woSum").textContent = act.length ? act.length + " active contract" + (act.length === 1 ? "" : "s") : "";
   $("#woTbl").innerHTML = all.length ? '<table><thead><tr><th class="l">Client</th><th class="l">Contract</th><th>Value</th><th class="l">Period</th><th class="l">Payment</th><th class="l">Checklist</th><th></th></tr></thead><tbody>' +
-    all.map(w => { const s = stat(w); return '<tr' + (w.id === WO_SEL ? ' class="sel"' : "") + '><td class="l">' + esc(w.client) + '</td><td class="l">' + esc(woLabel(w)) + (w.status === "closed" ? ' <span class="tag">closed</span>' : "") + "</td><td>" + (+w.amt ? fmt(+w.amt) : "") + '</td><td class="l">' + (w.start ? dmy(w.start) : "") + (w.end ? " to " + dmy(w.end) : "") + '</td><td class="l sub">' + esc(w.payTerms || "") + '</td><td class="l">' + (s.n ? s.d + " of " + s.n + " done" + (s.l ? ' <span class="tag bad">' + s.l + " overdue</span>" : "") : '<span class="sub">no checklist</span>') + '</td><td><button class="small" data-act="wopick" data-id="' + esc(w.id) + '">' + (w.id === WO_SEL ? "Showing" : "Open") + "</button></td></tr>"; }).join("") + "</tbody></table>"
+    all.map(w => { const s = stat(w); return '<tr' + (w.id === WO_SEL ? ' class="sel"' : "") + '><td class="l">' + esc(w.client) + '</td><td class="l">' + esc(woLabel(w)) + (w.status === "closed" ? ' <span class="tag">closed</span>' : "") + "</td><td>" + (+w.amt ? fmt(+w.amt) : "") + '</td><td class="l">' + (w.start ? dmy(w.start) : "") + (w.end ? " to " + dmy(w.end) : "") + '</td><td class="l sub">' + esc(w.payTerms || "") + '</td><td class="l">' + (s.n ? s.d + " of " + s.n + " done" + (s.l ? ' <span class="tag bad">' + s.l + " overdue</span>" : "") : '<span class="sub">no checklist</span>') + '</td><td style="white-space:nowrap"><button class="small" data-act="wopick" data-id="' + esc(w.id) + '">' + (w.id === WO_SEL ? "Showing" : "Open") + '</button> <button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit</button> <button class="small" data-act="wodel" data-id="' + esc(w.id) + '">Delete</button></td></tr>'; }).join("") + "</tbody></table>"
     : '<div class="sub">No contracts yet. Use + Work order to add one with its terms and a checklist, or Import to load several from a file.</div>';
   const w = woOf(WO_SEL), el = $("#woDetail");
   if (!w) { el.classList.add("hide"); el.innerHTML = ""; return; }
@@ -1477,11 +1477,16 @@ function renderWo() {
   const terms = [["Bill when", w.billRule], ["Payment", w.payTerms], ["Retention", (+w.retPct ? w.retPct + "%" : "") + (w.retTerms ? (+w.retPct ? ", " : "") + w.retTerms : "")], ["Defect liability", +w.dlp ? w.dlp + " months" : ""], ["TDS", +w.tdsPct ? w.tdsPct + "%" : ""], ["Security", w.security], ["Advance", w.advance], ["Delay penalty", w.penalty], ["Note", w.note]].filter(x => x[1]);
   const cs = woChecks(w.id);
   const row = c => { const late = ckLate(c); return '<tr><td class="l">' + (c.phase === "bill" ? "" : '<input type="checkbox" data-act="cktick" data-id="' + esc(c.id) + '"' + (c.status === "done" ? " checked" : "") + (c.status === "na" ? " disabled" : "") + ' aria-label="Done">') + '</td><td class="l"' + (c.status === "na" ? ' style="text-decoration:line-through;color:var(--muted)"' : "") + ">" + esc(c.item) + ' <span class="sub">' + esc(c.cat) + "</span>" + (c.blocks ? ' <span class="tag pi" title="An RA bill cannot be submitted without it">required</span>' : "") + (c.note ? '<div class="sub">' + esc(c.note) + "</div>" : "") + '</td><td class="l">' + esc(c.owner || "") + '</td><td class="l">' + (c.phase === "bill" ? '<span class="sub">each bill</span>' : c.status === "done" ? '<span class="tag ok">done ' + (c.doneOn ? dmy(c.doneOn) : "") + "</span>" : c.due ? '<span style="' + (late ? "color:var(--bad);font-weight:600" : "") + '">' + dmy(c.due) + "</span>" : "") + (c.expires ? '<div class="sub"' + (c.expires < addDays(today(), 30) ? ' style="color:var(--bad)"' : "") + ">expires " + dmy(c.expires) + "</div>" : "") + '</td><td class="l">' + linkHtml(c.link) + '</td><td><button class="small" data-act="ckedit" data-id="' + esc(c.id) + '">Edit</button></td></tr>'; };
-  el.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(w.client) + " &middot; " + esc(woLabel(w)) + '</h2><span style="flex:1"></span><button class="small primary" data-act="rwnew">New RA bill</button><button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit terms</button><button class="small" data-act="woclose">Close</button></div>' +
+  el.innerHTML = '<div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">' + esc(w.client) + " &middot; " + esc(woLabel(w)) + '</h2><span style="flex:1"></span><button class="small primary" data-act="rwnew">New RA bill</button><button class="small" data-act="woedit" data-id="' + esc(w.id) + '">Edit</button><button class="small" data-act="wodel" data-id="' + esc(w.id) + '">Delete</button><button class="small" data-act="woclose">Close</button></div>' +
     '<div class="woterms">' + terms.map(t => "<div><span class=\"sub\">" + t[0] + "</span><br>" + esc(t[1]) + "</div>").join("") + "</div>" +
     '<div class="sub" style="margin:8px 0">Drive folder: ' + (w.folder ? linkHtml(w.folder).replace("Open file", "open") + " &middot; " : "") + "<code>" + esc(woFolder(w)) + "</code></div>" +
     WO_PHS.map(ph => { const xs = cs.filter(c => c.phase === ph).sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || (a.due || "9").localeCompare(b.due || "9")); return '<h3 class="woph">' + WO_PH[ph] + (ph === "bill" ? ' <span class="sub">copied onto each bill in the pipeline for this contract</span>' : ph === "month" ? ' <span class="sub">ticking one adds next month\'s</span>' : "") + '<button class="small" data-act="ckadd" data-ph="' + ph + '">+ Item</button></h3>' +
       (xs.length ? '<div class="tblwrap"><table class="cktbl fix"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:110px"><col style="width:80px"><col style="width:64px"></colgroup><tbody>' + xs.map(row).join("") + "</tbody></table></div>" : '<div class="sub">None</div>'); }).join("");
+}
+function delWo(id) {
+  const w = woOf(id); if (!w) return;
+  const n = S.checks.filter(c => c.woId === w.id).length;
+  confirmModal("Delete this work order?", esc(w.client) + " &middot; " + esc(woLabel(w)) + (n ? ". Its checklist (" + n + " item" + (n === 1 ? "" : "s") + ") goes too" : "") + ". Bills in the pipeline keep their documents. Use Edit, Status: Closed instead to keep it.", "Delete", () => { S.wos = S.wos.filter(x => x !== w); S.checks = S.checks.filter(c => c.woId !== w.id); if (WO_SEL === w.id) WO_SEL = null; persist(); renderAll(); toast("Work order deleted"); });
 }
 function openWo(id, clientArg) {
   const w = id ? woOf(id) : null, names = clientNames();
@@ -1502,7 +1507,7 @@ function openWo(id, clientArg) {
   $("#modal").classList.add("wide");
   if (!w) { const re = () => { const t = $("#wo_new").value.trim(); $("#modal .tplpick").innerHTML = tplPickHtml(t ? (matchClient(t) || t) : $("#wo_clientSel").value); }; $("#wo_clientSel").onchange = re; $("#wo_new").onchange = re; }
   $("#mCancel").onclick = closeModal;
-  if (w) $("#woDel").onclick = () => { closeModal(); confirmModal("Delete this work order?", esc(w.client) + " &middot; " + esc(woLabel(w)) + ". Its checklist goes too. Bills in the pipeline keep their documents. Use Status: Closed instead to keep it.", "Delete", () => { S.wos = S.wos.filter(x => x !== w); S.checks = S.checks.filter(c => c.woId !== w.id); persist(); renderAll(); toast("Work order deleted"); }); };
+  if (w) $("#woDel").onclick = () => { closeModal(); delWo(w.id); };
   $("#mSave").onclick = () => {
     const typed = $("#wo_new").value.trim(), client = typed ? (matchClient(typed) || typed) : $("#wo_clientSel").value, g = k => $("#wo_" + k).value.trim();
     if (!client) { $("#woMsg").textContent = "Pick a client or type a new one."; return; }
@@ -3304,6 +3309,7 @@ function wire() {
     if (act === "newwo") { openWo(null, $("#tab-client").classList.contains("hide") ? null : SEL); return; }
     if (act === "wopick") { WO_SEL = id; renderWo(); $("#woDetail").scrollIntoView({ block: "start" }); return; }
     if (act === "woedit") { openWo(id); return; }
+    if (act === "wodel") { delWo(id); return; }
     if (act === "woclose") { WO_SEL = null; renderWo(); return; }
     if (act === "ckadd") { openCheck(null, t.dataset.ph); return; }
     if (act === "ckedit") { openCheck(id); return; }
