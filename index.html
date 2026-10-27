@@ -100,6 +100,7 @@ tr.tot td{font-weight:650;border-top:2px solid var(--line)}
 .cktbl td{vertical-align:top}.cktbl.fix{table-layout:fixed;width:100%;min-width:560px}.cktbl.fix td{overflow-wrap:anywhere}.cktbl td.l{text-align:left}
 tr.sel td{background:var(--surface2)}
 .tplpick{display:flex;flex-direction:column;gap:4px;font-size:13px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px}.tplpick b{margin-top:6px}
+.mabar{height:6px;width:90px;background:var(--surface2);border-radius:3px;overflow:hidden;margin:3px 0 1px}.mabar div{height:100%;background:var(--cred)}
 label.btnlike{display:inline-flex;align-items:center;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--surface)}
 .plov{display:grid;gap:10px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0}
 @media(max-width:640px){.plov{grid-template-columns:minmax(0,1fr)}}
@@ -254,6 +255,7 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     <button data-tab="bills">All bills</button>
     <button data-tab="pipeline">In pipeline <span class="cnt" id="plCnt"></span></button>
     <button data-tab="wo">Work orders</button>
+    <button data-tab="mat">Materials &amp; SA</button>
     <button data-tab="receipts">Receipts</button>
     <button data-tab="work">Work done</button>
     <button data-tab="forecast">Collections forecast</button>
@@ -472,6 +474,22 @@ a.lnk{color:var(--inv);cursor:pointer;text-decoration:underline;text-decoration-
     </div>
   </section>
 
+  <section id="tab-mat" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar"><h2 style="margin:0">Material billing prerequisites and secured advance</h2><span style="flex:1"></span><label class="sub">Work order <select id="maWo"></select></label></div>
+      <div class="help" style="margin:6px 0 0">Order of work: set the materials and their WO basic rates, get the rate approved by the client, log each lot delivered with its documents, then raise the secured advance request and download its pack.</div>
+    </div>
+    <div id="maBody"></div>
+    <div class="card" style="margin-top:12px">
+      <div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Documents per material</h2><span class="sub" id="mdSum"></span><span style="flex:1"></span>
+        <label class="small btnlike" title="A .json file: { material_documents: [ { material, document, level, work_order } ] }">Import JSON<input type="file" id="mdFile" accept=".json,application/json" hidden></label>
+        <button class="small" data-act="mdexport">Export JSON</button></div>
+      <div class="help">The checklist each new lot gets for its material. A row with a work order applies to that contract only: same document name changes its requirement there (or drops it with &ldquo;Not for this work order&rdquo;), a new name adds it. Lots keep their own copy; use &ldquo;Refresh from checklist&rdquo; on a lot to pick up additions.</div>
+      <div class="toolbar" style="margin:6px 0"><select id="mdNewMat"></select><input type="text" id="mdNewDoc" placeholder="New document, e.g. Test certificate" style="flex:1;min-width:200px"><select id="mdNewLv"><option value="mandatory">Mandatory</option><option value="conditional">Conditional</option><option value="optional">Optional</option></select><select id="mdNewWo"></select><button class="small" data-act="mdadd">Add</button></div>
+      <div class="tblwrap" id="mdTbl"></div>
+    </div>
+  </section>
+
   <section id="tab-forecast" class="hide">
     <div class="card" style="margin-bottom:12px">
       <h2>Money in by week</h2>
@@ -524,14 +542,14 @@ const round2 = n => Math.round(n * 100) / 100;
 const uid = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 /* ---------- state ---------- */
-let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+let S = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], mtypes: [], mdocs: [], rapps: [], lots: [], ldocs: [], sas: [], srecs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
 const showD = () => S.settings.showD !== false;
 const vr = () => S.receipts.filter(r => showD() || r.mode !== "D");
 let saveTimer = null;
 
 function normalize(o) {
   if (o) o = JSON.parse(JSON.stringify(o));   // snapshot data can be read-only; always work on a copy
-  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
+  const n = { pis: [], dbills: [], receipts: [], advances: [], boq: [], work: [], commits: [], pipe: [], wos: [], checks: [], bdocs: [], ralines: [], advbills: [], reqs: [], mtypes: [], mdocs: [], rapps: [], lots: [], ldocs: [], sas: [], srecs: [], overrides: {}, deleted: {}, payAdj: {}, billEdits: {}, settings: { credit: 30, est: true, showD: true, asOn: DATA.asOn } };
   if (!o) return n;
   n.advances = Array.isArray(o.advances) ? o.advances : [];
   n.boq = Array.isArray(o.boq) ? o.boq : [];
@@ -544,6 +562,7 @@ function normalize(o) {
   n.ralines = Array.isArray(o.ralines) ? o.ralines : [];
   n.advbills = Array.isArray(o.advbills) ? o.advbills : [];
   n.reqs = Array.isArray(o.reqs) ? o.reqs : [];
+  ["mtypes", "mdocs", "rapps", "lots", "ldocs", "sas", "srecs"].forEach(k => { n[k] = Array.isArray(o[k]) ? o[k] : []; });
   n.pis = Array.isArray(o.pis) ? o.pis : [];
   n.dbills = Array.isArray(o.dbills) ? o.dbills : [];
   n.receipts = Array.isArray(o.receipts) ? o.receipts : [];
@@ -584,10 +603,17 @@ const TABS = {
   commitments: ["id", "billId", "client", "date", "amt", "status", "note", "by", "loggedOn", "closedOn"],
   pipeline: ["id", "client", "site", "desc", "kind", "amt", "stage", "owner", "target", "note", "billId", "addedBy", "addedOn", "updatedOn", "woId", "seq", "periodFrom", "periodTo", "folder"],
   ra_lines: ["id", "pipeId", "woId", "boqId", "code", "item", "unit", "rate", "prevQty", "qty"],
-  work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note"],
+  work_orders: ["id", "client", "site", "woNo", "kind", "woDate", "amt", "start", "end", "billRule", "payTerms", "retPct", "retTerms", "dlp", "tdsPct", "security", "advance", "penalty", "folder", "status", "note", "saPct", "saBase", "saRecMonths", "saPending", "wbTol"],
   wo_checks: ["id", "woId", "phase", "cat", "item", "owner", "due", "dueDay", "expires", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   adv_bills: ["id", "advId", "billId", "amt"],
   requisites: ["id", "phase", "cat", "item", "client", "req", "exp", "dueDay", "owner", "note", "ord"],
+  mat_types: ["id", "woId", "name", "mat", "unit", "basicRate", "altRate", "gstPct", "saOk", "note"],
+  mat_docs: ["id", "mat", "doc", "level", "woId", "ord", "note"],
+  rate_appr: ["id", "woId", "mtId", "qty", "vendors", "pick", "sentOn", "approver", "rate", "validTo", "status", "link", "note"],
+  mat_lots: ["id", "woId", "mtId", "apprId", "vendor", "gstin", "invNo", "invDate", "addressee", "qty", "unit", "rate", "invRate", "gstPct", "costs", "gateDate", "wbNet", "ewbVeh", "wbVeh", "heatInv", "heatTc", "note"],
+  lot_docs: ["id", "lotId", "item", "level", "status", "due", "link", "verBy", "verAt", "note", "ord"],
+  sa_req: ["id", "woId", "no", "date", "lotIds", "pct", "base", "amt", "status", "subOn", "certAmt", "certOn", "paidOn", "recMonths", "note"],
+  sa_rec: ["id", "saId", "lotId", "date", "qty", "amt", "note"],
   bill_docs: ["id", "pipeId", "woId", "cat", "item", "owner", "due", "status", "link", "blocks", "note", "doneOn", "doneBy"],
   overrides: ["billId", "status", "billno", "tds", "ret", "adv", "oth", "date", "base", "total"],
   settings: ["key", "value"],
@@ -595,12 +621,12 @@ const TABS = {
   flags: ["id", "level", "title", "detail"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
-const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", adv_bills: "id", requisites: "id", overrides: "billId", settings: "key" };
-const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines", "adv_bills", "requisites"];   // added after the first Sheets were made: created on first load if missing
-const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo", "folder"] };   // columns added later: appended to the header row on first load if missing
+const KEY = { bills: "id", proformas: "id", direct_bills: "id", receipts: "id", advances: "id", boq: "id", work_log: "id", commitments: "id", pipeline: "id", work_orders: "id", wo_checks: "id", bill_docs: "id", ra_lines: "id", adv_bills: "id", requisites: "id", mat_types: "id", mat_docs: "id", rate_appr: "id", mat_lots: "id", lot_docs: "id", sa_req: "id", sa_rec: "id", overrides: "billId", settings: "key" };
+const AUTO_TABS = ["advances", "boq", "work_log", "commitments", "pipeline", "work_orders", "wo_checks", "bill_docs", "ra_lines", "adv_bills", "requisites", "mat_types", "mat_docs", "rate_appr", "mat_lots", "lot_docs", "sa_req", "sa_rec"];   // added after the first Sheets were made: created on first load if missing
+const AUTO_COLS = { overrides: ["date", "base", "total"], pipeline: ["woId", "seq", "periodFrom", "periodTo", "folder"], work_orders: ["saPct", "saBase", "saRecMonths", "saPending", "wbTol"] };   // columns added later: appended to the header row on first load if missing
 const EDITABLE = Object.keys(KEY);   // meta, flags: read-only here; audit: append-only
-const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1, ord: 1 };
-const BOOLC = { dateEst: 1, deleted: 1, blocks: 1, req: 1, exp: 1 };
+const NUMC = { base: 1, total: 1, ret: 1, adv: 1, oth: 1, tds: 1, pay: 1, held: 1, amt: 1, pct: 1, payAdj: 1, rate: 1, qty: 1, retPct: 1, dlp: 1, tdsPct: 1, dueDay: 1, prevQty: 1, ord: 1, basicRate: 1, altRate: 1, gstPct: 1, invRate: 1, wbNet: 1, certAmt: 1, recMonths: 1 };
+const BOOLC = { dateEst: 1, deleted: 1, blocks: 1, req: 1, exp: 1, saOk: 1 };
 
 let USER = null, TOKEN = null, TOKEN_EXP = 0, tokenClient = null, onTokenError = null;
 // Until this browser has once received the Sheets permission, always show Google's permission screen:
@@ -714,6 +740,14 @@ async function loadAll() {
   n.bdocs = raw.bill_docs.map(d => Object.assign(d, { due: toIso(d.due), doneOn: toIso(d.doneOn), status: CK_ST[d.status] ? d.status : "open" }));
   n.ralines = raw.ra_lines;
   n.advbills = raw.adv_bills;
+  const pj = (v, d) => { try { const x = JSON.parse(v || ""); return Array.isArray(x) ? x : d; } catch (e) { return d; } };
+  n.mtypes = raw.mat_types;
+  n.mdocs = raw.mat_docs.map(r => Object.assign(r, { level: MD_LV[r.level] ? r.level : "mandatory", ord: +r.ord || 0 }));
+  n.rapps = raw.rate_appr.map(a => Object.assign(a, { vendors: pj(a.vendors, []), sentOn: toIso(a.sentOn), validTo: toIso(a.validTo), status: AP_ST[a.status] ? a.status : "draft" }));
+  n.lots = raw.mat_lots.map(l => Object.assign(l, { costs: pj(l.costs, []), invDate: toIso(l.invDate), gateDate: toIso(l.gateDate) }));
+  n.ldocs = raw.lot_docs.map(d => Object.assign(d, { status: LD_ST[d.status] ? d.status : "pending", due: toIso(d.due), verAt: toIso(d.verAt), ord: +d.ord || 0 }));
+  n.sas = raw.sa_req.map(x => Object.assign(x, { lotIds: String(x.lotIds || "").split(",").map(t => t.trim()).filter(Boolean), date: toIso(x.date), subOn: toIso(x.subOn), certOn: toIso(x.certOn), paidOn: toIso(x.paidOn), status: SA_ST[x.status] && x.status !== "docs" ? x.status : "draft", base: x.base === "gst" ? "gst" : "basic" }));
+  n.srecs = raw.sa_rec.map(r => Object.assign(r, { date: toIso(r.date) }));
   n.reqs = raw.requisites.map(r => Object.assign(r, { phase: WO_PH[r.phase] ? r.phase : "bill", dueDay: r.dueDay || "", ord: +r.ord || 0 }));
   raw.overrides.forEach(o => { n.overrides[o.billId] = { status: o.status, billno: o.billno, manual: true, tds: toNum(o.tds, 0), ret: toNum(o.ret, 0), adv: toNum(o.adv, 0), oth: toNum(o.oth, 0), date: o.date || "", base: toNum(o.base, 0), total: toNum(o.total, 0) }; });
   const memo = {}; Object.keys(mm).forEach(k => { const v = mm[k]; memo[k] = typeof v === "number" ? v : (toNum(v, null) != null && /^[\d.,\s-]+$/.test(String(v)) ? toNum(v, 0) : v); });
@@ -744,6 +778,13 @@ function rowsView() {
   S.ralines.forEach(p => { v.ra_lines[p.id] = pick(p, TABS.ra_lines); });
   S.advbills.forEach(p => { v.adv_bills[p.id] = pick(p, TABS.adv_bills); });
   S.reqs.forEach(p => { v.requisites[p.id] = pick(p, TABS.requisites); });
+  S.mtypes.forEach(p => { v.mat_types[p.id] = pick(p, TABS.mat_types); });
+  S.mdocs.forEach(p => { v.mat_docs[p.id] = pick(p, TABS.mat_docs); });
+  S.rapps.forEach(p => { v.rate_appr[p.id] = pick(Object.assign({}, p, { vendors: JSON.stringify(p.vendors || []) }), TABS.rate_appr); });
+  S.lots.forEach(p => { v.mat_lots[p.id] = pick(Object.assign({}, p, { costs: JSON.stringify(p.costs || []) }), TABS.mat_lots); });
+  S.ldocs.forEach(p => { v.lot_docs[p.id] = pick(p, TABS.lot_docs); });
+  S.sas.forEach(p => { v.sa_req[p.id] = pick(Object.assign({}, p, { lotIds: (p.lotIds || []).join(",") }), TABS.sa_req); });
+  S.srecs.forEach(p => { v.sa_rec[p.id] = pick(p, TABS.sa_rec); });
   Object.keys(S.overrides).forEach(id => { v.overrides[id] = pick(Object.assign({ billId: id }, S.overrides[id]), TABS.overrides); });
   ["asOn", "credit", "est", "showD"].forEach(k => { v.settings[k] = { key: k, value: S.settings[k] }; });
   return JSON.parse(JSON.stringify(v));
@@ -932,7 +973,22 @@ async function driveUpload(file, name, folderId) {
 function billFolderName(x) { const n = String(x.seq || "").match(/\d+/); return n ? "RA-" + n[0].padStart(2, "0") + (x.periodTo || x.target ? " " + (x.periodTo || x.target) : "") : (x.desc || "Bill").slice(0, 60); }
 function contractParts(client, w) { return w ? [w.client, [w.woNo, w.site].filter(Boolean).join(" ") || "Work order"] : [client, "Without work order"]; }
 function docCatFolder(cat) { return /measure/i.test(cat) ? "01 Measurement" : /invoice|tax|gst/i.test(cat) ? "02 Invoice" : "03 Compliance"; }
+function lotFolder(l) { return [((mtOf(l.mtId) || {}).name || "Material"), l.invNo, l.invDate].filter(Boolean).join(" "); }
 function upPlace(kind, id) {
+  if (kind === "ld") {
+    const d = S.ldocs.filter(y => y.id === id)[0], l = d && lotOf(d.lotId), w = l && woOf(l.woId); if (!w) return null;
+    return { rec: d, parts: contractParts(w.client, w).concat(["04 Materials", lotFolder(l)]), sub: "", w: w };
+  }
+  if (kind === "lc") {
+    const p = id.split("|"), l = lotOf(p[0]), w = l && woOf(l.woId); if (!w || !COSTS[p[1]]) return null;
+    let c = (l.costs || []).filter(x => x.k === p[1])[0];
+    if (!c) { c = { k: p[1], item: COSTS[p[1]], amt: 0, link: "", disp: false }; l.costs = (l.costs || []).concat([c]); }
+    return { rec: c, nm: COSTS[p[1]] + " receipt", parts: contractParts(w.client, w).concat(["04 Materials", lotFolder(l)]), sub: "Receipts", w: w };
+  }
+  if (kind === "ap") {
+    const a = rappOf(id), w = a && woOf(a.woId); if (!w) return null;
+    return { rec: a, nm: "Rate approval " + ((mtOf(a.mtId) || {}).name || ""), parts: contractParts(w.client, w).concat(["04 Materials", "Rate approvals"]), sub: "", w: w };
+  }
   if (kind === "doc") {
     const d = S.bdocs.filter(y => y.id === id)[0], x = d && S.pipe.filter(y => y.id === d.pipeId)[0]; if (!x) return null;
     const w = woOf(x.woId);
@@ -960,17 +1016,23 @@ async function runUpload(click) {
     upMsg(t.id, "Uploading " + files.length + " file" + (files.length === 1 ? "" : "s") + "…");
     const bill = await driveFolder(p.parts), dest = p.sub ? await driveFolder(p.parts.concat([p.sub])) : bill;
     let last = null;
-    for (const f of files) last = await driveUpload(f, (p.rec.item + " - " + f.name).slice(0, 180), dest.id);
+    for (const f of files) last = await driveUpload(f, ((p.nm || p.rec.item) + " - " + f.name).slice(0, 180), dest.id);
     UP_FILES = null;
     const link = files.length === 1 ? (last.webViewLink || "https://drive.google.com/file/d/" + last.id + "/view") : dest.link;
     const r = p.rec; r.link = link;
-    if (r.status !== "done") { if (t.kind === "doc") { r.status = "done"; r.doneOn = isoOf(new Date()); r.doneBy = USER ? USER.email : ""; } else setCheck(r, "done"); }
+    if (t.kind === "ld") { if (r.status !== "verified") r.status = "received"; }
+    else if (t.kind === "lc" || t.kind === "ap") {}
+    else if (r.status !== "done") { if (t.kind === "doc") { r.status = "done"; r.doneOn = isoOf(new Date()); r.doneBy = USER ? USER.email : ""; } else setCheck(r, "done"); }
     if (p.pipe && !p.pipe.folder) p.pipe.folder = bill.link;
     if (p.w && !p.w.folder) { const cf = await driveFolder(contractParts(p.w.client, p.w)); p.w.folder = cf.link; }
     persist();
     const tr = $('#modal tr[data-doc="' + t.id + '"]'), ck = t.kind === "ck" && $("#ckLink") && $("#modal").dataset.ck === t.id;
     const done = '<span style="color:var(--cred)">Uploaded</span> ' + linkHtml(link).replace("Open file", "open");
-    if (tr) { $(".dLink", tr).value = link; $(".dSt", tr).value = "done"; upMsg(t.id, done); }   // a dialog is open: show it there and keep its other edits
+    const ltr = t.kind === "ld" && $('#modal tr[data-ld="' + t.id + '"]'), lc = t.kind === "lc" && $('#ltCost [data-c="' + t.id.split("|")[1] + ':link"]'), apl = t.kind === "ap" && $("#apLink");
+    if (ltr) { $(".lLink", ltr).value = link; if ($(".lSt", ltr).value !== "verified") $(".lSt", ltr).value = "received"; upMsg(t.id, done); renderMat(); }
+    else if (lc) { lc.value = link; upMsg(t.id, done); renderMat(); }
+    else if (apl) { apl.value = link; if (AP) AP.link = link; upMsg(t.id, done); renderMat(); }
+    else if (tr) { $(".dLink", tr).value = link; $(".dSt", tr).value = "done"; upMsg(t.id, done); }   // a dialog is open: show it there and keep its other edits
     else if (ck) { $("#ckLink").value = link; $("#ckSt").value = "done"; upMsg(t.id, done); }
     else renderAll();
     toast(files.length === 1 ? "Uploaded to Drive: " + files[0].name : files.length + " files uploaded to Drive");
@@ -1651,24 +1713,38 @@ function tickDoc(id) {
 }
 /* load contracts from a JSON file: { work_orders: [ { client, woNo, ..., checks: [ { phase, cat, item, owner, due, req } ] } ] }.
    Without checks a contract gets the full template. Contracts already here (same client and number) are skipped. */
+/* a work order file may carry { materials: [ { name, type, unit, basicRate, altRate, gstPct, secured } ], securedAdvance: { pct, base, months, pending, tolerance } } */
+function woMaterials(w, o) {
+  const sa = o.securedAdvance || o.secured_advance;
+  if (sa && typeof sa === "object") { if (sa.pct != null) w.saPct = toNum(sa.pct, ""); if (sa.base) w.saBase = /gst/i.test(sa.base) ? "gst" : "basic"; if (sa.months != null) w.saRecMonths = toNum(sa.months, ""); if (sa.pending != null) w.saPending = toBool(sa.pending) ? "TRUE" : ""; if (sa.tolerance != null) w.wbTol = toNum(sa.tolerance, ""); }
+  let n = 0;
+  (Array.isArray(o.materials) ? o.materials : []).forEach(x => {
+    if (!x || !x.name || S.mtypes.some(m => m.woId === w.id && norm(m.name) === norm(x.name))) return;
+    const k = String(x.type || x.mat || "other").toLowerCase(), mat = MT_KINDS[k] ? k : "other";
+    S.mtypes.push({ id: uid(), woId: w.id, name: String(x.name), mat: mat, unit: String(x.unit || ""), basicRate: round2(toNum(x.basicRate, 0)), altRate: round2(toNum(x.altRate, 0)), gstPct: toNum(x.gstPct, 18), saOk: x.secured == null ? MT_SA[mat] !== false : toBool(x.secured), note: String(x.note || "") });
+    n++;
+  });
+  return n;
+}
 function importWo(file) {
   const rd = new FileReader();
   rd.onload = () => {
     let j; try { j = JSON.parse(rd.result); } catch (e) { toast("That file is not JSON."); return; }
-    const list = Array.isArray(j) ? j : (j.work_orders || []); let nw = 0, nc = 0, skip = 0;
+    const list = Array.isArray(j) ? j : (j.work_orders || []); let nw = 0, nc = 0, skip = 0, nm = 0;
     list.forEach(o => {
       if (!o || !o.client || (!o.woNo && !o.site)) return;
       const cl = matchClient(String(o.client)) || String(o.client);
-      if (S.wos.some(w => w.client === cl && String(w.woNo || "") === String(o.woNo || "").trim() && String(w.site || "") === String(o.site || "").trim())) { skip++; return; }
+      const ex = S.wos.filter(w => w.client === cl && String(w.woNo || "") === String(o.woNo || "").trim() && String(w.site || "") === String(o.site || "").trim())[0];
+      if (ex) { skip++; nm += woMaterials(ex, o); return; }
       const w = { id: uid(), status: "active" };
       TABS.work_orders.forEach(c => { if (c !== "id") w[c] = o[c] == null ? "" : NUMC[c] ? toNum(o[c], "") : String(o[c]).trim(); });
       w.client = matchClient(w.client) || w.client; w.kind = w.kind === "LOI" ? "LOI" : "WO"; w.status = w.status === "closed" ? "closed" : "active";
-      S.wos.push(w); nw++;
+      S.wos.push(w); nw++; nm += woMaterials(w, o);
       const cs = Array.isArray(o.checks) ? o.checks.filter(c => c && c.item && WO_PH[c.phase]).map(c => ({ id: uid(), woId: w.id, phase: c.phase, cat: String(c.cat || ""), item: String(c.item), owner: String(c.owner || ""), due: toIso(c.due || ""), dueDay: +c.dueDay || "", expires: toIso(c.expires || ""), status: CK_ST[c.status] ? c.status : "open", link: String(c.link || ""), blocks: !!(c.req || c.blocks), note: String(c.note || ""), doneOn: "", doneBy: "" }))
         : tplChecks(w, reqFor(w.client));
       S.checks = S.checks.concat(cs); nc += cs.length;
     });
-    persist(); renderAll(); toast(nw ? "Imported " + nw + " work order" + (nw === 1 ? "" : "s") + " with " + nc + " checklist items" + (skip ? ", " + skip + " already here" : "") : skip ? "All " + skip + " were already here" : "No work orders found in that file");
+    persist(); renderAll(); toast((nw ? "Imported " + nw + " work order" + (nw === 1 ? "" : "s") + " with " + nc + " checklist items" + (skip ? ", " + skip + " already here" : "") : skip ? "All " + skip + " were already here" : "No work orders found in that file") + (nm ? "; " + nm + " material" + (nm === 1 ? "" : "s") + " with basic rates added" : ""));
   };
   rd.readAsText(file);
 }
@@ -2394,6 +2470,12 @@ function renderFlags(A) {
   if (pll.length) f.push(["med", pll.length + " bill" + (pll.length === 1 ? "" : "s") + " in pipeline past the submit-by date", pll.slice(0, 6).map(x => x.client.split(" ")[0] + " " + x.desc + " (" + dmy(x.target) + (x.owner ? ", " + x.owner : "") + ")").join(", ") + (pll.length > 6 ? "\u2026" : "") + ". See the In pipeline tab."]);
   const ckl = S.checks.filter(c => c.phase !== "bill" && ckLate(c) && woOf(c.woId) && woOf(c.woId).status !== "closed");
   if (ckl.length) f.push(["med", ckl.length + " work order checklist item" + (ckl.length === 1 ? "" : "s") + " overdue", ckl.slice(0, 6).map(c => woShort(woOf(c.woId)) + ": " + c.item + " (" + dmy(c.due) + (c.owner ? ", " + c.owner : "") + ")").join("; ") + (ckl.length > 6 ? "\u2026" : "") + ". See My tasks."]);
+  const lw = S.lots.filter(l => woOf(l.woId) && lotSt(l) !== "recovered" && lotWarn(l).length);
+  if (lw.length) f.push(["med", lw.length + " material lot" + (lw.length === 1 ? "" : "s") + " with cross-check warnings", lw.slice(0, 6).map(l => ((mtOf(l.mtId) || {}).name || "") + " " + l.invNo + ": " + lotWarn(l)[0]).join("; ")]);
+  const ldl = S.ldocs.filter(d => d.status === "pending" && d.due && d.due < S.settings.asOn && lotOf(d.lotId));
+  if (ldl.length) f.push(["med", ldl.length + " material document" + (ldl.length === 1 ? "" : "s") + " past the pending date", ldl.slice(0, 6).map(d => { const l = lotOf(d.lotId); return ((mtOf(l.mtId) || {}).name || "") + " " + l.invNo + ": " + d.item + " (" + dmy(d.due) + ")"; }).join("; ")]);
+  const sal = S.sas.filter(x => x.status === "submitted" && x.subOn && x.subOn < addDays(S.settings.asOn, -30));
+  if (sal.length) f.push(["med", sal.length + " secured advance request" + (sal.length === 1 ? "" : "s") + " submitted over 30 days ago, not certified", sal.map(x => woShort(woOf(x.woId)) + " " + x.no + " (" + dmy(x.subOn) + ", " + fmt(x.amt) + ")").join("; ")]);
   const dml = plOpen().filter(x => x.stage === "ready" && docsMissing(x.id).length);
   if (dml.length) f.push(["high", dml.length + " bill" + (dml.length === 1 ? "" : "s") + " marked ready with required documents missing", dml.map(x => x.client.split(" ")[0] + " " + x.desc + ": " + docsMissing(x.id).map(d => d.item).join(", ")).join("; ") + "."]);
   ADV.filter(x => x.left <= -1).forEach(x => f.push(["high", "Advance over-recovered: " + x.a.client, "Bills deduct " + fmt(-x.left) + " more than the " + fmt(x.amt) + " advance" + (x.a.site ? " on " + x.a.site : "") + ". Check the advance amount or the deductions on the latest bills."]));
@@ -2566,7 +2648,7 @@ function renderAll() {
   renderKPIs(A); renderClientView(A); renderAge(A); renderClientBars(A); renderMatrix(A);
   $("#trendAll").innerHTML = trendCard(null);
   renderPay();
-  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderPipeline(); renderWo(); renderTasks(); renderFlags(A);
+  renderBills(); renderReceipts(); renderWork(); renderAdded(); renderDeleted(); renderForecast(); renderInflow(); renderPipeline(); renderWo(); renderMat(); renderTasks(); renderFlags(A);
   refreshClientSelect(); updatePreview();
   drawTrends();
 }
@@ -3243,13 +3325,572 @@ function exportBills() {
   } catch (e) { toast("Export failed: " + (e && e.message ? e.message : e)); }
 }
 
+/* ---------- Materials and secured advance ----------
+   Per work order: the materials with their WO basic rate (the approved actual rate minus the basic rate is paid or recovered with
+   each RA bill), client rate approvals from a vendor comparison sheet, material lots delivered to site with their document set and
+   cross-checks, and secured advance (SA) requests over delivered lots, recovered as the material is used. The document checklist per
+   material type is data (`mat_docs`; the standard list below until the first edit) with per-work-order overrides. */
+const MT_KINDS = { steel: "Steel (TMT, sections)", rmc: "Concrete (RMC)", cement: "Cement", ppgi: "PPGI sheet", other: "Other" };
+const MD_LV = { mandatory: "Mandatory", conditional: "Conditional", optional: "Optional", skip: "Not for this work order" };
+const MD_STD = [
+  ["steel", "Tax invoice", "mandatory"], ["steel", "E-way bill", "mandatory"], ["steel", "Transporter LR", "mandatory"], ["steel", "Gate entry challan, stamped", "mandatory"],
+  ["steel", "Weighbridge slip", "mandatory"], ["steel", "Mill test certificate with heat numbers", "mandatory"], ["steel", "Third-party test certificate (NABL lab)", "mandatory"],
+  ["steel", "Client QA receipt", "optional"], ["steel", "Photos of the stored lot", "optional"],
+  ["rmc", "Tax invoice", "mandatory"], ["rmc", "Delivery challans / batch tickets", "mandatory"], ["rmc", "Approved design mix", "mandatory"],
+  ["rmc", "Cube test report, 7 days (approved lab)", "mandatory", "Arrives after the pour: mark it pending until the test date"],
+  ["rmc", "Cube test report, 28 days (approved lab)", "mandatory", "Arrives after the pour: mark it pending until the test date"],
+  ["cement", "Tax invoice", "mandatory"], ["cement", "Delivery challan", "mandatory"], ["cement", "Test certificate", "mandatory"], ["cement", "Manufacture date (week / batch)", "mandatory"],
+  ["ppgi", "Tax invoice", "mandatory"], ["ppgi", "Delivery challan", "mandatory"], ["ppgi", "Make / test certificate (coating thickness)", "mandatory"]
+];
+const MT_SA = { steel: true, rmc: false, cement: true, ppgi: true, other: true };   // concrete usually goes as RA bill backup, not SA
+const AP_ST = { draft: "Draft", sent: "Sent to client", approved: "Approved", rejected: "Rejected" };
+const LD_ST = { pending: "Pending", received: "Received", verified: "Verified", na: "Not needed" };
+const LOT_ST = { rate: "Rate approved", delivered: "Delivered", docs: "Docs complete", insa: "In SA request", certified: "Certified", recovered: "Recovered" };
+const SA_ST = { draft: "Draft", docs: "Docs complete", submitted: "Submitted", certified: "Certified", paid: "Paid" };
+const COSTS = { freight: "Freight", loading: "Loading", unloading: "Unloading", mathadi: "Mathadi" };
+let MA_WO = null, AP = null, SAW = null;
+
+const mdStd = () => MD_STD.map((r, i) => ({ id: "std" + i, mat: r[0], doc: r[1], level: r[2], woId: "", ord: i, note: r[3] || "" }));
+const mdAll = () => S.mdocs.length ? S.mdocs.slice().sort((a, b) => (+a.ord || 0) - (+b.ord || 0)) : mdStd();
+function docsFor(woId, mat) {   // the standard rows for a material, with this work order's overrides (same document name) and extras
+  const all = mdAll(), base = all.filter(r => !r.woId && r.mat === mat), ov = all.filter(r => r.woId && r.woId === woId && r.mat === mat);
+  return base.map(r => ov.filter(o => norm(o.doc) === norm(r.doc))[0] || r).concat(ov.filter(o => !base.some(r => norm(r.doc) === norm(o.doc)))).filter(r => r.level !== "skip");
+}
+const mtOf = id => S.mtypes.filter(m => m.id === id)[0];
+const rappOf = id => S.rapps.filter(a => a.id === id)[0];
+const lotOf = id => S.lots.filter(l => l.id === id)[0];
+const saOf = id => S.sas.filter(s => s.id === id)[0];
+const lotDocs = id => S.ldocs.filter(d => d.lotId === id).sort((a, b) => (+a.ord || 0) - (+b.ord || 0));
+const saOfLot = id => S.sas.filter(s => s.lotIds.indexOf(id) >= 0)[0];
+const numOr = (v, d) => { const n = toNum(v, null); return n == null ? d : n; };
+function saCfg(w) {
+  w = w || {};
+  return { pct: numOr(w.saPct, 75) || 75, base: w.saBase === "gst" ? "gst" : "basic", months: numOr(w.saRecMonths, 0), pending: toBool(w.saPending), tol: numOr(w.wbTol, 0.5) };
+}
+const lv = (l, k) => +l[k] || 0;
+const lotCost = l => round2((l.costs || []).filter(c => !c.disp).reduce((a, c) => a + (+c.amt || 0), 0));
+const lotVal = l => round2(lv(l, "qty") * lv(l, "rate") + lotCost(l));
+function lotDiff(l) {   // clause 9: landed actual value minus the same quantity at the WO basic rate; + is payable to us, - is recovered
+  const m = mtOf(l.mtId); if (!m || !+m.basicRate) return null;
+  return round2(lotVal(l) - lv(l, "qty") * (+m.basicRate));
+}
+const ldNeeded = l => lotDocs(l.id).filter(d => d.level === "mandatory" || (d.level === "conditional" && d.status !== "na"));
+function lotPct(l) { const n = ldNeeded(l); return n.length ? Math.round(n.filter(d => d.status === "verified").length / n.length * 100) : 100; }
+const lotComplete = l => ldNeeded(l).every(d => d.status === "verified");
+const ldBlocking = (l, pend) => ldNeeded(l).filter(d => !(d.status === "verified" || (pend && d.status === "pending" && d.due)));
+const vehN = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const heats = s => uniq(String(s || "").toUpperCase().split(/[\s,;\/]+/).filter(Boolean));
+function lotWarn(l) {
+  const W = [], w = woOf(l.woId), cfg = saCfg(w), q = lv(l, "qty"), ap = rappOf(l.apprId);
+  if (+l.wbNet && q) { const d = Math.abs(+l.wbNet - q) / q * 100; if (d > cfg.tol) W.push("Invoice quantity " + qtyFmt(q) + " vs weighbridge net " + qtyFmt(l.wbNet) + " " + (l.unit || "") + ": " + d.toFixed(2) + "% apart (allowed " + cfg.tol + "%)"); }
+  if (l.ewbVeh && l.wbVeh && vehN(l.ewbVeh) !== vehN(l.wbVeh)) W.push("Vehicle on the e-way bill (" + l.ewbVeh + ") is not the one on the weighbridge slip (" + l.wbVeh + ")");
+  if (l.heatInv && l.heatTc) { const a = heats(l.heatInv), b = heats(l.heatTc), x = b.filter(h => a.indexOf(h) < 0).concat(a.filter(h => b.indexOf(h) < 0)); if (x.length) W.push("Heat numbers on the test certificate and the invoice differ: " + x.join(", ")); }
+  if (+l.invRate && +l.rate && Math.abs(+l.invRate - +l.rate) > 0.005) W.push("Invoice rate " + rateFmt(l.invRate) + " is " + (+l.invRate > +l.rate ? "above" : "below") + " the approved rate " + rateFmt(l.rate));
+  if (l.gateDate && l.invDate && l.gateDate < l.invDate) W.push("Gate entry " + dmy(l.gateDate) + " is before the invoice date " + dmy(l.invDate));
+  if (ap && ap.validTo && l.invDate && l.invDate > ap.validTo) W.push("Invoice is dated after the rate approval ran out (" + dmy(ap.validTo) + ")");
+  if (ap && ap.status !== "approved") W.push("Its rate approval is no longer marked approved");
+  const dc = (l.costs || []).filter(c => c.disp && +c.amt);
+  if (dc.length) W.push("Disputed by the client and left out of the value: " + dc.map(c => c.item + " " + fmt(c.amt)).join(", "));
+  return W;
+}
+const recOf = (saId, lotId) => round2(S.srecs.filter(r => r.saId === saId && (!lotId || r.lotId === lotId)).reduce((a, r) => a + (+r.amt || 0), 0));
+function saShare(s, l) {   // this lot's part of the request
+  const v = lotVal(l), base = s.base === "gst" ? v * (1 + (+l.gstPct || 0) / 100) : v;
+  return round2(base * (+s.pct || 0) / 100);
+}
+const saAmt = s => round2(s.lotIds.map(lotOf).filter(Boolean).reduce((a, l) => a + saShare(s, l), 0));
+const saTotal = s => s.status === "certified" || s.status === "paid" ? (+s.certAmt || +s.amt || 0) : (+s.amt || 0);
+function lotSt(l) {
+  const s = saOfLot(l.id);
+  if (s) { if (s.status === "certified" || s.status === "paid") { const sh = saShare(s, l) * (saTotal(s) / (saAmt(s) || 1)); return sh > 0 && recOf(s.id, l.id) >= sh - 1 ? "recovered" : "certified"; } return "insa"; }
+  if (lotComplete(l) && l.gateDate) return "docs";
+  return l.gateDate ? "delivered" : "rate";
+}
+function saSt(s) {
+  if (s.status !== "draft") return s.status;
+  const ls = s.lotIds.map(lotOf).filter(Boolean), pend = saCfg(woOf(s.woId)).pending;
+  return ls.length && ls.every(l => !ldBlocking(l, pend).length) ? "docs" : "draft";
+}
+function saDueNow(s) {   // straight-line recovery over the months set, from the certification date
+  const t = saTotal(s); if (!+s.recMonths || !s.certOn) return null;
+  const a = toD(s.certOn), b = toD(today()), m = Math.max(0, (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth());
+  return round2(Math.min(t, t / +s.recMonths * m));
+}
+function nextSaNo(w) { let n = 0; S.sas.filter(s => s.woId === w.id).forEach(s => { const m = /(\d+)/.exec(s.no || ""); if (m) n = Math.max(n, +m[1]); }); return "SA-" + String(n + 1).padStart(2, "0"); }
+function mtWarn(m) { return +m.altRate && +m.basicRate && +m.altRate !== +m.basicRate ? "The work order gives two basic rates for " + m.name + ": " + rateFmt(m.basicRate) + " and " + rateFmt(m.altRate) + " per " + (m.unit || "unit") + ". Using " + rateFmt(m.basicRate) + " until the client confirms." : ""; }
+const mtLabel = m => m ? m.name + (m.unit ? " (" + m.unit + ")" : "") : "";
+const apLanded = v => round2(["rate", "freight", "loading", "unloading", "mathadi"].reduce((a, k) => a + (+v[k] || 0), 0));
+const apPick = a => a.vendors.filter(v => v.name && v.name === a.pick)[0] || null;
+const tg = (t, cls) => '<span class="tag' + (cls ? " " + cls : "") + '">' + t + "</span>";
+
+/* ---------- the tab ---------- */
+function renderMat() {
+  if (!$("#maBody")) return;
+  const wos = S.wos.filter(w => w.status !== "closed" && w.kind !== "LOI");
+  if (!MA_WO || !woOf(MA_WO)) MA_WO = (wos[0] || {}).id || null;
+  $("#maWo").innerHTML = wos.length ? wos.map(w => '<option value="' + esc(w.id) + '"' + (w.id === MA_WO ? " selected" : "") + ">" + esc(woShort(w)) + "</option>").join("") : "<option value=''>No work orders yet</option>";
+  renderMd();
+  const w = woOf(MA_WO);
+  if (!w) { $("#maBody").innerHTML = '<div class="card"><div class="help">Add the work order first (Work orders tab). Materials, rate approvals and secured advance requests hang off a work order.</div></div>'; return; }
+  const cfg = saCfg(w), mts = S.mtypes.filter(m => m.woId === w.id), aps = S.rapps.filter(a => a.woId === w.id), lots = S.lots.filter(l => l.woId === w.id), sas = S.sas.filter(s => s.woId === w.id);
+  const inp = (k, v, wd, extra) => '<input type="text" data-ma="' + k + '" value="' + esc(v == null ? "" : v) + '" style="width:' + wd + '"' + (extra || "") + ">";
+  const conflicts = mts.map(mtWarn).filter(Boolean);
+  let h = '<div class="card" style="margin-bottom:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Materials and basic rates</h2><span class="sub">' + esc(woLabel(w)) + "</span></div>" +
+    '<div class="help">Each material this work order pays at a basic rate. The difference between the client-approved actual rate and the basic rate is paid or recovered with each RA bill. Concrete usually goes as RA bill backup, so it is not in secured advance unless ticked.</div>' +
+    '<div class="toolbar" style="margin:4px 0 10px;font-size:13px;gap:10px"><label>Secured advance % ' + inp("ws:saPct", cfg.pct, "56px") + '</label><label>of <select data-ma="ws:saBase"><option value="basic"' + (cfg.base === "basic" ? " selected" : "") + '>value before GST</option><option value="gst"' + (cfg.base === "gst" ? " selected" : "") + '>value including GST</option></select></label>' +
+    "<label>Recover over " + inp("ws:saRecMonths", cfg.months || "", "44px", ' placeholder="-"') + ' months</label><label>Weighbridge tolerance ' + inp("ws:wbTol", cfg.tol, "44px") + '%</label><label><input type="checkbox" data-ma="ws:saPending"' + (cfg.pending ? " checked" : "") + "> Submit with documents pending until a date</label></div>" +
+    (conflicts.length ? '<div class="help" style="color:var(--bad)">' + conflicts.map(esc).join("<br>") + "</div>" : "") +
+    '<div class="tblwrap"><table class="cktbl rqtbl"><thead><tr><th class="l">Material</th><th class="l">Checklist</th><th class="l">Unit</th><th>WO basic rate</th><th>Other rate in WO</th><th>GST %</th><th class="l">Secured advance</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+    mts.map(m => '<tr data-mtid="' + esc(m.id) + '"><td class="l">' + inp("mt:name", m.name, "150px") + '</td><td class="l"><select data-ma="mt:mat">' + Object.keys(MT_KINDS).map(k => '<option value="' + k + '"' + (m.mat === k ? " selected" : "") + ">" + MT_KINDS[k] + "</option>").join("") + '</select></td><td class="l">' + inp("mt:unit", m.unit, "50px") +
+      "</td><td>" + inp("mt:basicRate", +m.basicRate || "", "70px", ' inputmode="decimal"') + "</td><td>" + inp("mt:altRate", +m.altRate || "", "70px", ' inputmode="decimal" title="When the work order quotes a second basic rate elsewhere (e.g. in a BOQ item)"') + "</td><td>" + inp("mt:gstPct", +m.gstPct || "", "40px") +
+      '</td><td class="l"><input type="checkbox" data-ma="mt:saOk"' + (m.saOk ? " checked" : "") + '></td><td class="l">' + inp("mt:note", m.note, "100%") + '</td><td><button class="small danger" data-act="mtdel" data-id="' + esc(m.id) + '" title="Remove">✕</button></td></tr>').join("") +
+    "</tbody></table></div>" +
+    '<div class="toolbar" style="margin-top:6px"><input type="text" id="mtNewName" placeholder="New material, e.g. Reinforcement steel" style="flex:1;min-width:180px"><select id="mtNewKind">' + Object.keys(MT_KINDS).map(k => '<option value="' + k + '">' + MT_KINDS[k] + "</option>").join("") + '</select><input type="text" id="mtNewUnit" placeholder="Unit" style="width:60px"><input type="text" id="mtNewRate" placeholder="Basic rate" inputmode="decimal" style="width:90px"><button class="small" data-act="mtadd">Add</button></div></div>';
+
+  h += '<div class="card" style="margin-bottom:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Rate approvals</h2><span class="sub">' + aps.filter(a => a.status === "approved").length + " approved</span><span style=\"flex:1\"></span><button class=\"small primary\" data-act=\"apnew\">+ Rate approval</button></div>" +
+    '<div class="help">Comes first: no lot or secured advance without a client-approved rate. Enter the vendor quotes, print the comparison sheet for the client, then record who approved which rate and until when.</div>' +
+    (aps.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Material</th><th class="l">Vendors</th><th>Lowest landed</th><th class="l">Proposed</th><th>Approved rate</th><th class="l">Approved by</th><th class="l">Valid to</th><th class="l">Status</th><th></th></tr></thead><tbody>' +
+      aps.map(a => { const m = mtOf(a.mtId), vs = a.vendors.filter(v => v.name), lo = vs.length ? Math.min.apply(null, vs.map(apLanded)) : 0, late = a.status === "approved" && a.validTo && a.validTo < today();
+        return '<tr><td class="l">' + esc(mtLabel(m)) + '</td><td class="l">' + vs.length + "</td><td>" + (lo ? rateFmt(lo) : "") + '</td><td class="l">' + esc(a.pick || "") + "</td><td>" + (+a.rate ? rateFmt(a.rate) : "") + '</td><td class="l">' + esc(a.approver || "") + '</td><td class="l">' + (a.validTo ? dmy(a.validTo) + (late ? " " + tg("expired", "bad") : "") : "") + '</td><td class="l">' + tg(AP_ST[a.status] || a.status, a.status === "approved" ? "ok" : a.status === "rejected" ? "bad" : "") +
+          '</td><td style="white-space:nowrap"><button class="small" data-act="apedit" data-id="' + esc(a.id) + '">Open</button> <button class="small" data-act="apprint" data-id="' + esc(a.id) + '">Comparison sheet</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<div class="sub">None yet.</div>') + "</div>";
+
+  h += '<div class="card" style="margin-bottom:12px"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Material lots</h2><span class="sub">' + lots.length + " lot" + (lots.length === 1 ? "" : "s") + '</span><span style="flex:1"></span><button class="small primary" data-act="ltnew">+ Lot delivered</button></div>' +
+    '<div class="help">One lot per invoice delivered to site, at its approved rate. Documents: verified ones count towards the %. Warnings come from the invoice, weighbridge, e-way bill and test certificate details entered on the lot.</div>' +
+    (lots.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Material</th><th class="l">Vendor, invoice</th><th>Qty</th><th>Value</th><th>vs WO basic rate</th><th class="l">Documents</th><th class="l">Status</th><th></th></tr></thead><tbody>' +
+      lots.map(l => { const m = mtOf(l.mtId), p = lotPct(l), wn = lotWarn(l), d = lotDiff(l), st = lotSt(l);
+        return '<tr><td class="l">' + esc(mtLabel(m)) + '</td><td class="l">' + esc(l.vendor || "") + '<br><span class="sub">' + esc(l.invNo || "") + (l.invDate ? " · " + dmy(l.invDate) : "") + "</span></td><td>" + qtyFmt(l.qty) + " " + esc(l.unit || "") + "</td><td>" + fmt(lotVal(l)) + "</td><td>" + (d == null ? '<span class="sub">no basic rate</span>' : (d >= 0 ? "+" : "") + fmt(d) + '<br><span class="sub">' + (d >= 0 ? "payable to us" : "recovered") + "</span>") +
+          '</td><td class="l"><div class="mabar"><div style="width:' + p + '%"></div></div><span class="sub">' + p + "% verified</span>" + (wn.length ? "<br>" + tg(wn.length + " warning" + (wn.length === 1 ? "" : "s"), "bad") : "") + '</td><td class="l">' + tg(LOT_ST[st], st === "recovered" || st === "docs" ? "ok" : "") + '</td><td><button class="small" data-act="ltedit" data-id="' + esc(l.id) + '">Open</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<div class="sub">None yet.</div>') + "</div>";
+
+  h += '<div class="card"><div class="toolbar" style="margin-bottom:6px"><h2 style="margin:0">Secured advance requests</h2><span class="sub">' + cfg.pct + "% of " + (cfg.base === "gst" ? "value including GST" : "value before GST") + '</span><span style="flex:1"></span><button class="small primary" data-act="sanew">+ SA request</button></div>' +
+    '<div class="help">A request covers delivered lots of materials marked for secured advance. It cannot be submitted until every mandatory document of its lots is verified' + (cfg.pending ? " (or pending with a due date, as set above)" : "") + '. Recovery entries reduce what is outstanding.</div>' +
+    (sas.length ? '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Request</th><th class="l">Date</th><th class="l">Lots</th><th>Amount</th><th>Recovered</th><th>Outstanding</th><th class="l">Status</th><th></th></tr></thead><tbody>' +
+      sas.map(s => { const st = saSt(s), t = saTotal(s), r = recOf(s.id), due = saDueNow(s);
+        return '<tr><td class="l">' + esc(s.no) + '</td><td class="l">' + (s.date ? dmy(s.date) : "") + '</td><td class="l">' + s.lotIds.map(lotOf).filter(Boolean).map(l => esc((mtOf(l.mtId) || {}).name || "") + " " + esc(l.invNo || "")).join("<br>") + "</td><td>" + fmt(t) + "</td><td>" + (r ? fmt(r) : "") + "</td><td>" + (st === "certified" || st === "paid" ? fmt(t - r) + (due != null && r < due - 1 ? '<br><span class="tag bad">' + fmt(due - r) + " behind</span>" : "") : "") +
+          '</td><td class="l">' + tg(SA_ST[st], st === "paid" || st === "docs" ? "ok" : "") + '</td><td style="white-space:nowrap"><button class="small" data-act="saedit" data-id="' + esc(s.id) + '">Open</button> <button class="small" data-act="sapack" data-id="' + esc(s.id) + '">Pack PDF</button></td></tr>'; }).join("") + "</tbody></table></div>" : '<div class="sub">None yet.</div>') + '<div id="saPackMsg" class="sub" style="margin-top:6px"></div></div>';
+  const ae = document.activeElement, fk = ae && ae.dataset && ae.dataset.ma, ftr = fk && ae.closest("tr[data-mtid]"), fid = ftr ? ftr.dataset.mtid : "";
+  $("#maBody").innerHTML = h;
+  if (fk) { const f = fid ? $('#maBody tr[data-mtid="' + fid + '"] [data-ma="' + fk + '"]') : $('#maBody [data-ma="' + fk + '"]'); if (f) f.focus(); }
+}
+function maEdit(e) {
+  const t = e.target, k = t.dataset && t.dataset.ma; if (!k) return;
+  const w = woOf(MA_WO), v = t.type === "checkbox" ? t.checked : t.value.trim(), f = k.split(":")[1];
+  if (k.indexOf("ws:") === 0) { if (!w) return; w[f] = f === "saPending" ? (v ? "TRUE" : "") : f === "saBase" ? v : (v === "" ? "" : toNum(v, "")); }
+  else if (k.indexOf("mt:") === 0) {
+    const m = mtOf(t.closest("tr[data-mtid]").dataset.mtid); if (!m) return;
+    if (f === "name" && !v) { t.value = m.name; toast("A material needs a name; use ✕ to remove it."); return; }
+    m[f] = f === "saOk" ? v : ["basicRate", "altRate", "gstPct"].indexOf(f) >= 0 ? round2(parseAmt(v)) : v;
+  }
+  else return;
+  persist(); setTimeout(renderAll, 0);
+}
+function mtAdd() {
+  const w = woOf(MA_WO), name = $("#mtNewName").value.trim(); if (!w) return; if (!name) { $("#mtNewName").focus(); return; }
+  if (S.mtypes.some(m => m.woId === w.id && norm(m.name) === norm(name))) { toast("That material is already on this work order."); return; }
+  const kind = $("#mtNewKind").value;
+  S.mtypes.push({ id: uid(), woId: w.id, name: name, mat: kind, unit: $("#mtNewUnit").value.trim(), basicRate: round2(parseAmt($("#mtNewRate").value)), altRate: 0, gstPct: 18, saOk: MT_SA[kind] !== false, note: "" });
+  persist(); renderAll(); $("#mtNewName").focus(); toast("Material added");
+}
+function mtDel(id) {
+  const m = mtOf(id); if (!m) return;
+  if (S.rapps.some(a => a.mtId === id) || S.lots.some(l => l.mtId === id)) { toast("Rate approvals or lots use this material. Remove those first."); return; }
+  S.mtypes = S.mtypes.filter(x => x !== m); persist(); renderAll(); toast("Material removed");
+}
+
+/* ---------- document checklists per material type ---------- */
+function mdOwn() { if (!S.mdocs.length) S.mdocs = mdStd().map(r => Object.assign({}, r, { id: uid() })); }
+function renderMd() {
+  const el = $("#mdTbl"); if (!el) return;
+  const all = mdAll(), std = !S.mdocs.length, wos = S.wos.filter(w => w.kind !== "LOI");
+  if (!$("#mdNewMat").options.length) $("#mdNewMat").innerHTML = Object.keys(MT_KINDS).map(k => '<option value="' + k + '">' + MT_KINDS[k] + "</option>").join("");
+  const nw = $("#mdNewWo").value; $("#mdNewWo").innerHTML = '<option value="">All work orders</option>' + wos.map(w => '<option value="' + esc(w.id) + '">' + esc(woShort(w)) + "</option>").join(""); $("#mdNewWo").value = nw && woOf(nw) ? nw : "";
+  $("#mdSum").textContent = all.length + " document" + (all.length === 1 ? "" : "s") + (std ? " (standard list)" : "");
+  const ae = document.activeElement, ftr = ae && ae.closest && ae.closest("#mdTbl tr[data-mdid]"), fpos = ftr ? [ftr.dataset.mdid, ae.dataset.md] : null;
+  el.innerHTML = '<table class="cktbl rqtbl"><thead><tr><th class="l">Material</th><th class="l">Document</th><th class="l">Requirement</th><th class="l">Work order</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+    all.map(r => '<tr data-mdid="' + esc(r.id) + '"><td class="l"><select data-md="mat">' + Object.keys(MT_KINDS).map(k => '<option value="' + k + '"' + (r.mat === k ? " selected" : "") + ">" + MT_KINDS[k] + "</option>").join("") + '</select></td><td class="l"><input type="text" data-md="doc" value="' + esc(r.doc) + '" style="width:100%"></td>' +
+      '<td class="l"><select data-md="level">' + Object.keys(MD_LV).filter(k => k !== "skip" || r.woId).map(k => '<option value="' + k + '"' + (r.level === k ? " selected" : "") + ">" + MD_LV[k] + "</option>").join("") + '</select></td><td class="l"><select data-md="woId"><option value="">All work orders</option>' + wos.map(w => '<option value="' + esc(w.id) + '"' + (r.woId === w.id ? " selected" : "") + ">" + esc(woShort(w)) + "</option>").join("") + "</select></td>" +
+      '<td class="l"><input type="text" data-md="note" value="' + esc(r.note || "") + '" style="width:100%"></td><td><button class="small danger" data-act="mddel" data-id="' + esc(r.id) + '" title="Remove">✕</button></td></tr>').join("") + "</tbody></table>";
+  if (fpos) { const tr = $('#mdTbl tr[data-mdid="' + fpos[0] + '"]'), f = tr && $('[data-md="' + fpos[1] + '"]', tr); if (f) f.focus(); }
+}
+function mdEdit(e) {
+  const t = e.target, tr = t.closest && t.closest("tr[data-mdid]"); if (!tr || !t.dataset.md) return;
+  const std = !S.mdocs.length, idx = std ? +tr.dataset.mdid.slice(3) : -1;
+  mdOwn();
+  const r = std ? S.mdocs[idx] : S.mdocs.filter(x => x.id === tr.dataset.mdid)[0]; if (!r) return;
+  const k = t.dataset.md, v = t.value.trim();
+  if (k === "doc" && !v) { t.value = r.doc; toast("A document needs a name; use ✕ to remove it."); return; }
+  r[k] = v; if (k === "woId" && !v && r.level === "skip") r.level = "optional";
+  persist(); setTimeout(renderAll, 0);
+}
+function mdAdd() {
+  const mat = $("#mdNewMat").value, doc = $("#mdNewDoc").value.trim(), woId = $("#mdNewWo").value; if (!doc) { $("#mdNewDoc").focus(); return; }
+  mdOwn();
+  if (S.mdocs.some(r => r.mat === mat && norm(r.doc) === norm(doc) && (r.woId || "") === woId)) { toast("That document is already in the list."); return; }
+  S.mdocs.push({ id: uid(), mat: mat, doc: doc, level: $("#mdNewLv").value, woId: woId, ord: S.mdocs.reduce((m, r) => Math.max(m, +r.ord || 0), 0) + 1, note: "" });
+  $("#mdNewDoc").value = ""; persist(); renderAll(); toast("Document added to the checklist");
+}
+function mdDel(id) {
+  mdOwn();
+  const r = id.indexOf("std") === 0 && S.mdocs.length && !S.mdocs.some(x => x.id === id) ? S.mdocs[+id.slice(3)] : S.mdocs.filter(x => x.id === id)[0]; if (!r) return;
+  S.mdocs = S.mdocs.filter(x => x !== r); persist(); renderAll(); toast("Removed from the checklist. Lots keep their own copy.");
+}
+function exportMd() {
+  const xs = mdAll().map(r => { const o = { material: r.mat, document: r.doc, level: r.level }; const w = woOf(r.woId); if (w) o.work_order = w.woNo || w.site; if (r.note) o.note = r.note; return o; });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ material_documents: xs }, null, 2)], { type: "application/json" })); a.download = "material_documents.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function importMd(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    let j; try { j = JSON.parse(rd.result); } catch (e) { toast("That file is not JSON."); return; }
+    const xs = (Array.isArray(j) ? j : j.material_documents || []).filter(x => x && (x.document || x.doc));
+    if (!xs.length) { toast("No documents found. Expected { material_documents: [ { material, document, level, work_order } ] }."); return; }
+    mdOwn();
+    let add = 0, upd = 0, ord = S.mdocs.reduce((m, r) => Math.max(m, +r.ord || 0), 0);
+    xs.forEach(x => {
+      const mk = String(x.material || x.mat || "").toLowerCase(), mat = MT_KINDS[mk] ? mk : Object.keys(MT_KINDS).filter(k => norm(MT_KINDS[k]).indexOf(norm(mk)) === 0)[0] || "other";
+      const wn = String(x.work_order || x.woNo || "").trim(), w = wn ? S.wos.filter(o => o.woNo === wn || o.site === wn)[0] : null, doc = String(x.document || x.doc).trim(), lvl = MD_LV[x.level] ? x.level : x.required === false ? "optional" : "mandatory";
+      const hit = S.mdocs.filter(r => r.mat === mat && norm(r.doc) === norm(doc) && (r.woId || "") === (w ? w.id : ""))[0];
+      if (hit) { hit.level = lvl; if (x.note) hit.note = String(x.note); upd++; }
+      else { S.mdocs.push({ id: uid(), mat: mat, doc: doc, level: lvl, woId: w ? w.id : "", ord: ++ord, note: String(x.note || "") }); add++; }
+    });
+    persist(); renderAll(); toast("Material documents: " + add + " added" + (upd ? ", " + upd + " updated" : ""));
+  };
+  rd.readAsText(file);
+}
+
+/* ---------- rate approval ---------- */
+function openAppr(id) {
+  const a0 = id ? rappOf(id) : null, w = woOf(a0 ? a0.woId : MA_WO); if (!w) return;
+  const mts = S.mtypes.filter(m => m.woId === w.id);
+  if (!mts.length) { toast("Add this work order's materials first (Materials and basic rates)."); return; }
+  AP = JSON.parse(JSON.stringify(a0 || { id: "", woId: w.id, mtId: mts[0].id, qty: "", vendors: [{ name: "", gstin: "", rate: "", freight: "", loading: "", unloading: "", mathadi: "", gst: 18 }], pick: "", sentOn: "", approver: "", rate: "", validTo: "", status: "draft", link: "", note: "" }));
+  drawAppr();
+}
+function drawAppr() {
+  const w = woOf(AP.woId), mts = S.mtypes.filter(m => m.woId === w.id), m = mtOf(AP.mtId) || mts[0], cw = mtWarn(m || {});
+  const vi = (i, k, v, wd) => '<input type="text" data-v="' + i + ":" + k + '" value="' + esc(v == null ? "" : v) + '" style="width:' + wd + '"' + (k === "name" || k === "gstin" ? "" : ' inputmode="decimal"') + ">";
+  openModal("<h2>" + (AP.id ? "Rate approval" : "New rate approval") + '</h2><div class="sub" style="margin-bottom:8px">' + esc(woShort(w)) + "</div>" +
+    '<div class="form"><label>Material<select id="apMt">' + mts.map(x => '<option value="' + esc(x.id) + '"' + (x.id === (m && m.id) ? " selected" : "") + ">" + esc(mtLabel(x)) + "</option>").join("") + '</select></label><label>Expected quantity<input type="text" id="apQty" inputmode="decimal" value="' + esc(AP.qty || "") + '"></label></div>' +
+    '<div class="help" style="margin-top:6px">WO basic rate: ' + (m && +m.basicRate ? rateFmt(m.basicRate) + " per " + esc(m.unit || "unit") : "not set") + (cw ? '<br><span style="color:var(--bad)">' + esc(cw) + "</span>" : "") + "</div>" +
+    '<h3 class="woph">Vendor quotes <span class="sub">per ' + esc((m && m.unit) || "unit") + ', before GST; loading and unloading count in the landed rate</span><button class="small" data-act="apvadd">+ Vendor</button></h3>' +
+    '<div class="tblwrap"><table class="cktbl rwtbl" id="apVen"><thead><tr><th class="l">Vendor</th><th class="l">GSTIN</th><th>Basic rate</th><th>Freight</th><th>Loading</th><th>Unloading</th><th>Mathadi</th><th>GST %</th><th>Landed</th><th></th></tr></thead><tbody>' +
+    AP.vendors.map((v, i) => '<tr><td class="l">' + vi(i, "name", v.name, "140px") + '</td><td class="l">' + vi(i, "gstin", v.gstin, "130px") + "</td><td>" + vi(i, "rate", v.rate, "70px") + "</td><td>" + vi(i, "freight", v.freight, "56px") + "</td><td>" + vi(i, "loading", v.loading, "56px") + "</td><td>" + vi(i, "unloading", v.unloading, "56px") + "</td><td>" + vi(i, "mathadi", v.mathadi, "56px") + "</td><td>" + vi(i, "gst", v.gst, "36px") +
+      '</td><td class="apL" data-i="' + i + '">' + (apLanded(v) ? rateFmt(apLanded(v)) : "") + '</td><td><button class="small danger" data-act="apvdel" data-i="' + i + '">✕</button></td></tr>').join("") + "</tbody></table></div>" +
+    '<div class="form" style="margin-top:10px"><label>Proposed vendor<select id="apPick"><option value="">-</option>' + AP.vendors.filter(v => v.name).map(v => '<option value="' + esc(v.name) + '"' + (v.name === AP.pick ? " selected" : "") + ">" + esc(v.name) + "</option>").join("") + "</select></label>" +
+    '<label>Status<select id="apSt">' + Object.keys(AP_ST).map(k => '<option value="' + k + '"' + (AP.status === k ? " selected" : "") + ">" + AP_ST[k] + "</option>").join("") + "</select></label>" +
+    '<label>Sent to client on<input type="date" id="apSent" value="' + esc(AP.sentOn || "") + '"></label><label>Approved by (client)<input type="text" id="apBy" value="' + esc(AP.approver || "") + '"></label>' +
+    '<label>Approved rate (before GST, per ' + esc((m && m.unit) || "unit") + ')<input type="text" id="apRate" inputmode="decimal" value="' + esc(+AP.rate || "") + '"></label><label>Valid until<input type="date" id="apValid" value="' + esc(AP.validTo || "") + '"></label>' +
+    '<label style="grid-column:1/-1">Client approval (letter or email link)<input type="text" id="apLink" value="' + esc(AP.link || "") + '" placeholder="https://drive.google.com/..."></label>' + (AP.id ? '<div style="grid-column:1/-1" data-up="' + esc(AP.id) + '"><button class="small" data-act="upl" data-k="ap" data-id="' + esc(AP.id) + '">Upload approval</button></div>' : "") +
+    '<label style="grid-column:1/-1">Note<input type="text" id="apNote" value="' + esc(AP.note || "") + '"></label></div>' +
+    '<div id="apMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' + (AP.id ? '<button id="apDel" style="margin-right:auto">Delete</button>' : "") + '<button id="apPrint">Comparison sheet</button><button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").classList.add("wide");
+  $("#apVen").oninput = e => { const t = e.target, k = t.dataset.v; if (!k) return; const p = k.split(":"); AP.vendors[+p[0]][p[1]] = t.value; const c = $('#apVen .apL[data-i="' + p[0] + '"]'); if (c) { const l = apLanded(AP.vendors[+p[0]]); c.textContent = l ? rateFmt(l) : ""; } };
+  $("#apVen").onchange = e => { if (!e.target.dataset.v || !/:name$/.test(e.target.dataset.v)) return; const cur = $("#apPick").value; $("#apPick").innerHTML = '<option value="">-</option>' + AP.vendors.filter(v => v.name).map(v => '<option value="' + esc(v.name) + '">' + esc(v.name) + "</option>").join(""); $("#apPick").value = AP.vendors.some(v => v.name === cur) ? cur : ""; };
+  $("#apMt").onchange = () => { readAppr(); drawAppr(); };
+  $("#apSt").onchange = () => { if ($("#apSt").value === "approved" && !$("#apRate").value) { const v = AP.vendors.filter(x => x.name === $("#apPick").value)[0]; if (v) $("#apRate").value = +v.rate || ""; } };
+  $("#mCancel").onclick = () => { AP = null; closeModal(); };
+  $("#apPrint").onclick = () => { readAppr(); printRateSheet(AP); };
+  if (AP.id) $("#apDel").onclick = () => {
+    if (S.lots.some(l => l.apprId === AP.id)) { $("#apMsg").textContent = "Lots use this approval. Remove them first, or mark it rejected."; return; }
+    const id = AP.id; closeModal(); confirmModal("Delete this rate approval?", "Its vendor quotes go too.", "Delete", () => { S.rapps = S.rapps.filter(a => a.id !== id); persist(); renderAll(); toast("Rate approval deleted"); });
+  };
+  $("#mSave").onclick = () => {
+    readAppr();
+    const vs = AP.vendors.filter(v => v.name.trim());
+    if (!vs.length || !vs.some(v => +parseAmt(v.rate))) { $("#apMsg").textContent = "Enter at least one vendor with a basic rate."; return; }
+    if (AP.status === "approved" && !(+AP.rate > 0)) { $("#apMsg").textContent = "Enter the rate the client approved."; return; }
+    if (AP.status === "approved" && !AP.approver) { $("#apMsg").textContent = "Enter who approved it on the client's side."; return; }
+    const rec = Object.assign({}, AP, { vendors: vs.map(v => ({ name: v.name.trim(), gstin: String(v.gstin || "").trim().toUpperCase(), rate: round2(parseAmt(v.rate)), freight: round2(parseAmt(v.freight)), loading: round2(parseAmt(v.loading)), unloading: round2(parseAmt(v.unloading)), mathadi: round2(parseAmt(v.mathadi)), gst: parseAmt(v.gst) })) });
+    if (AP.id) Object.assign(rappOf(AP.id), rec); else S.rapps.push(Object.assign(rec, { id: uid() }));
+    AP = null; persist(); closeModal(); renderAll(); toast("Rate approval saved");
+  };
+}
+function readAppr() {
+  if (!AP || !$("#apMt")) return;
+  AP.mtId = $("#apMt").value; AP.qty = parseAmt($("#apQty").value) || ""; AP.pick = $("#apPick").value; AP.status = $("#apSt").value; AP.sentOn = $("#apSent").value; AP.approver = $("#apBy").value.trim();
+  AP.rate = round2(parseAmt($("#apRate").value)); AP.validTo = $("#apValid").value; AP.link = $("#apLink").value.trim(); AP.note = $("#apNote").value.trim();
+  $$("#apVen [data-v]").forEach(t => { const p = t.dataset.v.split(":"); if (AP.vendors[+p[0]]) AP.vendors[+p[0]][p[1]] = t.value; });
+  if (AP.pick && !AP.vendors.some(v => v.name === AP.pick)) AP.pick = "";
+}
+function printRateSheet(a) {
+  const w = woOf(a.woId), m = mtOf(a.mtId); if (!w || !m) return;
+  const m2 = v => (+v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), vs = a.vendors.filter(v => v.name), q = +a.qty || 0, basic = +m.basicRate || 0;
+  const lo = vs.length ? Math.min.apply(null, vs.map(apLanded)) : 0;
+  const rows = vs.map((v, i) => { const l = apLanded(v), g = round2(l * (+v.gst || 0) / 100);
+    return "<tr" + (v.name === a.pick ? " class=pick" : "") + "><td>" + (i + 1) + "</td><td class=l>" + esc(v.name) + (l === lo ? " <b>(L1)</b>" : "") + (v.name === a.pick ? " <b>Proposed</b>" : "") + "<br><small>" + esc(v.gstin || "") + "</small></td><td>" + m2(v.rate) + "</td><td>" + m2(v.freight) + "</td><td>" + m2(v.loading) + "</td><td>" + m2(v.unloading) + "</td><td>" + m2(v.mathadi) + "</td><td>" + m2(l) + "</td><td>" + (+v.gst || 0) + "%</td><td>" + m2(l + g) + "</td><td>" + (basic ? m2(l - basic) : "-") + "</td>" + (q ? "<td>" + m2(l * q) + "</td><td>" + (basic ? m2((l - basic) * q) : "-") + "</td>" : "") + "</tr>"; }).join("");
+  const pv = apPick(a), pl = pv ? apLanded(pv) : 0;
+  const html = "<!doctype html><html><head><meta charset=utf-8><title>" + esc("Rate comparison " + m.name + " " + w.client) + "</title><style>body{font:12px/1.4 Arial,sans-serif;margin:24px;color:#000}h1{font-size:16px;margin:0}h2{font-size:13px;margin:4px 0 12px;font-weight:normal}table{border-collapse:collapse;width:100%}th,td{border:1px solid #444;padding:4px 6px;text-align:right;vertical-align:top}th{background:#eee}td.l,th.l{text-align:left}tr.pick td{background:#f3f3f3}.meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 24px;margin:10px 0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:60px}.sig div{border-top:1px solid #000;padding-top:4px}@media print{body{margin:10mm}}</style></head><body>" +
+    "<h1>Nityanand Infrastructure Ltd.</h1><h2>Rate comparison for approval &middot; " + esc(m.name) + "</h2><div class=meta><div><b>Client:</b> " + esc(w.client) + "</div><div><b>" + (w.kind === "LOI" ? "LOI" : "Work order") + ":</b> " + esc(w.woNo || "-") + (w.woDate ? " dated " + dmy(w.woDate) : "") + "</div><div><b>Site:</b> " + esc(w.site || "") + "</div><div><b>WO basic rate:</b> " + (basic ? "Rs " + m2(basic) + " per " + esc(m.unit || "unit") : "-") + "</div>" + (q ? "<div><b>Expected quantity:</b> " + qtyFmt(q) + " " + esc(m.unit || "") + "</div>" : "") + "<div><b>Date:</b> " + dmy(today()) + "</div></div>" +
+    "<table><thead><tr><th>Sr</th><th class=l>Vendor</th><th>Basic rate</th><th>Freight</th><th>Loading</th><th>Unloading</th><th>Mathadi</th><th>Landed rate</th><th>GST</th><th>Landed incl. GST</th><th>Landed less WO basic rate</th>" + (q ? "<th>Landed value for qty</th><th>Difference for qty</th>" : "") + "</tr></thead><tbody>" + rows + "</tbody></table>" +
+    "<p>Rates in Rs per " + esc(m.unit || "unit") + ". Landed rate = basic rate + freight + loading + unloading + mathadi, before GST. As per the work order, only the difference between the WO basic rate and the approved actual rate is payable or recoverable, without profit or overheads.</p>" +
+    (pv ? "<p><b>Proposed:</b> " + esc(pv.name) + " at a landed rate of Rs " + m2(pl) + (basic ? " (Rs " + m2(pl - basic) + " " + (pl >= basic ? "above" : "below") + " the WO basic rate" + (q ? "; Rs " + m2((pl - basic) * q) + " on " + qtyFmt(q) + " " + esc(m.unit || "") : "") + ")" : "") + ".</p>" : "") +
+    "<p>Approved rate: ____________ per " + esc(m.unit || "unit") + " &nbsp; Valid until: ____________</p><div class=sig><div>For Nityanand Infrastructure Ltd.<br>Name, signature and date</div><div>For " + esc(w.client) + "<br>Approved by: name, signature and date</div></div></body></html>";
+  const win = window.open("", "_blank");
+  if (!win) { toast("Allow pop-ups for this page to print the comparison sheet"); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
+}
+
+/* ---------- material lot ---------- */
+function openLot(id) {
+  const l0 = id ? lotOf(id) : null, w = woOf(l0 ? l0.woId : MA_WO); if (!w) return;
+  const aps = S.rapps.filter(a => a.woId === w.id && (a.status === "approved" || (l0 && a.id === l0.apprId)));
+  if (!l0 && !aps.length) { toast("No approved rate for this work order yet. Get the rate approved first (Rate approvals)."); return; }
+  const v = l0 || { apprId: aps[0].id, vendor: "", gstin: "", invNo: "", invDate: "", addressee: "", qty: "", unit: "", rate: "", invRate: "", gstPct: "", costs: [], gateDate: "", wbNet: "", ewbVeh: "", wbVeh: "", heatInv: "", heatTc: "", note: "" };
+  const apLab = a => { const m = mtOf(a.mtId); return mtLabel(m) + " · " + (a.pick || "any vendor") + " · " + rateFmt(a.rate) + (a.validTo ? " to " + dmy(a.validTo) : "") + (a.status !== "approved" ? " (" + AP_ST[a.status] + ")" : ""); };
+  const inp = (k, lab, val, type, extra) => "<label" + (extra || "") + ">" + lab + '<input type="' + (type || "text") + '" id="lt_' + k + '" value="' + esc(val == null ? "" : val) + '"' + (type === "num" ? ' inputmode="decimal"' : "") + "></label>";
+  const wn = l0 ? lotWarn(l0) : [], cost = k => (v.costs || []).filter(c => c.k === k)[0] || {};
+  const docs = l0 ? lotDocs(l0.id) : [];
+  openModal("<h2>" + (l0 ? "Material lot" : "New material lot") + '</h2><div class="sub" style="margin-bottom:8px">' + esc(woShort(w)) + (l0 ? " · " + LOT_ST[lotSt(l0)] : "") + "</div>" +
+    (wn.length ? '<div class="help" style="color:var(--bad)">' + wn.map(esc).join("<br>") + "</div>" : "") +
+    '<div class="form"><label style="grid-column:1/-1">Approved rate<select id="lt_ap">' + aps.map(a => '<option value="' + esc(a.id) + '"' + (a.id === v.apprId ? " selected" : "") + ">" + esc(apLab(a)) + "</option>").join("") + "</select></label>" +
+    inp("vendor", "Vendor", v.vendor) + inp("gstin", "Vendor GSTIN", v.gstin) + inp("invNo", "Invoice no.", v.invNo) + inp("invDate", "Invoice date", v.invDate, "date") +
+    '<label>Invoice addressed to<select id="lt_addr">' + optsHtml(["Nityanand Infrastructure Ltd.", w.client], v.addressee || "Nityanand Infrastructure Ltd.", x => x === w.client ? x + " (client-procured)" : x) + "</select></label>" +
+    inp("qty", 'Quantity <span class="sub" id="lt_unitL"></span>', +v.qty || "", "num") + inp("invRate", "Rate on the invoice", +v.invRate || "", "num") + inp("gstPct", "GST %", v.gstPct === "" ? "" : +v.gstPct, "num") +
+    inp("gateDate", "Delivered at site (gate entry)", v.gateDate, "date") + inp("wbNet", "Weighbridge net (same unit)", +v.wbNet || "", "num") + inp("ewbVeh", "Vehicle no. on the e-way bill", v.ewbVeh) + inp("wbVeh", "Vehicle no. on the weighbridge slip", v.wbVeh) +
+    inp("heatInv", "Heat nos. on the invoice", v.heatInv) + inp("heatTc", "Heat nos. on the test certificate", v.heatTc) + inp("note", "Note", v.note, "text", ' style="grid-column:1/-1"') + "</div>" +
+    '<h3 class="woph">Transport and handling <span class="sub">actual amounts with their receipts; a line the client disputes stays out of the value</span></h3><div class="tblwrap"><table class="cktbl" id="ltCost"><thead><tr><th class="l">Cost</th><th>Amount (&#8377;)</th><th class="l">Receipt</th><th class="l">Disputed by client</th></tr></thead><tbody>' +
+    Object.keys(COSTS).map(k => { const c = cost(k); return '<tr><td class="l">' + COSTS[k] + '</td><td><input type="text" inputmode="decimal" data-c="' + k + ':amt" value="' + esc(+c.amt || "") + '" style="width:90px"></td><td class="l"><input type="text" data-c="' + k + ':link" value="' + esc(c.link || "") + '" placeholder="link" style="width:170px">' + (l0 ? ' <span data-up="' + esc(l0.id + "|" + k) + '"><button class="small" data-act="upl" data-k="lc" data-id="' + esc(l0.id + "|" + k) + '">Upload</button></span>' : "") + '</td><td class="l"><input type="checkbox" data-c="' + k + ':disp"' + (c.disp ? " checked" : "") + "></td></tr>"; }).join("") + "</tbody></table></div>" +
+    (l0 ? '<h3 class="woph">Documents <span class="sub">' + lotPct(l0) + "% of the required ones verified</span></h3>" + '<div class="tblwrap"><table class="cktbl" id="ltDocs"><thead><tr><th class="l">Document</th><th class="l">Status</th><th class="l">Pending until</th><th class="l">File</th><th class="l">Verified</th></tr></thead><tbody>' +
+      docs.map(d => '<tr data-ld="' + esc(d.id) + '"><td class="l">' + esc(d.item) + " " + tg(MD_LV[d.level] || d.level, d.level === "mandatory" ? "pi" : "") + (d.note ? '<br><span class="sub">' + esc(d.note) + "</span>" : "") + '</td><td class="l"><select class="lSt">' + Object.keys(LD_ST).filter(k => k !== "na" || d.level !== "mandatory").map(k => '<option value="' + k + '"' + (d.status === k ? " selected" : "") + ">" + LD_ST[k] + "</option>").join("") +
+        '</select></td><td class="l"><input type="date" class="lDue" value="' + esc(d.due || "") + '"></td><td class="l"><input type="text" class="lLink" value="' + esc(d.link || "") + '" placeholder="link" style="width:150px"> <span data-up="' + esc(d.id) + '"><button class="small" data-act="upl" data-k="ld" data-id="' + esc(d.id) + '">Upload</button></span></td><td class="l sub">' + (d.status === "verified" ? esc(d.verBy || "") + (d.verAt ? "<br>" + dmy(d.verAt) : "") : "") + "</td></tr>").join("") +
+      '</tbody></table></div><div class="toolbar" style="margin-top:6px"><input type="text" id="ltNewDoc" placeholder="Another document for this lot" style="flex:1;min-width:180px"><button class="small" id="ltAddDoc">Add</button><button class="small" id="ltSyncDocs" title="Add documents the checklist has and this lot does not">Refresh from checklist</button></div>' :
+      '<div class="help" style="margin-top:8px">Save the lot to get its document checklist.</div>') +
+    '<div id="ltMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' + (l0 ? '<button id="ltDel" style="margin-right:auto">Delete</button>' : "") + '<button id="mCancel">Cancel</button><button class="primary" id="mSave">Save</button></div>');
+  $("#modal").classList.add("wide");
+  const unitL = () => { const a = rappOf($("#lt_ap").value), m = a && mtOf(a.mtId); $("#lt_unitL").textContent = m && m.unit ? "(" + m.unit + ")" : ""; if (!l0 && m && $("#lt_gstPct").value === "") $("#lt_gstPct").value = +m.gstPct || 18; if (!l0 && a && a.pick && !$("#lt_vendor").value) { $("#lt_vendor").value = a.pick; const pv = apPick(a); if (pv && !$("#lt_gstin").value) $("#lt_gstin").value = pv.gstin || ""; } };
+  $("#lt_ap").onchange = unitL; unitL();
+  $("#mCancel").onclick = closeModal;
+  const read = () => {
+    const a = rappOf($("#lt_ap").value), m = a && mtOf(a.mtId), g = k => $("#lt_" + k).value.trim();
+    const costs = Object.keys(COSTS).map(k => ({ k: k, item: COSTS[k], amt: round2(parseAmt($('#ltCost [data-c="' + k + ':amt"]').value)), link: $('#ltCost [data-c="' + k + ':link"]').value.trim(), disp: $('#ltCost [data-c="' + k + ':disp"]').checked })).filter(c => c.amt || c.link || c.disp);
+    return { a: a, m: m, rec: { woId: w.id, apprId: a ? a.id : "", mtId: m ? m.id : "", vendor: g("vendor"), gstin: g("gstin").toUpperCase(), invNo: g("invNo"), invDate: g("invDate"), addressee: $("#lt_addr").value, qty: round2(parseAmt(g("qty"))), unit: m ? m.unit : "", rate: a ? +a.rate : 0, invRate: round2(parseAmt(g("invRate"))), gstPct: parseAmt(g("gstPct")), costs: costs, gateDate: g("gateDate"), wbNet: parseAmt(g("wbNet")), ewbVeh: g("ewbVeh").toUpperCase(), wbVeh: g("wbVeh").toUpperCase(), heatInv: g("heatInv"), heatTc: g("heatTc"), note: g("note") } };
+  };
+  const readDocs = () => { $$("#ltDocs tr[data-ld]").forEach(tr => { const d = S.ldocs.filter(x => x.id === tr.dataset.ld)[0]; if (!d) return; const st = $(".lSt", tr).value; if (st === "verified" && d.status !== "verified") { d.verBy = USER ? USER.email : ""; d.verAt = isoOf(new Date()); } if (st !== "verified") { d.verBy = ""; d.verAt = ""; } d.status = st; d.due = $(".lDue", tr).value; d.link = $(".lLink", tr).value.trim(); }); };
+  if (l0) {
+    $("#ltAddDoc").onclick = () => { const t = $("#ltNewDoc").value.trim(); if (!t) return; readDocs(); Object.assign(l0, read().rec); S.ldocs.push({ id: uid(), lotId: l0.id, item: t, level: "mandatory", status: "pending", due: "", link: "", verBy: "", verAt: "", note: "", ord: docs.reduce((mx, d) => Math.max(mx, +d.ord || 0), 0) + 1 }); persist(); openLot(l0.id); };
+    $("#ltSyncDocs").onclick = () => { readDocs(); Object.assign(l0, read().rec); const n = lotDocsSync(l0); persist(); openLot(l0.id); toast(n ? n + " document" + (n === 1 ? "" : "s") + " added from the checklist" : "This lot already has every document on the checklist"); };
+    $("#ltDel").onclick = () => {
+      if (saOfLot(l0.id)) { $("#ltMsg").textContent = "This lot is in a secured advance request. Take it out of the request first."; return; }
+      closeModal(); confirmModal("Delete this lot?", esc((mtOf(l0.mtId) || {}).name || "") + " · invoice " + esc(l0.invNo) + ". Its document list goes too; files stay in Drive.", "Delete", () => { S.lots = S.lots.filter(x => x !== l0); S.ldocs = S.ldocs.filter(d => d.lotId !== l0.id); persist(); renderAll(); toast("Lot deleted"); });
+    };
+  }
+  $("#mSave").onclick = () => {
+    const r = read();
+    if (!r.a || !r.m) { $("#ltMsg").textContent = "Pick the approved rate this lot is bought at."; return; }
+    if (!l0 && r.a.status !== "approved") { $("#ltMsg").textContent = "That rate is not approved by the client yet."; return; }
+    if (!r.rec.invNo || !r.rec.invDate) { $("#ltMsg").textContent = "Enter the invoice number and date."; return; }
+    if (!(r.rec.qty > 0)) { $("#ltMsg").textContent = "Enter the quantity."; return; }
+    if (l0) { readDocs(); Object.assign(l0, r.rec); persist(); closeModal(); renderAll(); toast("Lot saved"); return; }
+    const n = Object.assign({ id: uid() }, r.rec); S.lots.push(n); lotDocsSync(n);
+    persist(); renderAll(); openLot(n.id); toast("Lot saved. Now add its documents.");
+  };
+}
+function lotDocsSync(l) {   // copy the checklist for its material onto the lot; returns how many were added
+  const m = mtOf(l.mtId); if (!m) return 0;
+  const have = lotDocs(l.id); let ord = have.reduce((mx, d) => Math.max(mx, +d.ord || 0), 0), n = 0;
+  docsFor(l.woId, m.mat).forEach(r => { if (have.some(d => norm(d.item) === norm(r.doc))) return; S.ldocs.push({ id: uid(), lotId: l.id, item: r.doc, level: r.level, status: "pending", due: "", link: "", verBy: "", verAt: "", note: r.note || "", ord: ++ord }); n++; });
+  return n;
+}
+
+/* ---------- secured advance request ---------- */
+function openSa(id) {
+  const s0 = id ? saOf(id) : null, w = woOf(s0 ? s0.woId : MA_WO); if (!w) return;
+  const cfg = saCfg(w);
+  SAW = JSON.parse(JSON.stringify(s0 || { id: "", woId: w.id, no: nextSaNo(w), date: today(), lotIds: [], pct: cfg.pct, base: cfg.base, amt: 0, status: "draft", subOn: "", certAmt: 0, certOn: "", paidOn: "", recMonths: cfg.months || "", note: "" }));
+  if (!s0 && !saLots(SAW).length) { SAW = null; toast("No delivered lots of secured-advance materials to put in a request yet. Add the lot with its gate entry date first."); return; }
+  drawSa();
+}
+function saLots(s) {   // lots this request can hold: delivered, material in SA, not in another request
+  return S.lots.filter(l => { const m = mtOf(l.mtId), o = saOfLot(l.id); return l.woId === s.woId && ((m && m.saOk && l.gateDate && (!o || o.id === s.id)) || s.lotIds.indexOf(l.id) >= 0); });
+}
+function drawSa() {
+  const s = SAW, w = woOf(s.woId), cfg = saCfg(w), draft = s.status === "draft", lots = saLots(s), st = saSt(s);
+  const amt = saAmt(s), t = s.status === "certified" || s.status === "paid" ? (+s.certAmt || amt) : amt, rec = s.id ? S.srecs.filter(r => r.saId === s.id).sort((a, b) => a.date.localeCompare(b.date)) : [], rsum = round2(rec.reduce((a, r) => a + (+r.amt || 0), 0)), due = saDueNow(Object.assign({}, s, { amt: amt }));
+  const blk = s.lotIds.map(lotOf).filter(Boolean).map(l => [l, ldBlocking(l, cfg.pending)]).filter(x => x[1].length);
+  openModal("<h2>Secured advance request " + esc(s.no) + '</h2><div class="sub" style="margin-bottom:8px">' + esc(woShort(w)) + " · " + tg(SA_ST[st], st === "paid" || st === "docs" ? "ok" : "") + (s.subOn ? " submitted " + dmy(s.subOn) : "") + (s.certOn ? ", certified " + dmy(s.certOn) : "") + (s.paidOn ? ", paid " + dmy(s.paidOn) : "") + "</div>" +
+    '<div class="form"><label>Request no.<input type="text" id="saNo" value="' + esc(s.no) + '"' + (draft ? "" : " disabled") + '></label><label>Date<input type="date" id="saDate" value="' + esc(s.date || "") + '"' + (draft ? "" : " disabled") + '></label>' +
+    '<label>Eligible %<input type="text" id="saPct" inputmode="decimal" value="' + esc(s.pct) + '"' + (draft ? "" : " disabled") + '></label><label>Of<select id="saBase"' + (draft ? "" : " disabled") + '><option value="basic"' + (s.base !== "gst" ? " selected" : "") + '>value before GST</option><option value="gst"' + (s.base === "gst" ? " selected" : "") + ">value including GST</option></select></label></div>" +
+    '<h3 class="woph">Lots</h3><div class="tblwrap"><table class="cktbl"><thead><tr><th></th><th class="l">Material, invoice</th><th>Qty</th><th>Value</th><th class="l">Documents</th><th>Amount</th></tr></thead><tbody>' +
+    (lots.length ? lots.map(l => { const on = s.lotIds.indexOf(l.id) >= 0, b = ldBlocking(l, cfg.pending), wn = lotWarn(l), m = mtOf(l.mtId) || {};
+      return '<tr><td><input type="checkbox" class="saPick" value="' + esc(l.id) + '"' + (on ? " checked" : "") + (draft ? "" : " disabled") + '></td><td class="l">' + esc(m.name || "") + " · " + esc(l.vendor || "") + '<br><span class="sub">' + esc(l.invNo || "") + (l.invDate ? " · " + dmy(l.invDate) : "") + "</span></td><td>" + qtyFmt(l.qty) + " " + esc(l.unit || "") + "</td><td>" + fmt(lotVal(l)) + '</td><td class="l">' + lotPct(l) + "% verified" + (b.length ? '<br><span style="color:var(--bad)">Missing: ' + b.map(d => esc(d.item)).join(", ") + "</span>" : "") + (wn.length ? "<br>" + tg(wn.length + " warning" + (wn.length === 1 ? "" : "s"), "bad") : "") + "</td><td>" + (on ? fmt(saShare(s, l)) : "") + "</td></tr>"; }).join("") : '<tr><td colspan="6" class="l sub">No delivered lots of secured-advance materials.</td></tr>') +
+    '</tbody><tfoot><tr><td></td><td class="l" colspan="4"><b>Requested</b></td><td><b id="saAmtL">' + fmt(amt) + "</b></td></tr></tfoot></table></div>" +
+    (draft && blk.length ? '<div class="help" style="color:var(--bad)">Cannot be submitted yet: ' + blk.map(x => esc((mtOf(x[0].mtId) || {}).name || "") + " " + esc(x[0].invNo) + " needs " + x[1].map(d => esc(d.item) + (d.status === "received" ? " verified" : "")).join(", ")).join("; ") + ".</div>" : "") +
+    (s.status === "submitted" ? '<div class="form" style="margin-top:10px"><label>Certified amount (&#8377;)<input type="text" id="saCert" inputmode="decimal" value="' + esc(+s.certAmt || amt) + '"></label><label>Certified on<input type="date" id="saCertOn" value="' + esc(s.certOn || today()) + '"></label></div>' : "") +
+    (s.status === "certified" ? '<div class="form" style="margin-top:10px"><label>Paid on<input type="date" id="saPaidOn" value="' + esc(s.paidOn || today()) + '"></label></div>' : "") +
+    (s.id && (s.status === "certified" || s.status === "paid") ? '<h3 class="woph">Recovery <span class="sub">' + fmt(rsum) + " of " + fmt(t) + " recovered, " + fmt(t - rsum) + " outstanding" + (due != null ? "; " + fmt(due) + " due by now" : "") + "</span></h3>" +
+      '<div class="form"><label>Recover over (months, from certification)<input type="text" id="saMonths" inputmode="decimal" value="' + esc(s.recMonths || "") + '"></label></div>' +
+      '<div class="tblwrap"><table class="cktbl"><thead><tr><th class="l">Date</th><th class="l">Lot</th><th>Qty used</th><th>Recovered</th><th class="l">Note</th><th></th></tr></thead><tbody>' +
+      rec.map(r => { const l = lotOf(r.lotId) || {}; return '<tr><td class="l">' + dmy(r.date) + '</td><td class="l">' + esc(((mtOf(l.mtId) || {}).name || "") + " " + (l.invNo || "")) + "</td><td>" + (+r.qty ? qtyFmt(r.qty) : "") + "</td><td>" + fmt(r.amt) + '</td><td class="l">' + esc(r.note || "") + '</td><td><button class="small danger" data-act="srdel" data-id="' + esc(r.id) + '">✕</button></td></tr>'; }).join("") + "</tbody></table></div>" +
+      '<div class="toolbar" style="margin-top:6px"><input type="date" id="srDate" value="' + esc(today()) + '"><select id="srLot">' + s.lotIds.map(lotOf).filter(Boolean).map(l => '<option value="' + esc(l.id) + '">' + esc(((mtOf(l.mtId) || {}).name || "") + " " + l.invNo) + "</option>").join("") + '</select><input type="text" id="srQty" inputmode="decimal" placeholder="Qty used" style="width:90px"><input type="text" id="srAmt" inputmode="decimal" placeholder="Amount" style="width:100px"><input type="text" id="srNote" placeholder="e.g. RA-03 consumption" style="flex:1;min-width:120px"><button class="small" data-act="sradd">Add recovery</button></div>' : "") +
+    '<label style="display:block;margin-top:10px;font-size:13px">Note<input type="text" id="saNote" value="' + esc(s.note || "") + '" style="width:100%"></label>' +
+    '<div id="saMsg" style="font-size:13px;font-weight:600;color:var(--bad)"></div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
+    (s.id && draft ? '<button id="saDel" style="margin-right:auto">Delete</button>' : s.id && s.status === "submitted" ? '<button id="saBack" style="margin-right:auto">Back to draft</button>' : "") +
+    (s.id ? '<button data-act="sapack" data-id="' + esc(s.id) + '">Pack PDF</button>' : "") + '<button id="mCancel">Close</button>' +
+    (draft ? '<button id="mSave">Save draft</button><button class="primary" id="saSubmit">Submit to client</button>' : s.status === "submitted" ? '<button id="mSave">Save</button><button class="primary" id="saCertify">Mark certified</button>' : s.status === "certified" ? '<button id="mSave">Save</button><button class="primary" id="saPaid">Mark paid</button>' : '<button class="primary" id="mSave">Save</button>') + "</div>");
+  $("#modal").classList.add("wide");
+  $$("#modal .saPick").forEach(c => { c.onchange = () => { readSa(); drawSa(); }; });
+  if (draft) { $("#saPct").onchange = () => { readSa(); drawSa(); }; $("#saBase").onchange = () => { readSa(); drawSa(); }; }
+  if ($("#srQty")) $("#srQty").oninput = () => { const l = lotOf($("#srLot").value), q = parseAmt($("#srQty").value); if (l && +l.qty) $("#srAmt").value = q ? round2(saShare(s, l) * (t / (amt || 1)) / +l.qty * q) : ""; };
+  $("#mCancel").onclick = () => { SAW = null; closeModal(); };
+  const keep = (status, extra) => {
+    readSa(); const sa = SAW;
+    if (sa.status === "draft") sa.amt = saAmt(sa);
+    Object.assign(sa, extra || {}); if (status) sa.status = status;
+    if (sa.id) Object.assign(saOf(sa.id), sa); else S.sas.push(Object.assign(sa, { id: uid() }));
+    persist(); renderAll(); return sa;
+  };
+  $("#mSave").onclick = () => { if (draft && !SAW.lotIds.length && !$$("#modal .saPick:checked").length) { $("#saMsg").textContent = "Tick at least one lot."; return; } keep(); SAW = null; closeModal(); toast("Secured advance request saved"); };
+  if ($("#saSubmit")) $("#saSubmit").onclick = () => {
+    readSa(); if (!SAW.lotIds.length) { $("#saMsg").textContent = "Tick at least one lot."; return; }
+    const b = SAW.lotIds.map(lotOf).filter(Boolean).filter(l => ldBlocking(l, cfg.pending).length);
+    if (b.length) { drawSa(); $("#saMsg").textContent = "Every mandatory document must be verified first" + (cfg.pending ? " (or pending with a date)" : "") + "."; return; }
+    const aps = SAW.lotIds.map(lotOf).filter(Boolean).filter(l => { const a = rappOf(l.apprId); return !a || a.status !== "approved"; });
+    if (aps.length) { $("#saMsg").textContent = "A lot's rate is no longer approved by the client: " + aps.map(l => l.invNo).join(", ") + "."; return; }
+    keep("submitted", { subOn: today() }); SAW = null; closeModal(); toast("Marked submitted. Use Pack PDF for the documents.");
+  };
+  if ($("#saCertify")) $("#saCertify").onclick = () => { const c = round2(parseAmt($("#saCert").value)); if (!(c > 0)) { $("#saMsg").textContent = "Enter the certified amount."; return; } const x = keep("certified", { certAmt: c, certOn: $("#saCertOn").value || today() }); SAW = JSON.parse(JSON.stringify(x)); drawSa(); toast("Certified. Record recovery as the material is used."); };
+  if ($("#saPaid")) $("#saPaid").onclick = () => { const x = keep("paid", { paidOn: $("#saPaidOn").value || today() }); SAW = JSON.parse(JSON.stringify(x)); drawSa(); toast("Marked paid"); };
+  if ($("#saBack")) $("#saBack").onclick = () => { keep("draft", { subOn: "" }); SAW = JSON.parse(JSON.stringify(saOf(SAW.id))); drawSa(); };
+  if ($("#saDel")) $("#saDel").onclick = () => { const id = SAW.id; SAW = null; closeModal(); confirmModal("Delete this request?", "Its lots become free for another request.", "Delete", () => { S.sas = S.sas.filter(x => x.id !== id); S.srecs = S.srecs.filter(r => r.saId !== id); persist(); renderAll(); toast("Request deleted"); }); };
+}
+function readSa() {
+  const s = SAW; if (!s || !$("#saNo")) return;
+  if (s.status === "draft") { s.no = $("#saNo").value.trim() || s.no; s.date = $("#saDate").value; s.pct = parseAmt($("#saPct").value); s.base = $("#saBase").value; s.lotIds = $$("#modal .saPick:checked").map(c => c.value); }
+  if ($("#saMonths")) s.recMonths = parseAmt($("#saMonths").value) || "";
+  if ($("#saCert")) { s.certAmt = round2(parseAmt($("#saCert").value)); s.certOn = $("#saCertOn").value; }
+  if ($("#saPaidOn")) s.paidOn = $("#saPaidOn").value;
+  s.note = $("#saNote").value.trim();
+}
+function srAdd() {
+  const s = SAW; if (!s || !s.id) return;
+  const amt = round2(parseAmt($("#srAmt").value)), lot = $("#srLot").value; if (!(amt > 0)) { $("#saMsg").textContent = "Enter the amount recovered (or the quantity used)."; return; }
+  readSa(); Object.assign(saOf(s.id), { recMonths: s.recMonths, note: s.note });
+  S.srecs.push({ id: uid(), saId: s.id, lotId: lot, date: $("#srDate").value || today(), qty: parseAmt($("#srQty").value), amt: amt, note: $("#srNote").value.trim() });
+  persist(); renderAll(); drawSa(); toast("Recovery recorded");
+}
+function srDel(id) { S.srecs = S.srecs.filter(r => r.id !== id); persist(); renderAll(); if (SAW) drawSa(); }
+
+/* ---------- SA pack: one PDF with a cover letter, an index and the documents in order (Drive files fetched and merged) ---------- */
+const PDFLIB_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = PDFLIB_URL; sc.onload = () => window.PDFLib ? res(window.PDFLib) : rej(new Error("The PDF tool did not load.")); sc.onerror = () => rej(new Error("Could not load the PDF tool. Check the internet connection.")); document.head.appendChild(sc); });
+}
+function driveRef(u) {
+  const s = String(u || ""); if (!/^https:\/\/(drive|docs)\.google\.com\//.test(s)) return null;
+  let m = s.match(/\/folders\/([\w-]{10,})/); if (m) return { id: m[1], folder: true };
+  m = s.match(/\/d\/([\w-]{10,})/) || s.match(/[?&]id=([\w-]{10,})/); return m ? { id: m[1] } : null;
+}
+function packItems(s) {
+  const out = [];
+  s.lotIds.map(lotOf).filter(Boolean).forEach((l, i) => {
+    const m = mtOf(l.mtId) || {}, a = rappOf(l.apprId), lab = "Lot " + (i + 1) + ": " + (m.name || "") + ", invoice " + l.invNo;
+    if (a && a.link) out.push({ lot: lab, title: "Client rate approval", link: a.link });
+    lotDocs(l.id).filter(d => d.status !== "na").forEach(d => out.push({ lot: lab, title: d.item, link: d.link, status: d.status, due: d.due }));
+    (l.costs || []).filter(c => c.link).forEach(c => out.push({ lot: lab, title: c.item + " receipt" + (c.disp ? " (disputed by client)" : ""), link: c.link }));
+  });
+  return out;
+}
+async function driveBytes(id, mime) {
+  const gapps = /^application\/vnd\.google-apps\./.test(mime);
+  if (!driveReady()) throw new Error("Google Drive access has expired. Click Pack PDF again.");
+  const r = await fetch(DRIVE_API + "/" + id + (gapps ? "/export?mimeType=application%2Fpdf&" : "?alt=media&") + ALL_DRIVES, { headers: { Authorization: "Bearer " + TOKEN } });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return { bytes: new Uint8Array(await r.arrayBuffer()), mime: gapps ? "application/pdf" : mime };
+}
+async function fetchDocParts(link) {   // [{ bytes, mime, name }] or [{ why }]
+  const ref = driveRef(link);
+  if (!ref) return [{ why: link ? "Not a Google Drive file, see " + link : "No file attached" }];
+  try {
+    const meta = await dapi("GET", DRIVE_API + "/" + ref.id + "?" + ALL_DRIVES + "&fields=id,name,mimeType");
+    let files = [meta];
+    if (meta.mimeType === FOLDER_MIME) { const f = await dapi("GET", DRIVE_API + "?" + ALL_DRIVES + "&includeItemsFromAllDrives=true&orderBy=name&fields=" + encodeURIComponent("files(id,name,mimeType)") + "&q=" + encodeURIComponent("'" + ref.id + "' in parents and trashed=false")); files = (f.files || []).filter(x => x.mimeType !== FOLDER_MIME); }
+    const out = [];
+    for (const f of files) {
+      if (!/pdf|jpeg|jpg|png|google-apps\.(document|spreadsheet|presentation)/.test(f.mimeType)) { out.push({ why: f.name + " (" + f.mimeType + ") cannot go into a PDF; see " + link }); continue; }
+      const b = await driveBytes(f.id, f.mimeType); out.push({ bytes: b.bytes, mime: b.mime, name: f.name });
+    }
+    return out.length ? out : [{ why: "The folder is empty: " + link }];
+  } catch (e) { return [{ why: "Could not read " + link + " (" + (e.message || e) + ")" }]; }
+}
+const pdfTx = s => String(s == null ? "" : s).replace(/₹/g, "Rs ").replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...").replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+function pdfWrap(text, font, size, width) {
+  const out = []; String(text == null ? "" : text).split("\n").map(pdfTx).forEach(par => { let line = ""; par.split(" ").forEach(wd => { const t = line ? line + " " + wd : wd; if (font.widthOfTextAtSize(t, size) > width && line) { out.push(line); line = wd; } else line = t; }); out.push(line); });
+  return out;
+}
+async function makePack(id) {
+  const s = saOf(id); if (!s) return;
+  const w = woOf(s.woId), items = packItems(s), msg = t => { const el = $("#saPackMsg"); if (el) el.textContent = t; if (!el || $("#modalbg").classList.contains("show")) toast(t); };
+  if (!items.length) { toast("No documents on these lots yet."); return; }
+  try {
+    if (items.some(x => driveRef(x.link)) && !driveReady()) { msg("Asking Google for Drive access…"); await requestDrive(); }
+    msg("Loading the PDF tool…");
+    const PL = await loadPdfLib();
+    const parts = [];
+    for (let i = 0; i < items.length; i++) { msg("Fetching documents: " + (i + 1) + " of " + items.length); parts.push(items[i].link ? await fetchDocParts(items[i].link) : [{ why: items[i].status === "pending" && items[i].due ? "Pending, to follow by " + dmy(items[i].due) : "Not attached yet" }]); }
+    msg("Putting the pack together…");
+    const doc = await PL.PDFDocument.create(), f = await doc.embedFont(PL.StandardFonts.Helvetica), fb = await doc.embedFont(PL.StandardFonts.HelveticaBold);
+    const A4 = [595.28, 841.89], M = 50, txt = (pg, t, x, y, sz, bold) => pg.drawText(pdfTx(t), { x: x, y: y, size: sz || 10, font: bold ? fb : f });
+    const lots = s.lotIds.map(lotOf).filter(Boolean), total = saTotal(s) || saAmt(s);
+    // cover letter
+    let pg = doc.addPage(A4), y = A4[1] - M;
+    txt(pg, "Nityanand Infrastructure Ltd.", M, y, 15, true); y -= 30;
+    txt(pg, "Ref: " + s.no + (w.woNo ? " / WO " + w.woNo : ""), M, y); txt(pg, "Date: " + dmy(s.subOn || s.date || today()), A4[0] - M - 110, y); y -= 26;
+    ["To,", w.client, w.site ? "Site: " + w.site : ""].filter(Boolean).forEach(t => { txt(pg, t, M, y); y -= 14; }); y -= 10;
+    pdfWrap("Subject: Request for secured advance against materials delivered at site, " + woLabel(w) + (w.woDate ? " dated " + dmy(w.woDate) : ""), fb, 10, A4[0] - 2 * M).forEach(t => { txt(pg, t, M, y, 10, true); y -= 14; }); y -= 8;
+    pdfWrap("Dear Sir / Madam,\nAs per the terms of the above work order, we request a secured advance of Rs " + Math.round(total).toLocaleString("en-IN") + ", being " + s.pct + "% of the " + (s.base === "gst" ? "value including GST" : "value before GST") + " of the materials listed below, delivered at site at the rates approved by you. The supporting documents for each lot follow in the order of the index.", f, 10, A4[0] - 2 * M).forEach(t => { txt(pg, t, M, y); y -= 14; }); y -= 8;
+    const cols = [M, M + 24, M + 210, M + 300, M + 390], hdr = ["Lot", "Material, vendor, invoice", "Quantity", "Value (Rs)", "Requested (Rs)"];
+    hdr.forEach((h, i) => txt(pg, h, cols[i], y, 9, true)); y -= 4; pg.drawLine({ start: { x: M, y: y }, end: { x: A4[0] - M, y: y }, thickness: 0.5 }); y -= 13;
+    lots.forEach((l, i) => {
+      const m = mtOf(l.mtId) || {}, ln = pdfWrap((m.name || "") + ", " + (l.vendor || "") + ", " + l.invNo + (l.invDate ? " dt " + dmy(l.invDate) : ""), f, 9, 180);
+      txt(pg, String(i + 1), cols[0], y, 9); ln.forEach((t, j) => txt(pg, t, cols[1], y - j * 11, 9)); txt(pg, qtyFmt(l.qty) + " " + (l.unit || ""), cols[2], y, 9); txt(pg, Math.round(lotVal(l)).toLocaleString("en-IN"), cols[3], y, 9); txt(pg, Math.round(saShare(s, l)).toLocaleString("en-IN"), cols[4], y, 9);
+      y -= 11 * ln.length + 5;
+    });
+    pg.drawLine({ start: { x: M, y: y + 8 }, end: { x: A4[0] - M, y: y + 8 }, thickness: 0.5 }); txt(pg, "Total requested", cols[1], y - 4, 9, true); txt(pg, Math.round(saAmt(s)).toLocaleString("en-IN"), cols[4], y - 4, 9, true); y -= 30;
+    const pend = items.filter(x => x.status === "pending" && x.due);
+    if (pend.length) { pdfWrap("To follow: " + pend.map(x => x.title + " (" + x.lot.split(":")[0] + ") by " + dmy(x.due)).join("; ") + ".", f, 10, A4[0] - 2 * M).forEach(t => { txt(pg, t, M, y); y -= 14; }); y -= 6; }
+    ["Kindly process the request at the earliest.", "", "Yours faithfully,", "For Nityanand Infrastructure Ltd.", "", "", "Authorised signatory"].forEach(t => { txt(pg, t, M, y); y -= 14; });
+    // index pages, filled once page numbers are known
+    const perIdx = 40, nIdx = Math.max(1, Math.ceil(parts.reduce((a, p) => a + p.length, 0) / perIdx)), idxPages = [];
+    for (let i = 0; i < nIdx; i++) idxPages.push(doc.addPage(A4));
+    const rows = [];
+    for (let i = 0; i < items.length; i++) {
+      for (const p of parts[i]) {
+        const start = doc.getPageCount() + 1, title = items[i].title + (parts[i].length > 1 && p.name ? " - " + p.name : "");
+        try {
+          if (p.bytes && /pdf/.test(p.mime)) { const src = await PL.PDFDocument.load(p.bytes, { ignoreEncryption: true }); (await doc.copyPages(src, src.getPageIndices())).forEach(x => doc.addPage(x)); }
+          else if (p.bytes) {
+            const img = /png/.test(p.mime) ? await doc.embedPng(p.bytes) : await doc.embedJpg(p.bytes), ip = doc.addPage(A4), sc = Math.min((A4[0] - 2 * M) / img.width, (A4[1] - 2 * M - 20) / img.height, 1);
+            txt(ip, items[i].lot + " - " + title, M, A4[1] - M + 10, 8); ip.drawImage(img, { x: (A4[0] - img.width * sc) / 2, y: A4[1] - M - 10 - img.height * sc, width: img.width * sc, height: img.height * sc });
+          } else throw new Error(p.why);
+        } catch (e) {
+          const np = doc.addPage(A4); let yy = A4[1] - M - 40; txt(np, items[i].lot, M, A4[1] - M, 10); txt(np, title, M, A4[1] - M - 18, 14, true);
+          pdfWrap(e.message || String(e), f, 10, A4[0] - 2 * M).forEach(t => { txt(np, t, M, yy); yy -= 14; });
+        }
+        rows.push([items[i].lot, title, start, p.why ? "missing" : ""]);
+      }
+    }
+    rows.forEach((r, i) => {
+      const ip = idxPages[Math.floor(i / perIdx)], k = i % perIdx;
+      if (k === 0) { txt(ip, "Index of documents, " + s.no, M, A4[1] - M, 13, true); ["Sr", "Lot", "Document", "Page"].forEach((h, j) => txt(ip, h, [M, M + 28, M + 70, A4[0] - M - 40][j], A4[1] - M - 26, 9, true)); }
+      const yy = A4[1] - M - 42 - k * 17;
+      txt(ip, String(i + 1), M, yy, 9); txt(ip, r[0].split(":")[0], M + 28, yy, 9); txt(ip, pdfWrap(r[1] + (r[3] ? " (not attached)" : ""), f, 9, A4[0] - 2 * M - 120)[0], M + 70, yy, 9); txt(ip, String(r[2]), A4[0] - M - 40, yy, 9);
+    });
+    const bytes = await doc.save(), a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })); a.download = (s.no + " " + w.client + (w.woNo ? " WO " + w.woNo : "")).replace(/[\/\\:*?"<>|]/g, "-") + ".pdf"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    const miss = rows.filter(r => r[3]).length;
+    msg("Pack ready: " + doc.getPageCount() + " pages" + (miss ? ", " + miss + " document" + (miss === 1 ? "" : "s") + " not attached (marked in the index)" : ""));
+  } catch (e) { msg("Pack PDF failed: " + (e.message || e)); }
+}
+
 /* ---------- ui wiring ---------- */
 let toastT = null;
 function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2200); }
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
-  ["overview", "tasks", "client", "bills", "pipeline", "wo", "ra", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "tasks", "client", "bills", "pipeline", "wo", "mat", "ra", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
 }
@@ -3310,6 +3951,23 @@ function wire() {
     if (act === "wopick") { WO_SEL = id; renderWo(); $("#woDetail").scrollIntoView({ block: "start" }); return; }
     if (act === "woedit") { openWo(id); return; }
     if (act === "wodel") { delWo(id); return; }
+    if (act === "mtadd") { mtAdd(); return; }
+    if (act === "mtdel") { mtDel(id); return; }
+    if (act === "mdadd") { mdAdd(); return; }
+    if (act === "mddel") { mdDel(id); return; }
+    if (act === "mdexport") { exportMd(); return; }
+    if (act === "apnew") { openAppr(null); return; }
+    if (act === "apedit") { openAppr(id); return; }
+    if (act === "apprint") { const a = rappOf(id); if (a) printRateSheet(a); return; }
+    if (act === "apvadd") { readAppr(); AP.vendors.push({ name: "", gstin: "", rate: "", freight: "", loading: "", unloading: "", mathadi: "", gst: 18 }); drawAppr(); return; }
+    if (act === "apvdel") { readAppr(); AP.vendors.splice(+t.dataset.i, 1); if (!AP.vendors.length) AP.vendors.push({ name: "", gstin: "", rate: "", freight: "", loading: "", unloading: "", mathadi: "", gst: 18 }); drawAppr(); return; }
+    if (act === "ltnew") { openLot(null); return; }
+    if (act === "ltedit") { openLot(id); return; }
+    if (act === "sanew") { openSa(null); return; }
+    if (act === "saedit") { openSa(id); return; }
+    if (act === "sapack") { makePack(id); return; }
+    if (act === "sradd") { srAdd(); return; }
+    if (act === "srdel") { srDel(id); return; }
     if (act === "woclose") { WO_SEL = null; renderWo(); return; }
     if (act === "ckadd") { openCheck(null, t.dataset.ph); return; }
     if (act === "ckedit") { openCheck(id); return; }
@@ -3384,6 +4042,10 @@ function wire() {
   $("#rwNext").onclick = () => rwNext(false); $("#rwBack").onclick = () => rwNext(true); $("#rwPrint").onclick = () => printAbstract(null);
   $("#tkOwner").onchange = e => { TK_OWNER = e.target.value; renderTasks(); };
   $("#woFile").onchange = e => { const f = e.target.files[0]; if (f) importWo(f); e.target.value = ""; };
+  $("#mdFile").onchange = e => { const f = e.target.files[0]; if (f) importMd(f); e.target.value = ""; };
+  $("#maWo").onchange = e => { MA_WO = e.target.value; renderMat(); };
+  $("#maBody").addEventListener("change", maEdit);
+  $("#mdTbl").addEventListener("change", mdEdit);
   $("#reqFile").onchange = e => { const f = e.target.files[0]; if (f) importReqs(f); e.target.value = ""; };
   $("#reqTbl").addEventListener("change", reqEdit);
   $("#rqNewItem").onkeydown = e => { if (e.key === "Enter") reqAdd(); };
