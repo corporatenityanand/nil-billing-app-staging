@@ -722,13 +722,13 @@ const TABS = {
   equipment: ["id", "name", "kind", "make", "model", "serial", "words", "project", "status", "note"],
   tally_snap: ["id", "book", "from", "asOn", "vouchers", "dr", "cr", "fingerprint", "takenBy", "takenAt"],
   tally_changes: ["id", "kind", "ref", "book", "date", "party", "type", "no", "dr", "cr", "was", "reason", "by", "at", "status", "postedBy", "postedOn", "tallyNo", "tallyId"],
-  orders: ["id", "kind", "no", "date", "vendorId", "vendor", "gstin", "vaddr", "vphone", "project", "site", "delivery", "ref", "subject", "lines", "taxMode", "subtotal", "tax", "total", "payTerms", "terms", "status", "by", "on", "note", "vemail", "qdate", "dterms", "remark", "other"],
+  orders: ["id", "kind", "no", "date", "vendorId", "vendor", "gstin", "vaddr", "vphone", "project", "site", "delivery", "ref", "subject", "lines", "taxMode", "subtotal", "tax", "total", "payTerms", "terms", "status", "by", "on", "note", "vemail", "qdate", "dterms", "remark", "other", "pan", "tdsSec", "tdsPct", "tds", "net"],
   settings: ["key", "value"],
   audit: ["timestamp", "user_email", "action", "entity", "entity_id", "before_json", "after_json"]
 };
 const SKEY = { vendors: "vendors", projects: "projects", bank_lines: "lines", payments: "pays", categories: "cats", chat_docs: "docs", tally: "tally", tally_snap: "tsnap", tally_changes: "tchg", equipment: "equip", orders: "orders" };
 const EDITABLE = ["vendors", "projects", "bank_lines", "payments", "categories", "chat_docs", "tally", "tally_snap", "tally_changes", "equipment", "orders", "settings"];
-const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1, subtotal: 1, tax: 1, other: 1 };
+const NUMC = { debit: 1, credit: 1, balance: 1, amt: 1, tdsPct: 1, sort: 1, taxable: 1, gst: 1, total: 1, paid: 1, post: 1, dr: 1, cr: 1, vouchers: 1, subtotal: 1, tax: 1, other: 1, tds: 1, net: 1 };
 const BOOLC = { adv: 1, dupOk: 1, leftOut: 1, noProject: 1, hidden: 1 };
 const DATEC = { date: 1, start: 1, end: 1, importedOn: 1, on: 1, addedOn: 1, docDate: 1, checkedOn: 1, tagOkOn: 1, gone: 1, from: 1, asOn: 1, postedOn: 1, delivery: 1, qdate: 1 };
 
@@ -2571,12 +2571,27 @@ function odLinesDraw() {
   odTotals();
 }
 function odLinesRead() { $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelectorAll("input").forEach(inp => { l[inp.dataset.f] = inp.value.trim(); }); }); }
+// GSTIN or PAN in one field; TDS by section (Income-tax Act): 194C 1% individual / HUF (PAN 4th letter P or H), 2% others;
+// no PAN: 20% (206AA). TDS is on the value before GST (CBDT circular 23/2017) and rounded to the rupee.
+const RX_GSTIN = /^\d{2}[A-Z0-9]{13}$/, RX_PAN = /^[A-Z]{5}\d{4}[A-Z]$/;
+const odId = v => { v = String(v || "").trim().toUpperCase(); return !v ? { gstin: "", pan: "" } : RX_PAN.test(v) ? { gstin: "", pan: v } : RX_GSTIN.test(v) ? { gstin: v, pan: RX_PAN.test(v.slice(2, 12)) ? v.slice(2, 12) : "" } : { bad: true, gstin: "", pan: "" }; };
+const TDS_SEC = [["", "No TDS"], ["194C", "194C Contract work"], ["194Q", "194Q Purchase of goods"], ["194IA", "194-I Hire of plant / machinery"], ["194IB", "194-I Rent of land / building"], ["194JA", "194J Technical services"], ["194JB", "194J Professional fees"]];
+const TDS_LBL = { "194C": "194C", "194Q": "194Q", "194IA": "194-I(a)", "194IB": "194-I(b)", "194JA": "194J", "194JB": "194J" };
+function tdsRate(sec, pan) {
+  if (!sec) return 0;
+  if (!pan) return 20;
+  return sec === "194C" ? (/^[A-Z]{3}[PH]/.test(pan) ? 1 : 2) : sec === "194Q" ? 0.1 : sec === "194IB" || sec === "194JB" ? 10 : 2;
+}
+const odTds = (c, pct) => Math.round(c.sub * (+pct || 0) / 100);
 function odTotals() {
   const mode = $("#odTax").value, c = odCalc(OD_LINES, mode, $("#odOth").value);
   $$("#odLines tbody tr").forEach(tr => { const l = OD_LINES[+tr.dataset.i]; if (l) tr.querySelector(".od-a").textContent = fmt(odAmt(l)); });
   $("#odTot").innerHTML = (c.disc ? "<span>Gross</span><b>" + fmt(c.gross) + "</b><span>Discount</span><b>-" + fmt(c.disc) + "</b>" : "") + "<span>Before GST</span><b>" + fmt(c.sub) + "</b>" +
     c.taxes.map(x => mode === "intra" ? "<span>CGST " + x.g / 2 + "% + SGST " + x.g / 2 + "%</span><b>" + fmt(x.tax) + "</b>" : "<span>IGST " + x.g + "%</span><b>" + fmt(x.tax) + "</b>").join("") +
     (c.other ? "<span>Other charges</span><b>" + fmt(c.other) + "</b>" : "") + "<span>Total</span><b>" + fmt(c.total) + "</b><span></span><span class=sub>" + esc(inWordsINR(c.total)) + "</span>";
+  const sec = $("#odTdsS").value, pct = +$("#odTdsR").value || 0, t = sec ? odTds(c, pct) : 0;
+  if (sec) $("#odTot").innerHTML += "<span>Less TDS " + esc(TDS_LBL[sec]) + " @ " + pct + "% on " + fmt(c.sub) + "</span><b>-" + fmt(t) + "</b><span>Net payable</span><b>" + fmt(c.total - t) + "</b>";
+  const id = odId($("#odG").value); $("#odIdHint").textContent = id.bad ? "Not a GSTIN (15 characters) or PAN (10 characters)" : id.pan && !id.gstin ? "PAN: no GST registration, so no GST" : id.gstin ? "GSTIN · PAN " + id.pan : "";
 }
 function openOrder(id, kind, copy, switchTo) {   // switchTo: open a saved order already switched to the other type
   const src = id ? S.orders.filter(o => o.id === id)[0] : null; if (id && !src) return;
@@ -2590,11 +2605,13 @@ function openOrder(id, kind, copy, switchTo) {   // switchTo: open a saved order
   openModal('<div class="toolbar" style="margin-bottom:8px"><h2 style="margin:0" id="odTitle"></h2><span style="flex:1"></span><span class="sub">Type</span><span class="seg" role="group" aria-label="Order type"><button type="button" class="odSw" data-k="PO">Purchase order</button><button type="button" class="odSw" data-k="WO">Work order</button></span><input type="hidden" id="odK" value="' + kind + '"></div>' +
     '<div class="form">' + f("Number", "odNo", o.no) + '<label>Date<input type="date" id="odDate" value="' + esc(o.date) + '"></label>' +
     '<label><span id="odDelL"></span><input type="date" id="odDel" value="' + esc(o.delivery || "") + '"></label>' +
-    '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label>' + f("Vendor GSTIN", "odG", o.gstin) + f("Contact no.", "odPh", o.vphone) + f("Vendor email", "odEm", o.vemail) +
+    '<label>Vendor<input type="text" id="odV" list="vendorList" value="' + esc(o.vendor || "") + '"></label>' + f("Vendor GSTIN or PAN", "odG", o.gstin || o.pan) + f("Contact no.", "odPh", o.vphone) + f("Vendor email", "odEm", o.vemail) +
     f("Vendor address", "odAd", o.vaddr, ' style="grid-column:1/-1"') +
     f("Quotation no.", "odRef", o.ref) + '<label>Quotation date<input type="date" id="odQd" value="' + esc(o.qdate || "") + '"></label>' + f("Credit terms", "odPay", o.payTerms) + f("", "odDt", o.dterms, "", "odDtL") +
     '<label>Project<select id="odP">' + projOpts(o.project || "", "No project", o.date) + '</select></label>' + f("", "odSite", o.site, ' style="grid-column:span 2"', "odSiteL") +
-    '<label>GST<select id="odTax"><option value="intra">CGST + SGST (Maharashtra)</option><option value="inter">IGST (other state)</option><option value="none">No GST</option></select></label>' +
+    '<label>GST<select id="odTax"><option value="intra">CGST + SGST (Maharashtra)</option><option value="inter">IGST (other state)</option><option value="none">No GST</option></select><span class="sub" id="odIdHint"></span></label>' +
+    '<label>TDS section<select id="odTdsS">' + TDS_SEC.map(x => '<option value="' + x[0] + '"' + ((o.tdsSec || "") === x[0] ? " selected" : "") + ">" + esc(x[1]) + "</option>").join("") + '</select></label>' +
+    '<label>TDS %<input type="text" inputmode="decimal" id="odTdsR" value="' + esc(o.tdsSec ? o.tdsPct : "") + '"></label>' +
     f("Subject", "odSub", o.subject, ' style="grid-column:1/-1"') + f("Remark (printed)", "odRm", o.remark, ' style="grid-column:1/-1"') + "</div>" +
     '<div class="tblwrap" style="margin-top:10px"><table id="odLines"><thead><tr><th>Part no.</th><th id="odDescH"></th><th id="odHsnH"></th><th>Qty</th><th>Unit</th><th>Rate</th><th>Disc %</th><th>GST %</th><th class=num>Amount</th><th></th></tr></thead><tbody></tbody></table></div>' +
     '<div class="toolbar" style="margin:6px 0 0"><button class="small" data-act="odadd">+ Line</button><span style="flex:1"></span><label class="sub">Other charges (&#8377;) <input type="text" inputmode="decimal" id="odOth" value="' + esc(o.other || "") + '" style="width:110px"></label></div><div class="odtot" id="odTot"></div>' +
@@ -2626,20 +2643,29 @@ function openOrder(id, kind, copy, switchTo) {   // switchTo: open a saved order
   $("#odDate").onchange = () => { renum(); $("#odP").innerHTML = projOpts($("#odP").value, "No project", $("#odDate").value); };
   $("#odV").onchange = () => {   // fill what we know of this vendor: GSTIN and phone from the vendor list, the rest from its last order
     const name = $("#odV").value.trim(), v = vendorByName(name), last = S.orders.filter(x => x.id !== (src && src.id) && (v ? x.vendorId === v.id : norm(x.vendor) === norm(name))).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
-    if (!$("#odG").value) $("#odG").value = (v && v.gstin) || last.gstin || "";
+    if (!$("#odG").value) $("#odG").value = (v && (v.gstin || v.pan)) || last.gstin || last.pan || "";
     if (!$("#odPh").value) $("#odPh").value = (v && v.phone) || last.vphone || "";
     if (!$("#odEm").value) $("#odEm").value = last.vemail || "";
     if (!$("#odAd").value) $("#odAd").value = last.vaddr || "";
-    if ($("#odG").value) { $("#odTax").value = odMode($("#odG").value); odTotals(); }
+    if ($("#odG").value) idChanged();
   };
-  $("#odG").onchange = () => { if ($("#odG").value.trim() && $("#odTax").value !== "none") { $("#odTax").value = odMode($("#odG").value); odTotals(); } };
+  const idChanged = () => {   // a PAN means no GST registration (no GST) and TDS from the order type; a GSTIN sets CGST + SGST or IGST
+    const id = odId($("#odG").value); $("#odG").value = $("#odG").value.trim().toUpperCase();
+    if (id.pan && !id.gstin) { $("#odTax").value = "none"; if (!$("#odTdsS").value) $("#odTdsS").value = $("#odK").value === "WO" ? "194C" : "194Q"; }
+    else if (id.gstin && $("#odTax").value !== "none") $("#odTax").value = odMode(id.gstin);
+    if ($("#odTdsS").value) $("#odTdsR").value = tdsRate($("#odTdsS").value, id.pan);
+    odTotals();
+  };
+  $("#odG").onchange = idChanged;
+  $("#odTdsS").onchange = () => { $("#odTdsR").value = $("#odTdsS").value ? tdsRate($("#odTdsS").value, odId($("#odG").value).pan) : ""; odTotals(); };
+  $("#odTdsR").oninput = odTotals;
   $("#odSave").onclick = () => saveOrder(isNew ? null : src.id, false);
   $("#odSavePrint").onclick = () => saveOrder(isNew ? null : src.id, true);
 }
 function saveOrder(id, print) {
   odLinesRead();
   const lines = OD_LINES.filter(l => l.d || +l.q || +l.r), msg = t => { $("#odMsg").textContent = t; };
-  const kind = $("#odK").value, no = $("#odNo").value.trim(), date = $("#odDate").value, vendor = $("#odV").value.trim(), gstin = $("#odG").value.trim().toUpperCase();
+  const kind = $("#odK").value, no = $("#odNo").value.trim(), date = $("#odDate").value, vendor = $("#odV").value.trim(), vid = odId($("#odG").value), gstin = vid.gstin, pan = vid.pan;
   if (!vendor) return msg("Enter the vendor.");
   if (!date) return msg("Enter the date.");
   if (!no) return msg("Enter the order number.");
@@ -2647,7 +2673,9 @@ function saveOrder(id, print) {
   if (!lines.length) return msg("Add at least one line.");
   const bad = lines.findIndex(l => !l.d || !(+l.q > 0) || !(+l.r >= 0) || isNaN(+l.g || 0) || isNaN(+l.dc || 0) || +l.dc < 0 || +l.dc > 100);
   if (bad >= 0) return msg("Line " + (bad + 1) + ": needs a description, a quantity above 0, a rate, and a discount from 0 to 100%.");
-  if (gstin && !/^\d{2}[A-Z0-9]{13}$/.test(gstin)) return msg("The vendor GSTIN should be 15 characters, starting with the 2-digit state code.");
+  if (vid.bad) return msg("Vendor GSTIN or PAN: a GSTIN is 15 characters (2-digit state code first), a PAN is 10 (5 letters, 4 digits, 1 letter).");
+  const tdsSec = $("#odTdsS").value, tdsPct = tdsSec ? +$("#odTdsR").value : 0;
+  if (tdsSec && !(tdsPct > 0 && tdsPct <= 30)) return msg("Enter the TDS rate (%).");
   if (isNaN(+($("#odOth").value || 0))) return msg("Other charges should be a number.");
   const mode = $("#odTax").value, c = odCalc(lines, mode, $("#odOth").value), v = vendorByName(vendor), me = USER ? USER.email : "";
   let o = id ? S.orders.filter(x => x.id === id)[0] : null;
@@ -2655,8 +2683,9 @@ function saveOrder(id, print) {
   Object.assign(o, { kind: kind, no: no, date: date, vendorId: v ? v.id : "", vendor: v ? v.name : vendor, gstin: gstin, vaddr: $("#odAd").value.trim(), vphone: $("#odPh").value.trim(), vemail: $("#odEm").value.trim(),
     project: $("#odP").value, site: $("#odSite").value.trim(), delivery: $("#odDel").value, ref: $("#odRef").value.trim(), qdate: $("#odQd").value, subject: $("#odSub").value.trim(), remark: $("#odRm").value.trim(),
     lines: JSON.stringify(lines.map(l => ({ pn: l.pn, d: l.d, hsn: l.hsn, q: +l.q || 0, u: l.u, r: +l.r || 0, dc: +l.dc || 0, g: mode === "none" ? 0 : +l.g || 0 }))), taxMode: mode,
-    subtotal: c.sub, tax: c.tax, other: c.other, total: c.total, payTerms: $("#odPay").value.trim(), dterms: $("#odDt").value.trim(), terms: $("#odTerms").value.trim(), note: $("#odNote").value.trim() });
+    subtotal: c.sub, tax: c.tax, other: c.other, total: c.total, pan: pan, tdsSec: tdsSec, tdsPct: tdsPct, tds: tdsSec ? odTds(c, tdsPct) : 0, net: c.total - (tdsSec ? odTds(c, tdsPct) : 0), payTerms: $("#odPay").value.trim(), dterms: $("#odDt").value.trim(), terms: $("#odTerms").value.trim(), note: $("#odNote").value.trim() });
   if (v && !v.gstin && gstin) v.gstin = gstin;
+  if (v && !v.pan && pan) v.pan = pan;
   closeModal(); persist(); renderAll(); toast(o.no + " saved");
   if (print) printOrder(o.id);
 }
@@ -2690,13 +2719,14 @@ function printOrder(id) {   // ERP-style A4 document: header block, vendor / bil
     "<div class=hd2><div><div class=hdr>Issued by</div><table class=kvt>" + kv("Corporate office", esc(st.coAddr || "")) + kv("Workshop", esc(st.coWorkshop || "")) + kv("Phone", esc(st.coPhone || "")) + kv("Email", esc(st.coEmail || "")) +
     kv("GSTIN", st.coGstin ? "<b>" + esc(st.coGstin) + "</b>" : "") + kv("PAN", st.coGstin ? esc(String(st.coGstin).slice(2, 12)) : "") + kv("State", st.coGstin ? "Maharashtra, code " + esc(String(st.coGstin).slice(0, 2)) : "") + "</table></div>" +
     "<div><div class=hdr>" + T + " details</div><table class='kvt m'>" + kv(W ? "WO number" : "PO number", esc(o.no)) + kv("Date", d10(o.date)) + kv("Quotation no.", esc(o.ref || "")) + kv("Quotation date", d10(o.qdate)) + kv("Credit terms", esc(o.payTerms || "")) + kv(W ? "Completion terms" : "Delivery terms", esc(o.dterms || "")) + kv(W ? "Complete by" : "Deliver by", d10(o.delivery)) + kv("Project", esc(p ? p.id + " " + (p.name || "") : o.project === "_co" ? "" : o.project || "")) + kv("Currency", "INR") + "</table></div></div>" +
-    "<div class=boxes><div><div class=hdr>Vendor</div><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.vphone ? "<br>Contact: " + esc(o.vphone) : "") + (o.vemail ? "<br>Email: " + esc(o.vemail) : "") + "</div>" +
+    "<div class=boxes><div><div class=hdr>Vendor</div><b>" + esc(o.vendor) + "</b><br>" + esc(o.vaddr || "") + (o.gstin ? "<br>GSTIN: " + esc(o.gstin) : "") + (o.pan ? "<br>PAN: " + esc(o.pan) + (o.gstin ? "" : " (not registered for GST)") : "") + (o.vphone ? "<br>Contact: " + esc(o.vphone) : "") + (o.vemail ? "<br>Email: " + esc(o.vemail) : "") + "</div>" +
     "<div><div class=hdr>Bill to</div><b>" + esc(st.coName || "") + "</b><br>" + esc(st.coAddr || "") + "<br>GSTIN: " + esc(st.coGstin || "") + "</div>" +
     "<div><div class=hdr>" + (W ? "Place of work" : "Ship to") + "</div><b>" + esc(st.coName || "") + "</b><br>" + esc(ship) + "</div></div>" +
     (o.subject || o.remark ? "<div class=rem>" + (o.subject ? "<b>Subject:</b> " + esc(o.subject) : "") + (o.subject && o.remark ? "<br>" : "") + (o.remark ? "<b>Remark:</b> " + esc(o.remark) : "") + "</div>" : "") +
     "<table class=it><thead><tr><th class=c>Item</th>" + (anyPn ? "<th class=l>Part no.</th>" : "") + "<th class=l>Description</th><th class=c>" + (W ? "SAC" : "HSN") + "</th><th>Qty</th><th class=c>Unit</th><th>Rate</th>" + (anyDisc ? "<th>Gross amt</th><th>Disc %</th><th>Disc amt</th>" : "") + "<th>Taxable</th><th class=c>GST</th><th>GST amt</th><th>Net amount</th></tr></thead><tbody>" + rows + "</tbody></table>" +
     "<div class=sumw><div class=words><b>Amount in words</b>" + esc(inWordsINR(c.total)) + "</div><table class=sum>" + (c.disc ? "<tr><td>Gross amount</td><td>" + m2(c.gross) + "</td></tr><tr><td>Discount</td><td>-" + m2(c.disc) + "</td></tr>" : "") + "<tr><td>Taxable value</td><td>" + m2(c.sub) + "</td></tr>" + tax +
-    (c.other ? "<tr><td>Other charges</td><td>" + m2(c.other) + "</td></tr>" : "") + (c.roundOff ? "<tr><td>Round off</td><td>" + m2(c.roundOff) + "</td></tr>" : "") + "<tr class=tot><td>Total (INR)</td><td>" + m2(c.total) + "</td></tr></table></div>" +
+    (c.other ? "<tr><td>Other charges</td><td>" + m2(c.other) + "</td></tr>" : "") + (c.roundOff ? "<tr><td>Round off</td><td>" + m2(c.roundOff) + "</td></tr>" : "") + "<tr class=tot><td>Total (INR)</td><td>" + m2(c.total) + "</td></tr>" +
+    (o.tdsSec ? "<tr><td>Less: TDS u/s " + esc(TDS_LBL[o.tdsSec] || o.tdsSec) + " @ " + (+o.tdsPct) + "% on " + m2(c.sub) + "</td><td>-" + m2(odTds(c, o.tdsPct)) + "</td></tr><tr class=tot><td>Net payable (INR)</td><td>" + m2(c.total - odTds(c, o.tdsPct)) + "</td></tr>" : "") + "</table></div>" +
     (terms.length ? "<div class=terms><b>TERMS AND CONDITIONS</b><ol>" + terms.map(t => "<li>" + esc(t.replace(/^\d+\s*[.)]\s*/, "")) + "</li>").join("") + "</ol></div>" : "") +
     "<div class=sig><div><span>Prepared by / date</span><div>" + esc(whoName(o.by)) + "<br>" + d10(o.on) + "</div></div><div><span>Stores clearance</span><div></div></div><div><span>Engg. clearance</span><div></div></div><div><span>Authorised by</span><div>" + (st.ordSign ? esc(st.ordSign) + "<br>" : "") + "For " + esc(st.coName || "") + "</div></div></div>" +
     "<div class=foot><span>This is a computer-generated " + T.toLowerCase() + ". Please quote the " + (W ? "WO" : "PO") + " number on all invoices, challans and letters.</span><span>" + esc(o.no) + " &middot; printed " + d10(today()) + "</span></div></body></html>";
