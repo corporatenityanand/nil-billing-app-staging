@@ -342,6 +342,44 @@ a.lnk{color:var(--text);text-decoration-color:var(--muted);text-underline-offset
 .gatecard h1{font-size:20px}
 .gatecard #btnSignIn{width:100%;min-height:40px;margin-top:4px}
 .gatemsg{color:var(--muted);font-weight:500}
+
+/* App shell: full width, fixed sidebar (shadcn sidebar), sticky top bar */
+:root{--sbw:248px;--sidebar:#fafafa}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--sidebar:#0c0c0e}}
+:root[data-theme="dark"]{--sidebar:#0c0c0e}
+body{background:var(--bg)}
+#app.wrap{max-width:none;margin:0;padding:0 28px 96px calc(var(--sbw) + 28px)}
+#app>nav{position:fixed;left:0;top:0;bottom:0;width:var(--sbw);z-index:20;display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:1px;margin:0;padding:12px 10px;border-radius:0;border-right:1px solid var(--line);background:var(--sidebar);box-shadow:none;overflow-y:auto}
+.envbar:not(.hide)~#app>nav{top:34px}
+#app>nav button{justify-content:flex-start;gap:10px;min-height:34px;padding:0 10px;width:100%;color:color-mix(in srgb,var(--text) 78%,transparent);font-size:14px;font-weight:450}
+#app>nav button:hover{background:var(--surface2);color:var(--text)}
+#app>nav button.on{background:var(--surface2);color:var(--text);font-weight:500;box-shadow:none}
+#app>nav .ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#app>nav .cnt{margin-left:auto}
+.sbrand{display:flex;align-items:center;gap:10px;padding:6px 8px 14px;margin:0 0 6px;border-bottom:1px solid var(--line)}
+.sbrand .logo{width:34px;height:34px;border-radius:8px}.sbrand .mono{font-size:13px}
+.sbrand .bname{font-size:14px;font-weight:600}.sbrand .bapp{font-size:12px;color:var(--muted)}
+.sgrp{padding:14px 10px 6px;font-size:12px;font-weight:500;color:var(--muted)}
+.appbar{position:sticky;top:0;z-index:10;margin:0 -28px 18px;padding:12px 28px;border:none;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(8px);flex-wrap:nowrap}
+.envbar:not(.hide)~#app .appbar{top:34px}
+.appbar .brand{display:none}
+.pgt{min-width:0}.pgt h1{font-size:20px;font-weight:600;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewbar{padding:0 0 18px}
+.grid{gap:16px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:18px}
+.kpi{position:relative}
+.kpi .val{font-size:28px;margin:6px 0 4px}
+.card>h2:first-child{margin-bottom:14px}
+@media (max-width:900px){
+  #app.wrap{padding:0 16px 96px}
+  #app>nav{position:sticky;top:0;bottom:auto;width:auto;flex-direction:row;overflow-x:auto;overflow-y:hidden;margin:0 -16px 12px;padding:6px 12px;border-right:none;border-bottom:1px solid var(--line);scrollbar-width:none}
+  #app>nav::-webkit-scrollbar{display:none}
+  #app>nav button{width:auto;flex:none}
+  .sbrand,.sgrp{display:none}
+  .appbar{position:static;margin:0 -16px 0;padding:10px 16px;flex-wrap:wrap}
+  .appbar .brand{display:flex}.pgt{display:none}
+}
+
 </style>
 </head>
 <body>
@@ -362,6 +400,7 @@ a.lnk{color:var(--text);text-decoration-color:var(--muted);text-underline-offset
       <span class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" aria-hidden="true">NI</span></span>
       <div class="bt"><div class="bname">Nityanand Infrastructure</div><div class="bapp">Receivables &middot; NIL + NMFPPL</div></div>
     </div>
+    <div class="pgt"><h1 id="pgTitle">Overview</h1></div>
     <div class="appbar-r">
       <a class="hbtn hide" id="lnkPay" href="payables.html" style="text-decoration:none" title="Open the payables page">Payables</a>
       <span class="sync" id="syncpill" title="Every change is saved to the Google Sheet"><i></i><span id="savestatus">loading…</span></span>
@@ -385,17 +424,21 @@ a.lnk{color:var(--text);text-decoration-color:var(--muted);text-underline-offset
   </div></span></div>
 
   <nav id="tabs">
-    <button data-tab="overview" class="on">Overview</button>
-    <button data-tab="tasks">My tasks <span class="cnt" id="tkCnt"></span></button>
-    <button data-tab="client">By client</button>
-    <button data-tab="bills">All bills</button>
-    <button data-tab="pipeline">In pipeline <span class="cnt" id="plCnt"></span></button>
-    <button data-tab="wo">Work orders</button>
-    <button data-tab="mat">Materials &amp; SA</button>
-    <button data-tab="receipts">Receipts</button>
-    <button data-tab="work">Work done</button>
-    <button data-tab="forecast">Collections forecast</button>
-    <button data-tab="flags">Flags</button>
+    <div class="sbrand"><span class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span class="mono" aria-hidden="true">NI</span></span><div class="bt"><div class="bname">Nityanand Infra</div><div class="bapp">Receivables</div></div></div>
+    <div class="sgrp">Billing</div>
+    <button data-tab="overview" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span class="tl">Overview</span></button>
+    <button data-tab="tasks"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg><span class="tl">My tasks</span> <span class="cnt" id="tkCnt"></span></button>
+    <button data-tab="client"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="tl">By client</span></button>
+    <button data-tab="bills"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span class="tl">All bills</span></button>
+    <button data-tab="receipts"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span class="tl">Receipts</span></button>
+    <div class="sgrp">Contracts</div>
+    <button data-tab="pipeline"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/></svg><span class="tl">In pipeline</span> <span class="cnt" id="plCnt"></span></button>
+    <button data-tab="wo"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span class="tl">Work orders</span></button>
+    <button data-tab="mat"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="m7.5 4.27 9 5.15"/></svg><span class="tl">Materials &amp; SA</span></button>
+    <button data-tab="work"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg><span class="tl">Work done</span></button>
+    <div class="sgrp">Insights</div>
+    <button data-tab="forecast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg><span class="tl">Collections forecast</span></button>
+    <button data-tab="flags"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg><span class="tl">Flags</span></button>
   </nav>
 
   <div class="viewbar" role="group" aria-label="View settings">
@@ -4028,6 +4071,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function syncSettings() { $("#showD").checked = showD(); $("#asOn").value = S.settings.asOn; $("#credit").value = S.settings.credit; $("#est").checked = !!S.settings.est; }
 function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
+  const tb = $('#tabs button[data-tab="' + name + '"] .tl'); if (tb) $("#pgTitle").textContent = tb.textContent;
   ["overview", "tasks", "client", "bills", "pipeline", "wo", "mat", "ra", "receipts", "work", "add", "forecast", "flags"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
   if (USER && (name === "overview" || name === "client")) drawTrends();   // hidden charts were drawn at a guessed width
