@@ -281,6 +281,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
 .selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;background:var(--surface2);border-radius:9px;font-size:13px}
 .alias{display:inline-flex;align-items:center;gap:4px;margin:2px 4px 2px 0}
 .alias button{padding:0 6px;font-size:11px;line-height:16px}
+#stFloat.sttiles,.sttiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:8px 0}.sttiles>div{border:1px solid var(--line,#e4e4e7);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:2px}.sttiles b{font-size:20px}
 </style>
 </head>
 <body>
@@ -336,6 +337,7 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
     <button class="dx" data-tab="import">Import</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="orders">PO / WO <span class="cnt" id="ordCnt"></span></button>
+    <button data-tab="site">Site float &amp; stores</button>
   </nav>
 
   <div class="viewbar" role="group" aria-label="Period">
@@ -479,6 +481,30 @@ td.nar{white-space:normal;text-align:left;font-size:12px;color:var(--muted);min-
         <input type="search" id="odSearch" placeholder="Search vendor, number, item" style="max-width:260px"></div>
       <div class="help">Make an order, then Print to save it as a PDF and send it yourself. Nothing is sent from here. Numbers run per financial year (number format, company details and default terms: All data &gt; Masters).</div>
       <div class="tblwrap" id="odTbl"></div>
+    </div>
+  </section>
+  <section id="tab-site" class="hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar"><h2 style="margin:0">Site expenses from the float</h2><span class="sub" id="stSum"></span><span style="flex:1"></span>
+        <select id="stExpShow"><option value="todo">Waiting for approval</option><option value="query">Queried</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All</option></select>
+        <button class="small" data-act="stload">&#8635; Load from site</button></div>
+      <div class="sttiles" id="stFloat"></div>
+      <div class="help" id="stRule"></div>
+      <div class="tblwrap" id="stExp"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar"><h2 style="margin:0">Goods received at the yard and sites</h2><span class="sub" id="stGrnSum"></span><span style="flex:1"></span>
+        <button class="small" data-act="stposync" title="Purchase orders issued here are what the site can receive against">Send POs to site</button></div>
+      <div class="help">Storekeepers record each delivery in the NIL Site app against an issued PO, with the challan, material and weighbridge photos. Deliveries without a PO or above the PO quantity are flagged here.</div>
+      <div class="tblwrap" id="stGrn"></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="toolbar"><h2 style="margin:0">PO ordered vs received</h2><span style="flex:1"></span><label class="sub"><input type="checkbox" id="stPoOpen" checked> Only with quantity still to come</label></div>
+      <div class="tblwrap" id="stPo"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">Stock by store</h2><span class="sub">book stock: received less issued</span></div>
+      <div class="tblwrap" id="stStock"></div>
     </div>
   </section>
   <section id="tab-tag" class="hide">
@@ -682,7 +708,7 @@ function mergeCats(list) {
 const catOpts = (sel, blank) => (blank ? '<option value="">' + esc(blank) + "</option>" : "") + CATS.filter(c => !c.hidden || c.id === sel).map(c => '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name || c.id) + "</option>").join("");
 
 /* ---------- state ---------- */
-const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey", coName: "Nityanand Infrastructure Ltd.", coAddr: "711, Highway Commerce Center, I B Patel Road, Goregaon (East), Mumbai 400 063", coGstin: "27AAACN1981E1ZL", coPhone: "022-40021405 / 06 / 07 / 08", coEmail: "purchase@nityanand.com / purchase1@nityanand.com", coWorkshop: "Old Mumbai-Pune Highway, Khanavale Village, Thombrewadi, Near Shedung Toll Plaza, Raigad 410206, Maharashtra", ordFormat: "{T}/{FY}/{0000}", ordSign: "", poTerms: "Payment will be released within 30 days of receipt of accepted material.\nDelivery as per the delivery terms above.\nWarranty: as per the manufacturer's standard warranty.\nAcceptance of goods is subject to the correct part number and suitability. Material may be rejected for damage, rust or unsuitability.\nSend all documents (gate pass, challan, invoice / bill with GST no.) along with the supply to avoid delay in payment.\nThe prices are firm. No escalation in price for any reason will be allowed.\nGST is applicable as per Government rules.\nTransportation charges: paid extra at actual / material collected by us / free of cost, as agreed.\nInsurance of the material up to the delivery site / our Panvel workshop shall be arranged by Nityanand Infrastructure Limited.\nPacking and forwarding charges are included in the price.\nLiquidated damages: for late delivery, a penalty of 0.5% of the price of the undelivered supplies will be levied for every week of delay.\nRisk purchase: notwithstanding anything in this order, if at any stage the purchaser feels that delay is taking place or is likely in the execution of this order, the purchaser shall have the right to procure the material or any part of it from other sources at the risk and cost of the supplier.", woTerms: "Please quote this work order number on all bills and letters.\nWork to be done as per the scope above, the drawings and the site engineer's instructions.\nBills must carry measurement sheets certified by our site engineer.\nYou are responsible for your workers' wages, PF, ESIC, insurance and safety on site as per law.\nTDS will be deducted as applicable.\nPayment as per the payment terms above, against certified bills." }, orders: [] });
+const NEW_STATE = () => ({ vendors: [], projects: [], lines: [], pays: [], docs: [], tally: [], tsnap: [], tchg: [], equip: [], cats: mergeCats([]), settings: { sources: "", dupDays: 3, dupMin: 10000, floatPayee: "", payers: "NIL Kotak, NIL HDFC, Dayaram Purbey, Vignesh Prabhu, Jayanth Prabhu, Akhtar, Sujeet, NMFP Kotak", floatHolder: "Dayaram Purbey", floatEmail: "", floatLimit: 25000, mgmtEmails: "vjprabhu9@gmail.com, corporate.nityanand@gmail.com", floatFrom: "", coName: "Nityanand Infrastructure Ltd.", coAddr: "711, Highway Commerce Center, I B Patel Road, Goregaon (East), Mumbai 400 063", coGstin: "27AAACN1981E1ZL", coPhone: "022-40021405 / 06 / 07 / 08", coEmail: "purchase@nityanand.com / purchase1@nityanand.com", coWorkshop: "Old Mumbai-Pune Highway, Khanavale Village, Thombrewadi, Near Shedung Toll Plaza, Raigad 410206, Maharashtra", ordFormat: "{T}/{FY}/{0000}", ordSign: "", poTerms: "Payment will be released within 30 days of receipt of accepted material.\nDelivery as per the delivery terms above.\nWarranty: as per the manufacturer's standard warranty.\nAcceptance of goods is subject to the correct part number and suitability. Material may be rejected for damage, rust or unsuitability.\nSend all documents (gate pass, challan, invoice / bill with GST no.) along with the supply to avoid delay in payment.\nThe prices are firm. No escalation in price for any reason will be allowed.\nGST is applicable as per Government rules.\nTransportation charges: paid extra at actual / material collected by us / free of cost, as agreed.\nInsurance of the material up to the delivery site / our Panvel workshop shall be arranged by Nityanand Infrastructure Limited.\nPacking and forwarding charges are included in the price.\nLiquidated damages: for late delivery, a penalty of 0.5% of the price of the undelivered supplies will be levied for every week of delay.\nRisk purchase: notwithstanding anything in this order, if at any stage the purchaser feels that delay is taking place or is likely in the execution of this order, the purchaser shall have the right to procure the material or any part of it from other sources at the risk and cost of the supplier.", woTerms: "Please quote this work order number on all bills and letters.\nWork to be done as per the scope above, the drawings and the site engineer's instructions.\nBills must carry measurement sheets certified by our site engineer.\nYou are responsible for your workers' wages, PF, ESIC, insurance and safety on site as per law.\nTDS will be deducted as applicable.\nPayment as per the payment terms above, against certified bills." }, orders: [] });
 let S = NEW_STATE();
 let saveTimer = null, HIST = [], LAST = null;
 function normalize(o) {
@@ -2455,10 +2481,11 @@ function showTab(name) {
   $$("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === name));
   if (name === "ffloat") $("#tab-ffloat").appendChild($("#rwPcCard")); else if (name === "fdocs") $("#tab-fdocs").appendChild($("#rwDocCard"));
   else if (name === "tag") { $("#tgStep1").appendChild($("#rwPcCard")); $("#tgStep1").appendChild($("#rwDocCard")); }
+  if (name === "site") setTimeout(openSite, 0);
   if (name === "orders") renderOrders(); else if (name === "timeline") setTimeout(renderTimeline, 0);
   if (name === "tag") setTimeout(renderTag, 0); else if (FX_TABS.indexOf(name) >= 0) setTimeout(renderFocus, 0);
   FX_TABS.forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
-  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import", "orders", "timeline"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
+  ["overview", "classify", "payments", "chat", "books", "tally", "tag", "vendors", "projects", "masters", "import", "orders", "timeline", "site"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== name));
   window.scrollTo(0, 0);
 }
 /* ---------- timeline: projects, spend and equipment month by month; tag a month's entries against the projects running then ---------- */
@@ -2941,8 +2968,168 @@ function init() {
   window.addEventListener("beforeunload", e => { if (DIRTY || SAVING) { e.preventDefault(); e.returnValue = ""; } });
   if (!CFG.clientId || !SHEET_ID) { $("#btnSignIn").disabled = true; gateMsg("Setup needed: no payables sheet is set for this site yet (payablesSheetId in config.js, see docs/PAYABLES.md).", true); }
 }
+/* ---------- Site float expenses, goods received and stock (entered in the NIL Site app, kept in the site Sheet) ----------
+   Site staff never open this Sheet's bank data: their entries live in the site Sheet (config siteSheetId).
+   This page reads expenses, grn and stock from there and writes only two tabs back: exp_review (approvals) and po_site (issued POs). */
+const SITE_TABS = {
+  expenses: ["id", "time", "date", "project", "amt", "payee", "cat", "equip", "mode", "ref", "note", "billPhoto", "payPhoto", "by", "lat", "lng"],
+  grn: ["id", "time", "date", "store", "po", "poNo", "vendor", "vehicle", "challan", "lines", "note", "challanPhoto", "matPhoto", "wbPhoto", "by"],
+  stock: ["id", "time", "date", "store", "item", "qty", "kind", "ref", "equip", "hours", "note", "by"],
+  po_site: ["id", "no", "date", "vendor", "project", "site", "lines", "status", "updated"],
+  exp_review: ["id", "status", "by", "at", "note", "project", "equip", "cat"]
+};
+let SITE = null, SITE_ERR = "", SITE_BUSY = false;
+async function siteApi(method, path, body) {
+  if (!TOKEN || Date.now() > TOKEN_EXP) { TOKEN = null; throw authErr(); }
+  const r = await fetch(SHEETS_API + encodeURIComponent(CFG.siteSheetId) + path, { method: method, headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { TOKEN = null; throw authErr(); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(r.status === 403 || r.status === 404 ? "This Google account cannot open the site Sheet. Ask Vignesh to share it with you." : "Google Sheets error: " + ((j.error && j.error.message) || r.status));
+  return j;
+}
+async function siteLoad() {
+  if (!CFG.siteSheetId) { SITE_ERR = "The site Sheet is not set for this page yet (config siteSheetId)."; renderSite(); return; }
+  if (SITE_BUSY) return; SITE_BUSY = true; SITE_ERR = ""; renderSite();
+  try {
+    const meta = await siteApi("GET", "?fields=sheets.properties.title");
+    const have = (meta.sheets || []).map(s => s.properties.title), miss = Object.keys(SITE_TABS).filter(t => have.indexOf(t) < 0);
+    if (miss.length) {
+      await siteApi("POST", ":batchUpdate", { requests: miss.map(t => ({ addSheet: { properties: { title: t } } })) });
+      await siteApi("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: miss.map(t => ({ range: qt(t) + "!A1", values: [SITE_TABS[t]] })) });
+    }
+    const tabs = Object.keys(SITE_TABS);
+    const r = await siteApi("GET", "/values:batchGet?" + tabs.map(t => "ranges=" + encodeURIComponent(qt(t))).join("&"));
+    const out = { head: {} };
+    tabs.forEach((t, i) => {
+      const rows = (r.valueRanges[i] && r.valueRanges[i].values) || [], h = (rows[0] || []).map(x => String(x).trim());
+      out.head[t] = h.length ? h : SITE_TABS[t];
+      out[t] = rows.slice(1).filter(x => x.some(c => c !== "")).map(x => { const o = {}; SITE_TABS[t].forEach(c => { const k = h.indexOf(c); o[c] = k < 0 ? "" : String(x[k] == null ? "" : x[k]); }); return o; });
+    });
+    SITE = out;
+  } catch (e) { SITE_ERR = e.message; if (e.auth) toast("Sign in again to load the site data"); }
+  SITE_BUSY = false; renderSite();
+}
+async function siteAppend(tab, rows) {
+  const h = SITE.head[tab];
+  await siteApi("POST", "/values/" + encodeURIComponent(qt(tab) + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: rows.map(o => h.map(c => (o[c] == null ? "" : String(o[c])))) });
+  rows.forEach(o => SITE[tab].push(o));
+}
+const stJ = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
+const stMe = () => (USER ? String(USER.email).toLowerCase() : "");
+const stList = s => String(s || "").split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
+const stMgmt = () => stList(S.settings.mgmtEmails);
+const stLimit = () => +S.settings.floatLimit || 25000;
+/** Who may approve a site expense: never the person who entered it; the float holder up to the limit, management any amount. */
+function stCanApprove(e) {
+  const me = stMe(); if (!me || me === String(e.by).toLowerCase()) return false;
+  if (stMgmt().indexOf(me) >= 0) return true;
+  return stList(S.settings.floatEmail).indexOf(me) >= 0 && (+e.amt || 0) <= stLimit();
+}
+function stReview() { const m = {}; (SITE ? SITE.exp_review : []).forEach(r => { if (!m[r.id] || String(r.at) >= String(m[r.id].at)) m[r.id] = r; }); return m; }
+const stPhoto = (id, l) => !id ? "" : /^local:/.test(id) ? '<span class="sub">' + l + " uploading</span>" : '<a href="https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view" target="_blank" rel="noopener">' + l + "</a>";
+const stStoreName = id => (id === "YARD" ? "Panvel yard" : projName(id));
+function stFloatTopups(from) {
+  const inR = d => !from || String(d) >= from;
+  return S.lines.filter(l => l.cat === "float" && (+l.debit || 0) > 0 && inR(l.date)).reduce((t, l) => t + (+l.debit || 0), 0) +
+    S.pays.filter(p => p.cat === "float" && inR(p.date)).reduce((t, p) => t + (+p.amt || 0), 0);
+}
+function renderSite() {
+  if ($("#tab-site").classList.contains("hide")) return;
+  const lim = stLimit(), fe = S.settings.floatEmail || "";
+  $("#stRule").innerHTML = "Approval: up to " + fmt(lim) + " by the float holder (" + (fe ? esc(fe) : "<b>Gmail not set yet</b>") + ") or management; above that only management (" + esc(stMgmt().join(", ") || "not set") + "). Nobody approves their own entry." +
+    (stMgmt().indexOf(stMe()) >= 0 ? ' <button class="small" data-act="strules">Change</button>' : "");
+  if (!SITE) { $("#stExp").innerHTML = '<div class="sub">' + esc(SITE_ERR || (SITE_BUSY ? "Loading the site entries…" : "Not loaded yet.")) + "</div>"; ["#stGrn", "#stPo", "#stStock", "#stFloat"].forEach(s => { $(s).innerHTML = ""; }); return; }
+  if (SITE_ERR) toast(SITE_ERR);
+  const rv = stReview(), stOf = e => (rv[e.id] ? rv[e.id].status : "todo");
+  const ex = SITE.expenses.slice().sort((a, b) => String(b.time).localeCompare(String(a.time)));
+  const from = S.settings.floatFrom || (ex.length ? String(ex.map(e => e.date).sort()[0]).slice(0, 8) + "01" : "");   // default: from the month the site app started
+  const live = ex.filter(e => stOf(e) !== "rejected" && (!from || e.date >= from));
+  const spent = live.reduce((t, e) => t + (+e.amt || 0), 0), wait = ex.filter(e => stOf(e) === "todo"), top = stFloatTopups(from);
+  const tile = (h, v, sub, warn) => '<div><span class="sub">' + h + '</span><b' + (warn ? ' style="color:var(--bad,#b91c1c)"' : "") + ">" + v + '</b><span class="sub">' + sub + "</span></div>";
+  $("#stFloat").innerHTML = tile("Float top-ups", fmt(top), "bank lines in category Site float top-up" + (from ? " since " + dmy(from) : "")) + tile("Spent at site", fmt(spent), live.length + " entries, not rejected") +
+    tile("Float balance", fmt(top - spent), "top-ups less spent", top - spent < 0) + tile("Waiting for approval", fmt(wait.reduce((t, e) => t + (+e.amt || 0), 0)), wait.length + " entries");
+  $("#stSum").textContent = ex.length ? ex.length + " entries" : "";
+  const show = $("#stExpShow").value, rs = ex.filter(e => !show || stOf(e) === show);
+  const projOpts = cur => '<option value="">–</option>' + S.projects.filter(p => !/completed|closed/i.test(p.status) || p.id === cur).map(p => '<option value="' + esc(p.id) + '"' + (p.id === cur ? " selected" : "") + ">" + esc(p.id) + "</option>").join("");
+  $("#stExp").innerHTML = rs.length ? "<table><thead><tr><th>Date</th><th>Site</th><th>Paid to</th><th>For</th><th>Machine</th><th>Paid by</th><th class=num>Amount</th><th>Bill / proof</th><th>Entered by</th><th>Status</th><th></th></tr></thead><tbody>" + rs.slice(0, 300).map(e => {
+    const r = rv[e.id] || {}, can = stCanApprove(e), st = stOf(e), proj = r.project || e.project;
+    return '<tr data-id="' + esc(e.id) + '"><td>' + dmy(e.date) + "</td><td>" + (can && st !== "approved" ? '<select data-stproj="' + esc(e.id) + '">' + projOpts(proj) + "</select>" : esc(proj === "YARD" ? "Yard" : proj)) + "</td><td>" + esc(e.payee) + "</td><td>" + esc(r.cat || e.cat) + "</td><td>" + esc(r.equip || e.equip) + "</td><td>" + esc(e.mode) + (e.ref ? '<div class="sub">' + esc(e.ref) + "</div>" : "") + '</td><td class="num"><b>' + fmt(+e.amt) + "</b>" + ((+e.amt || 0) > stLimit() ? '<div class="sub">management</div>' : "") + "</td><td>" + [stPhoto(e.billPhoto, "Bill"), stPhoto(e.payPhoto, "Payment")].filter(Boolean).join(" · ") + (e.note ? '<div class="sub">' + esc(e.note) + "</div>" : "") +
+      "</td><td>" + esc(whoName(e.by)) + "</td><td>" + ({ todo: "To approve", approved: "Approved", rejected: "Rejected", query: "Queried" }[st] || esc(st)) + (r.by ? '<div class="sub">' + esc(whoName(r.by)) + (r.note ? ": " + esc(r.note) : "") + "</div>" : "") + '</td><td style="white-space:nowrap">' +
+      (can && st !== "approved" ? '<button class="small primary" data-act="stok" data-id="' + esc(e.id) + '">Approve</button> <button class="small" data-act="stq" data-id="' + esc(e.id) + '">Query</button> <button class="small danger" data-act="strej" data-id="' + esc(e.id) + '">Reject</button>' : can ? "" : '<span class="sub">' + (String(e.by).toLowerCase() === stMe() ? "your entry" : (+e.amt || 0) > stLimit() ? "management approves" : "float holder or management") + "</span>") + "</td></tr>";
+  }).join("") + "</tbody></table>" : '<div class="sub">' + (ex.length ? "Nothing here." : "No site expenses entered yet.") + "</div>";
+
+  // goods received
+  const grn = SITE.grn.slice().sort((a, b) => String(b.time).localeCompare(String(a.time)));
+  const flagged = grn.filter(g => /NO PO|OVER PO/.test(g.note));
+  $("#stGrnSum").textContent = grn.length ? grn.length + " deliveries" + (flagged.length ? ", " + flagged.length + " flagged" : "") : "";
+  $("#stGrn").innerHTML = grn.length ? "<table><thead><tr><th>Date</th><th>Store</th><th>PO</th><th>Supplier</th><th>Vehicle</th><th>Challan</th><th>Received</th><th>Photos</th><th>By</th></tr></thead><tbody>" + grn.slice(0, 200).map(g =>
+    "<tr><td>" + dmy(g.date) + "</td><td>" + esc(stStoreName(g.store)) + "</td><td>" + (g.poNo ? "<b>" + esc(g.poNo) + "</b>" : '<b style="color:var(--bad,#b91c1c)">No PO</b>') + (/OVER PO/.test(g.note) ? '<div class="sub" style="color:var(--bad,#b91c1c)">above PO qty</div>' : "") + "</td><td>" + esc(g.vendor) + "</td><td>" + esc(g.vehicle) + "</td><td>" + esc(g.challan) + "</td><td>" +
+    stJ(g.lines, []).map(l => esc(l.d) + " <b>" + esc(l.q) + "</b> " + esc(l.u || "")).join("<br>") + (g.note.replace(/ ?·? ?(NO PO|OVER PO)/g, "").trim() ? '<div class="sub">' + esc(g.note.replace(/ ?·? ?(NO PO|OVER PO)/g, "").trim()) + "</div>" : "") + "</td><td>" + [stPhoto(g.challanPhoto, "Challan"), stPhoto(g.matPhoto, "Material"), stPhoto(g.wbPhoto, "Weighbridge")].filter(Boolean).join(" · ") + "</td><td>" + esc(whoName(g.by)) + "</td></tr>").join("") + "</tbody></table>"
+    : '<div class="sub">No deliveries recorded at site yet.</div>';
+
+  // PO balance
+  const got = {}; SITE.grn.forEach(g => { if (g.po) stJ(g.lines, []).forEach(l => { const k = g.po + "|" + l.i; got[k] = (got[k] || 0) + (+l.q || 0); }); });
+  const onlyOpen = $("#stPoOpen").checked, rows = [];
+  S.orders.filter(o => o.kind === "PO" && o.status !== "Cancelled").sort((a, b) => String(b.date).localeCompare(String(a.date))).forEach(o => odLinesOf(o).forEach((l, i) => {
+    if (!l.d && !l.q) return; const q = toNum(l.q, 0), g = got[o.id + "|" + i] || 0;
+    if (onlyOpen && g >= q) return; rows.push("<tr><td><b>" + esc(o.no) + "</b></td><td>" + dmy(o.date) + "</td><td>" + esc(o.vendor) + "</td><td>" + esc(o.project || "Yard") + "</td><td>" + esc(l.d) + '</td><td class="num">' + q.toLocaleString("en-IN") + " " + esc(l.u || "") + '</td><td class="num">' + g.toLocaleString("en-IN") + '</td><td class="num"' + (g > q * 1.05 ? ' style="color:var(--bad,#b91c1c)"' : "") + "><b>" + Math.round((q - g) * 100) / 100 + "</b></td></tr>");
+  }));
+  $("#stPo").innerHTML = rows.length ? "<table><thead><tr><th>PO</th><th>Date</th><th>Vendor</th><th>Deliver to</th><th>Item</th><th class=num>Ordered</th><th class=num>Received</th><th class=num>To come</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>" : '<div class="sub">No purchase orders with quantity still to come.</div>';
+
+  // stock
+  const bal = {}, stores = {}, items = {}, names = {};
+  SITE.grn.forEach(g => stJ(g.lines, []).forEach(l => { if (l.item && !names[l.item]) names[l.item] = l.d; }));
+  SITE.stock.forEach(s => { if (!s.item) return; stores[s.store] = 1; items[s.item] = 1; const k = s.store + "|" + s.item; bal[k] = (bal[k] || 0) + (+s.qty || 0); });
+  const sk = Object.keys(stores).sort((a, b) => (a === "YARD" ? -1 : b === "YARD" ? 1 : a.localeCompare(b))), ik = Object.keys(items).sort();
+  $("#stStock").innerHTML = ik.length ? "<table><thead><tr><th>Item</th>" + sk.map(s => '<th class="num">' + esc(s === "YARD" ? "Yard" : s) + "</th>").join("") + "</tr></thead><tbody>" + ik.map(i => "<tr><td>" + esc(i) + (names[i] && names[i] !== i ? ' <span class="sub">' + esc(names[i]) + "</span>" : "") + "</td>" + sk.map(s => { const v = bal[s + "|" + i]; return '<td class="num"' + (v < 0 ? ' style="color:var(--bad,#b91c1c)"' : "") + ">" + (v ? (Math.round(v * 100) / 100).toLocaleString("en-IN") : "") + "</td>"; }).join("") + "</tr>").join("") + "</tbody></table>"
+    : '<div class="sub">No stock entries yet.</div>';
+}
+async function stDecide(id, status) {
+  const e = SITE.expenses.filter(x => x.id === id)[0]; if (!e) return;
+  if (!stCanApprove(e)) { toast("You cannot approve this one"); return; }
+  let note = "";
+  if (status !== "approved") { note = prompt(status === "query" ? "What should the site clarify?" : "Why is it rejected?") || ""; if (!note.trim()) return; }
+  const sel = $('[data-stproj="' + id + '"]'), prev = stReview()[id] || {};
+  const row = { id: id, status: status, by: stMe(), at: new Date().toISOString(), note: note.trim(), project: sel ? sel.value : (prev.project || e.project), equip: prev.equip || e.equip, cat: prev.cat || e.cat };
+  try { await siteAppend("exp_review", [row]); toast(status === "approved" ? "Approved" : status === "query" ? "Query sent to site" : "Rejected"); } catch (err) { toast(err.message); }
+  renderSite();
+}
+/** Issued purchase orders go to the site Sheet so storekeepers can receive against them. Only changed rows are written. */
+async function stPoSync(quiet) {
+  if (!SITE) return;
+  const want = S.orders.filter(o => o.kind === "PO").map(o => ({ id: o.id, no: o.no, date: o.date, vendor: o.vendor, project: o.project || "YARD", site: o.site || "", lines: JSON.stringify(odLinesOf(o).filter(l => l.d || l.q).map(l => ({ d: l.d, q: toNum(l.q, 0), u: l.u || "" }))), status: o.status || "Issued", updated: o.on || "" }));
+  const r = await siteApi("GET", "/values/" + encodeURIComponent(qt("po_site")));
+  const vals = r.values || [], h = (vals[0] || SITE_TABS.po_site).map(String), at = {};
+  vals.slice(1).forEach((x, i) => { at[x[h.indexOf("id")]] = { n: i + 2, x: x }; });
+  const data = [], adds = [];
+  want.forEach(o => {
+    const line = h.map(c => (o[c] == null ? "" : String(o[c]))), cur = at[o.id];
+    if (!cur) adds.push(line); else if (line.some((v, j) => v !== String(cur.x[j] == null ? "" : cur.x[j]))) data.push({ range: qt("po_site") + "!A" + cur.n, values: [line] });
+  });
+  if (data.length) await siteApi("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: data });
+  if (adds.length) await siteApi("POST", "/values/" + encodeURIComponent(qt("po_site") + "!A1") + ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", { values: adds });
+  if (!quiet || data.length || adds.length) toast(data.length + adds.length ? "Sent " + adds.length + " new and " + data.length + " changed POs to site" : "Site already has every PO");
+}
+async function openSite() { if (!SITE && !SITE_BUSY) { await siteLoad(); if (SITE) stPoSync(true).catch(e => toast(e.message)); } else renderSite(); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-act]"); if (!t) return; const a = t.dataset.act, id = t.dataset.id;
+  if (a === "stload") { SITE = null; openSite(); }
+  else if (a === "stok") stDecide(id, "approved"); else if (a === "stq") stDecide(id, "query"); else if (a === "strej") stDecide(id, "rejected");
+  else if (a === "stposync") stPoSync(false).catch(err => toast(err.message));
+  else if (a === "strules") {
+    const fe = prompt("Float holder's Gmail (approves up to the limit)", S.settings.floatEmail || ""); if (fe === null) return;
+    const lim = prompt("Float holder's approval limit (₹)", String(stLimit())); if (lim === null) return;
+    const mg = prompt("Management Gmail addresses (approve any amount), comma separated", S.settings.mgmtEmails || ""); if (mg === null) return;
+    if (!stList(mg).length) { toast("Keep at least one management address"); return; }
+    const ff = prompt("Count the float from (YYYY-MM-DD, blank = the month of the first site entry)", S.settings.floatFrom || ""); if (ff === null) return;
+    S.settings.floatEmail = fe.trim().toLowerCase(); S.settings.floatLimit = toNum(lim, 25000); S.settings.mgmtEmails = mg.trim(); S.settings.floatFrom = /^\d{4}-\d\d-\d\d$/.test(ff.trim()) ? ff.trim() : ""; persist(); renderSite();
+  }
+});
+if (!CFG.siteSheetId) { const sb = $('#tabs [data-tab="site"]'); if (sb) sb.remove(); }
+document.addEventListener("change", e => { if (e.target.id === "stExpShow" || e.target.id === "stPoOpen") renderSite(); });
 init();
 })();
+
 </script>
 </body>
 </html>
